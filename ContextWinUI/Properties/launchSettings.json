@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ContextWinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ContextWinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
