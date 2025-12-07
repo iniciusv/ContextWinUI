@@ -10,11 +10,10 @@ namespace ContextWinUI.Services;
 
 public class FileSystemService
 {
-	// Pastas a ignorar
 	private static readonly HashSet<string> IgnoredFolders = new(StringComparer.OrdinalIgnoreCase)
 	{
 		"bin", "obj", ".vs", ".git", ".svn", "node_modules",
-		"packages", ".idea", "Debug", "Release"
+		"packages", ".idea", "Debug", "Release", ".vscode"
 	};
 
 	public async Task<ObservableCollection<FileSystemItem>> LoadDirectoryAsync(string rootPath)
@@ -31,16 +30,20 @@ public class FileSystemService
 			try
 			{
 				// Primeiro adiciona diretórios
-				foreach (var dir in rootDir.GetDirectories().OrderBy(d => d.Name))
+				var directories = rootDir.GetDirectories()
+					.Where(d => !IgnoredFolders.Contains(d.Name))
+					.OrderBy(d => d.Name);
+
+				foreach (var dir in directories)
 				{
-					if (!IgnoredFolders.Contains(dir.Name))
-					{
-						items.Add(CreateFileSystemItem(dir));
-					}
+					items.Add(CreateFileSystemItem(dir));
 				}
 
 				// Depois adiciona arquivos
-				foreach (var file in rootDir.GetFiles().OrderBy(f => f.Name))
+				var files = rootDir.GetFiles()
+					.OrderBy(f => f.Name);
+
+				foreach (var file in files)
 				{
 					items.Add(CreateFileSystemItem(file));
 				}
@@ -60,7 +63,8 @@ public class FileSystemService
 		{
 			Name = info.Name,
 			FullPath = info.FullName,
-			IsDirectory = info is DirectoryInfo
+			IsDirectory = info is DirectoryInfo,
+			IsExpanded = false
 		};
 
 		if (!item.IsDirectory && info is FileInfo fileInfo)
@@ -68,11 +72,8 @@ public class FileSystemService
 			item.FileSize = fileInfo.Length;
 		}
 
-		if (item.IsDirectory)
-		{
-			// Carrega filhos lazy (apenas quando expandir)
-			item.Children = new ObservableCollection<FileSystemItem>();
-		}
+		// Inicializa Children como vazio (será carregado quando expandir)
+		item.Children = new ObservableCollection<FileSystemItem>();
 
 		return item;
 	}
@@ -91,23 +92,27 @@ public class FileSystemService
 				var dir = new DirectoryInfo(parent.FullPath);
 
 				// Diretórios primeiro
-				foreach (var subDir in dir.GetDirectories().OrderBy(d => d.Name))
+				var directories = dir.GetDirectories()
+					.Where(d => !IgnoredFolders.Contains(d.Name))
+					.OrderBy(d => d.Name);
+
+				foreach (var subDir in directories)
 				{
-					if (!IgnoredFolders.Contains(subDir.Name))
-					{
-						items.Add(CreateFileSystemItem(subDir));
-					}
+					items.Add(CreateFileSystemItem(subDir));
 				}
 
 				// Arquivos depois
-				foreach (var file in dir.GetFiles().OrderBy(f => f.Name))
+				var files = dir.GetFiles()
+					.OrderBy(f => f.Name);
+
+				foreach (var file in files)
 				{
 					items.Add(CreateFileSystemItem(file));
 				}
 			}
 			catch (UnauthorizedAccessException)
 			{
-				// Ignora
+				// Ignora pastas sem permissão
 			}
 
 			return items;

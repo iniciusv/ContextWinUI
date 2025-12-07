@@ -62,11 +62,13 @@
                           ItemsSource="{x:Bind ViewModel.RootItems, Mode=OneWay}"
                           SelectionMode="Single"
                           ItemInvoked="TreeView_ItemInvoked"
-                          Expanding="TreeView_Expanding">
+                          Expanding="TreeView_Expanding"
+                          Collapsed="TreeView_Collapsed">
 					<TreeView.ItemTemplate>
 						<DataTemplate x:DataType="models:FileSystemItem">
 							<TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}"
-                                          IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
+                                          IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                                          HasUnrealizedChildren="{x:Bind IsDirectory}">
 								<StackPanel Orientation="Horizontal" Spacing="8">
 									<FontIcon Glyph="{x:Bind Icon}" FontSize="16"/>
 									<TextBlock Text="{x:Bind Name}" VerticalAlignment="Center"/>
@@ -82,7 +84,7 @@
 				</TreeView>
 			</Grid>
 
-			<!-- Splitter- -->
+			<!-- Splitter -->
 			<Border Grid.Column="1" Width="8" Background="Transparent"/>
 
 			<!-- Content Viewer -->

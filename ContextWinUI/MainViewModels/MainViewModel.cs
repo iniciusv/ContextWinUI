@@ -45,14 +45,12 @@ public partial class MainViewModel : ObservableObject
 		{
 			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
 
-			// Verificar se MainWindow não é null
 			if (App.MainWindow == null)
 			{
 				StatusMessage = "Erro: Janela principal não encontrada";
 				return;
 			}
 
-			// Obter o handle da janela para WinUI 3
 			var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
 			WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
 
@@ -143,12 +141,31 @@ public partial class MainViewModel : ObservableObject
 	[RelayCommand]
 	private async Task ExpandItemAsync(FileSystemItem item)
 	{
-		if (!item.IsDirectory || item.Children.Any())
+		// Se não é diretório, ignora
+		if (!item.IsDirectory)
 			return;
+
+		// Se já carregou os filhos, apenas marca como expandido
+		if (item.Children.Any())
+		{
+			item.IsExpanded = true;
+			return;
+		}
 
 		try
 		{
-			item.Children = await _fileSystemService.LoadChildrenAsync(item);
+			StatusMessage = $"Carregando: {item.Name}...";
+			var children = await _fileSystemService.LoadChildrenAsync(item);
+
+			// Limpa e adiciona os novos filhos
+			item.Children.Clear();
+			foreach (var child in children)
+			{
+				item.Children.Add(child);
+			}
+
+			item.IsExpanded = true;
+			StatusMessage = $"Pasta {item.Name}: {children.Count} itens";
 		}
 		catch (Exception ex)
 		{

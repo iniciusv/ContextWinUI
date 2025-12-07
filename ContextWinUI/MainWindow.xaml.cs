@@ -24,7 +24,10 @@ public sealed partial class MainWindow : Window
 	{
 		if (args.InvokedItem is FileSystemItem item)
 		{
-			_ = ViewModel.LoadFileContentCommand.ExecuteAsync(item);
+			if (!item.IsDirectory)
+			{
+				_ = ViewModel.LoadFileContentCommand.ExecuteAsync(item);
+			}
 		}
 	}
 
@@ -33,6 +36,14 @@ public sealed partial class MainWindow : Window
 		if (args.Item is FileSystemItem item)
 		{
 			_ = ViewModel.ExpandItemCommand.ExecuteAsync(item);
+		}
+	}
+
+	private void TreeView_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)
+	{
+		if (args.Item is FileSystemItem item)
+		{
+			item.IsExpanded = false;
 		}
 	}
 }
