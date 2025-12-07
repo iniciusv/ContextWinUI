@@ -16,45 +16,66 @@ public class FileSystemService
 		"packages", ".idea", "Debug", "Release", ".vscode"
 	};
 
-	public async Task<ObservableCollection<FileSystemItem>> LoadDirectoryAsync(string rootPath)
+	// Alterado para carregar tudo de uma vez
+	public async Task<ObservableCollection<FileSystemItem>> LoadProjectRecursivelyAsync(string rootPath)
 	{
 		return await Task.Run(() =>
 		{
 			var items = new ObservableCollection<FileSystemItem>();
-
-			if (!Directory.Exists(rootPath))
-				return items;
+			if (!Directory.Exists(rootPath)) return items;
 
 			var rootDir = new DirectoryInfo(rootPath);
 
-			try
+			// Carrega o conteúdo da raiz recursivamente
+			var children = LoadDirectoryInternal(rootDir);
+
+			foreach (var child in children)
 			{
-				// Primeiro adiciona diretórios
-				var directories = rootDir.GetDirectories()
-					.Where(d => !IgnoredFolders.Contains(d.Name))
-					.OrderBy(d => d.Name);
-
-				foreach (var dir in directories)
-				{
-					items.Add(CreateFileSystemItem(dir));
-				}
-
-				// Depois adiciona arquivos
-				var files = rootDir.GetFiles()
-					.OrderBy(f => f.Name);
-
-				foreach (var file in files)
-				{
-					items.Add(CreateFileSystemItem(file));
-				}
-			}
-			catch (UnauthorizedAccessException)
-			{
-				// Ignora pastas sem permissão
+				items.Add(child);
 			}
 
 			return items;
 		});
+	}
+
+	private List<FileSystemItem> LoadDirectoryInternal(DirectoryInfo dir)
+	{
+		var items = new List<FileSystemItem>();
+
+		try
+		{
+			// 1. Diretórios (Recursão)
+			var subDirs = dir.GetDirectories()
+							 .Where(d => !IgnoredFolders.Contains(d.Name))
+							 .OrderBy(d => d.Name);
+
+			foreach (var subDir in subDirs)
+			{
+				var folderItem = CreateFileSystemItem(subDir);
+
+				// AQUI ESTÁ A MÁGICA: Já carregamos os filhos imediatamente
+				var children = LoadDirectoryInternal(subDir);
+				foreach (var child in children)
+				{
+					folderItem.Children.Add(child);
+				}
+
+				items.Add(folderItem);
+			}
+
+			// 2. Arquivos
+			var files = dir.GetFiles().OrderBy(f => f.Name);
+			foreach (var file in files)
+			{
+				items.Add(CreateFileSystemItem(file));
+			}
+		}
+		catch (UnauthorizedAccessException)
+		{
+			// Ignora pastas sem permissão
+		}
+
+		return items;
 	}
 
 	private FileSystemItem CreateFileSystemItem(FileSystemInfo info)
@@ -64,7 +85,8 @@ public class FileSystemService
 			Name = info.Name,
 			FullPath = info.FullName,
 			IsDirectory = info is DirectoryInfo,
-			IsExpanded = false
+			IsExpanded = false,
+			Children = new ObservableCollection<FileSystemItem>() // Inicializa vazio
 		};
 
 		if (!item.IsDirectory && info is FileInfo fileInfo)
@@ -72,51 +94,7 @@ public class FileSystemService
 			item.FileSize = fileInfo.Length;
 		}
 
-		// Inicializa Children como vazio (será carregado quando expandir)
-		item.Children = new ObservableCollection<FileSystemItem>();
-
 		return item;
-	}
-
-	public async Task<ObservableCollection<FileSystemItem>> LoadChildrenAsync(FileSystemItem parent)
-	{
-		if (!parent.IsDirectory)
-			return new ObservableCollection<FileSystemItem>();
-
-		return await Task.Run(() =>
-		{
-			var items = new ObservableCollection<FileSystemItem>();
-
-			try
-			{
-				var dir = new DirectoryInfo(parent.FullPath);
-
-				// Diretórios primeiro
-				var directories = dir.GetDirectories()
-					.Where(d => !IgnoredFolders.Contains(d.Name))
-					.OrderBy(d => d.Name);
-
-				foreach (var subDir in directories)
-				{
-					items.Add(CreateFileSystemItem(subDir));
-				}
-
-				// Arquivos depois
-				var files = dir.GetFiles()
-					.OrderBy(f => f.Name);
-
-				foreach (var file in files)
-				{
-					items.Add(CreateFileSystemItem(file));
-				}
-			}
-			catch (UnauthorizedAccessException)
-			{
-				// Ignora pastas sem permissão
-			}
-
-			return items;
-		});
 	}
 
 	public async Task<string> ReadFileContentAsync(string filePath)

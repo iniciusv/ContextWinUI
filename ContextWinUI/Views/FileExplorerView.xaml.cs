@@ -50,7 +50,12 @@ public sealed partial class FileExplorerView : UserControl
 	{
 		if (args.Item is FileSystemItem item)
 		{
-			_ = ExplorerViewModel.ExpandItemCommand.ExecuteAsync(item);
+			// CORREÇÃO: Usar Execute em vez de ExecuteAsync
+			// O RelayCommand gerencia a Task internamente
+			if (ExplorerViewModel.ExpandItemCommand.CanExecute(item))
+			{
+				ExplorerViewModel.ExpandItemCommand.Execute(item);
+			}
 		}
 	}
 

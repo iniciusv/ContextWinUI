@@ -1,11 +1,10 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ContextWinUI.Helpers; // Importante
+using ContextWinUI.Helpers; // Usa o seu Helper de busca visual
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels;
@@ -31,10 +30,14 @@ public partial class FileExplorerViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 	}
 
-	// --- BUSCA (NOVO) ---
+	// ---------------------------------------------------------
+	// BUSCA SIMPLES EM MEMÓRIA (IGUAL À TELA DE CONTEXTO)
+	// ---------------------------------------------------------
 	[RelayCommand]
 	private void Search(string query)
 	{
+		// Usa o TreeSearchHelper que já implementamos
+		// Como a árvore já está toda carregada, ele vai filtrar e expandir automaticamente
 		TreeSearchHelper.Search(RootItems, query);
 	}
 
@@ -44,7 +47,6 @@ public partial class FileExplorerViewModel : ObservableObject
 		try
 		{
 			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
-			// Necessário para WinUI 3 Desktop
 			if (App.MainWindow != null)
 			{
 				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
@@ -53,9 +55,10 @@ public partial class FileExplorerViewModel : ObservableObject
 			folderPicker.FileTypeFilter.Add("*");
 
 			var folder = await folderPicker.PickSingleFolderAsync();
+
 			if (folder != null)
 			{
-				await LoadDirectoryAsync(folder.Path);
+				await LoadProjectAsync(folder.Path);
 			}
 		}
 		catch (Exception ex)
@@ -64,15 +67,19 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	public async Task LoadDirectoryAsync(string path)
+	public async Task LoadProjectAsync(string path)
 	{
 		IsLoading = true;
-		OnStatusChanged("Carregando...");
+		OnStatusChanged("Indexando projeto completo..."); // Feedback importante
+
 		try
 		{
 			CurrentPath = path;
-			RootItems = await _fileSystemService.LoadDirectoryAsync(path);
-			OnStatusChanged($"Carregado: {RootItems.Count} itens");
+
+			// Chama o novo método recursivo
+			RootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
+
+			OnStatusChanged($"Projeto carregado. {CountTotalItems(RootItems)} itens indexados.");
 		}
 		catch (Exception ex)
 		{
@@ -84,29 +91,14 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
+	// O comando de expandir agora é puramente visual (o TreeView faz sozinho),
+	// mas mantemos caso você queira logar algo ou forçar comportamento futuro.
+	// Se quiser, pode até remover este comando do XAML, pois o TreeView expande se tiver Children.
 	[RelayCommand]
-	private async Task ExpandItemAsync(FileSystemItem item)
+	private void ExpandItem(FileSystemItem item)
 	{
-		if (!item.IsDirectory) return;
-		if (item.Children.Any())
-		{
-			item.IsExpanded = true;
-			return;
-		}
-
-		try
-		{
-			OnStatusChanged($"Carregando: {item.Name}...");
-			var children = await _fileSystemService.LoadChildrenAsync(item);
-			item.Children.Clear();
-			foreach (var child in children) item.Children.Add(child);
-			item.IsExpanded = true;
-			OnStatusChanged($"Pasta {item.Name}: {children.Count} itens");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro ao expandir pasta: {ex.Message}");
-		}
+		// Não faz nada de IO, apenas UI binding
+		item.IsExpanded = true;
 	}
 
 	public void SelectFile(FileSystemItem item)
@@ -118,4 +110,17 @@ public partial class FileExplorerViewModel : ObservableObject
 	}
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+
+	// Helper para contar total (recursivo)
+	private int CountTotalItems(ObservableCollection<FileSystemItem> items)
+	{
+		int count = 0;
+		foreach (var item in items)
+		{
+			count++;
+			if (item.Children.Count > 0)
+				count += CountTotalItems(item.Children);
+		}
+		return count;
+	}
 }

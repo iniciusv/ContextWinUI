@@ -24,11 +24,16 @@ public sealed partial class ContextAnalysisView : UserControl
 		this.Name = "RootAnalysisView";
 	}
 
-	private async void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
+	private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
 	{
 		if (sender is Button btn && btn.Tag is FileSystemItem item)
 		{
-			await ContextViewModel.AnalyzeItemDepthCommand.ExecuteAsync(item);
+			// Verifica se o comando pode ser executado e executa
+			// O ViewModel cuidará do IsLoading, não precisamos esperar (await) aqui
+			if (ContextViewModel.AnalyzeItemDepthCommand.CanExecute(item))
+			{
+				ContextViewModel.AnalyzeItemDepthCommand.Execute(item);
+			}
 		}
 	}
 
@@ -36,7 +41,7 @@ public sealed partial class ContextAnalysisView : UserControl
 	{
 		if (args.InvokedItem is FileSystemItem item)
 		{
-			ContextViewModel.SelectFileForPreview(item);
+			ContextViewModel?.SelectFileForPreview(item);
 		}
 	}
 }

@@ -11,56 +11,75 @@ public static class TreeSearchHelper
 	{
 		if (items == null) return;
 
-		bool isEmpty = string.IsNullOrWhiteSpace(searchText);
+		// Se a busca estiver vazia, limpa o filtro (mostra tudo) e não altera a expansão
+		if (string.IsNullOrWhiteSpace(searchText))
+		{
+			ResetVisibility(items);
+			return;
+		}
 
+		// Executa a busca recursiva
 		foreach (var item in items)
 		{
-			if (isEmpty)
-			{
-				// Se busca vazia, mostra tudo e reseta filhos
-				item.IsVisibleInSearch = true;
-				Search(item.Children, searchText);
-				continue;
-			}
-
-			// Verifica match no próprio item
-			bool isSelfMatch = item.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase);
-
-			// Verifica match nos filhos
-			bool hasMatchingChildren = CheckChildren(item.Children, searchText);
-
-			// Item visível se ele der match OU se tiver filhos que dão match
-			item.IsVisibleInSearch = isSelfMatch || hasMatchingChildren;
-
-			// Expande para mostrar os filhos encontrados
-			if (hasMatchingChildren)
-			{
-				item.IsExpanded = true;
-			}
+			SearchRecursive(item, searchText);
 		}
 	}
 
-	// Método auxiliar que retorna bool para ajudar na decisão do pai
-	private static bool CheckChildren(IEnumerable<FileSystemItem> children, string searchText)
+	private static bool SearchRecursive(FileSystemItem item, string searchText)
 	{
-		if (children == null || !children.Any()) return false;
+		// 1. Verifica se o próprio item bate com a busca
+		bool isSelfMatch = item.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase);
 
-		bool anyChildMatch = false;
+		// 2. Verifica recursivamente os filhos (Bottom-Up)
+		// Precisamos verificar TODOS os filhos para garantir que todos que derem match apareçam
+		bool hasMatchingChildren = false;
 
-		foreach (var child in children)
+		if (item.Children != null && item.Children.Any())
 		{
-			bool isSelfMatch = child.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase);
-			bool hasMatchingGrandChildren = CheckChildren(child.Children, searchText);
+			foreach (var child in item.Children)
+			{
+				// Chama recursivamente para cada filho
+				bool childMatch = SearchRecursive(child, searchText);
 
-			child.IsVisibleInSearch = isSelfMatch || hasMatchingGrandChildren;
-
-			if (child.IsVisibleInSearch)
-				anyChildMatch = true;
-
-			if (hasMatchingGrandChildren)
-				child.IsExpanded = true;
+				// Se algum filho der match, registramos isso
+				if (childMatch)
+				{
+					hasMatchingChildren = true;
+				}
+			}
 		}
 
-		return anyChildMatch;
+		// 3. Determina a visibilidade deste item
+		// Ele aparece se: Nome dele bate OU tem filhos que batem
+		item.IsVisibleInSearch = isSelfMatch || hasMatchingChildren;
+
+		// 4. CRUCIAL: Expande a pasta se houver filhos encontrados
+		// Isso garante que o arquivo não fique escondido dentro de uma pasta fechada
+		if (hasMatchingChildren)
+		{
+			item.IsExpanded = true;
+		}
+		// Opcional: Se for um match direto no arquivo, não precisa expandir ele mesmo (pois é folha), 
+		// mas se for pasta e der match no nome, você pode decidir se quer expandir ou não. 
+		// A lógica acima expande apenas se tiver CONTEÚDO relevante dentro.
+
+		return item.IsVisibleInSearch;
+	}
+
+	private static void ResetVisibility(IEnumerable<FileSystemItem> items)
+	{
+		if (items == null) return;
+
+		foreach (var item in items)
+		{
+			item.IsVisibleInSearch = true;
+			// Opcional: Se quiser recolher tudo ao limpar a busca, descomente a linha abaixo:
+			// item.IsExpanded = false; 
+
+			if (item.Children != null && item.Children.Any())
+			{
+				ResetVisibility(item.Children);
+			}
+		}
 	}
 }
