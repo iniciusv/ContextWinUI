@@ -1,7 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -12,17 +11,15 @@ namespace ContextWinUI.Services;
 
 public class RoslynAnalyzerService
 {
-	// Mapa de NomeDoTipo -> CaminhoDoArquivo
 	private Dictionary<string, string> _projectTypeMap = new();
 
-	// DTO para retorno da análise
+	// Estrutura auxiliar para o retorno da análise
 	public class FileAnalysisResult
 	{
 		public List<string> Methods { get; set; } = new();
 		public List<string> Dependencies { get; set; } = new();
 	}
 
-	// 1. Indexa o projeto inteiro (Mapeia Onde está cada Classe/Interface)
 	public async Task IndexProjectAsync(string rootPath)
 	{
 		_projectTypeMap.Clear();
@@ -38,7 +35,6 @@ public class RoslynAnalyzerService
 				var tree = CSharpSyntaxTree.ParseText(code);
 				var root = await tree.GetRootAsync();
 
-				// Pega declarações de classes, interfaces, enums, structs
 				var typeDeclarations = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>();
 				var typesInFile = typeDeclarations.Select(t => t.Identifier.Text).ToList();
 
@@ -56,13 +52,12 @@ public class RoslynAnalyzerService
 		{
 			foreach (var typeName in result.Types)
 			{
-				// Em caso de duplicata, o último vence
 				_projectTypeMap[typeName] = result.FilePath;
 			}
 		}
 	}
 
-	// 2. Analisa a estrutura de um arquivo específico
+	// Analisa um arquivo individualmente para popular a TreeView
 	public async Task<FileAnalysisResult> AnalyzeFileStructureAsync(string filePath)
 	{
 		var result = new FileAnalysisResult();
@@ -73,43 +68,34 @@ public class RoslynAnalyzerService
 			var tree = CSharpSyntaxTree.ParseText(code);
 			var root = await tree.GetRootAsync();
 
-			// A. Extrair Métodos
+			// 1. Extrair Métodos
 			var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
 			foreach (var method in methods)
 			{
-				// Formata: Nome(TipoParam1, TipoParam2)
+				// Formato: Nome(Params)
 				var paramsList = method.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
 				var signature = $"{method.Identifier.Text}({string.Join(", ", paramsList)})";
 				result.Methods.Add(signature);
 			}
 
-			// B. Encontrar Dependências (Tipos usados no arquivo)
+			// 2. Extrair Dependências (Tipos usados)
 			var identifiers = root.DescendantNodes()
 				.OfType<IdentifierNameSyntax>()
 				.Select(id => id.Identifier.Text)
 				.Distinct();
 
-			var dependenciesFound = new HashSet<string>();
-
+			var dependencies = new HashSet<string>();
 			foreach (var id in identifiers)
 			{
-				// Se o identificador é um tipo conhecido no projeto E não é o próprio arquivo
-				if (_projectTypeMap.TryGetValue(id, out var depPath))
+				// Se o tipo existe no mapa do projeto e não é o próprio arquivo
+				if (_projectTypeMap.TryGetValue(id, out var depPath) && depPath != filePath)
 				{
-					// Evita auto-referência
-					if (!string.Equals(depPath, filePath, StringComparison.OrdinalIgnoreCase))
-					{
-						dependenciesFound.Add(depPath);
-					}
+					dependencies.Add(depPath);
 				}
 			}
-
-			result.Dependencies = dependenciesFound.ToList();
+			result.Dependencies = dependencies.ToList();
 		}
-		catch
-		{
-			// Ignora erros de parse para não travar a UI
-		}
+		catch { /* Ignorar erros de parse */ }
 
 		return result;
 	}

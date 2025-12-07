@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Helpers; // Importante
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
@@ -30,26 +31,28 @@ public partial class FileExplorerViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 	}
 
+	// --- BUSCA (NOVO) ---
+	[RelayCommand]
+	private void Search(string query)
+	{
+		TreeSearchHelper.Search(RootItems, query);
+	}
+
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
 	{
 		try
 		{
 			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
-
-			if (App.MainWindow == null)
+			// Necessário para WinUI 3 Desktop
+			if (App.MainWindow != null)
 			{
-				OnStatusChanged("Erro: Janela principal não encontrada");
-				return;
+				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
 			}
-
-			var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-			WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-
 			folderPicker.FileTypeFilter.Add("*");
 
 			var folder = await folderPicker.PickSingleFolderAsync();
-
 			if (folder != null)
 			{
 				await LoadDirectoryAsync(folder.Path);
@@ -65,7 +68,6 @@ public partial class FileExplorerViewModel : ObservableObject
 	{
 		IsLoading = true;
 		OnStatusChanged("Carregando...");
-
 		try
 		{
 			CurrentPath = path;
@@ -85,9 +87,7 @@ public partial class FileExplorerViewModel : ObservableObject
 	[RelayCommand]
 	private async Task ExpandItemAsync(FileSystemItem item)
 	{
-		if (!item.IsDirectory)
-			return;
-
+		if (!item.IsDirectory) return;
 		if (item.Children.Any())
 		{
 			item.IsExpanded = true;
@@ -98,13 +98,8 @@ public partial class FileExplorerViewModel : ObservableObject
 		{
 			OnStatusChanged($"Carregando: {item.Name}...");
 			var children = await _fileSystemService.LoadChildrenAsync(item);
-
 			item.Children.Clear();
-			foreach (var child in children)
-			{
-				item.Children.Add(child);
-			}
-
+			foreach (var child in children) item.Children.Add(child);
 			item.IsExpanded = true;
 			OnStatusChanged($"Pasta {item.Name}: {children.Count} itens");
 		}
@@ -122,8 +117,5 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	private void OnStatusChanged(string message)
-	{
-		StatusChanged?.Invoke(this, message);
-	}
+	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 }

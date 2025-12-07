@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Helpers; // Importante para o Search
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
@@ -18,6 +19,9 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly RoslynAnalyzerService _roslynAnalyzer;
 	private readonly FileSystemService _fileSystemService;
 
+	// Histórico para o botão Voltar
+	private readonly Stack<List<FileSystemItem>> _historyStack = new();
+
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> contextTreeItems = new();
 
@@ -30,7 +34,9 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	[ObservableProperty]
 	private int selectedCount;
 
-	// Evento para notificar o MainViewModel que um arquivo deve ser aberto no editor
+	[ObservableProperty]
+	private bool canGoBack;
+
 	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
 	public event EventHandler<string>? StatusChanged;
 
@@ -40,12 +46,20 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 	}
 
+	// 1. ANÁLISE INICIAL
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
 		if (!selectedItems.Any()) return;
 
 		IsLoading = true;
 		IsVisible = true;
+
+		if (ContextTreeItems.Any())
+		{
+			_historyStack.Push(ContextTreeItems.ToList());
+			UpdateCanGoBack();
+		}
+
 		ContextTreeItems.Clear();
 		OnStatusChanged("Indexando projeto e analisando referências...");
 
@@ -73,25 +87,21 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
-	// Aprofundar análise em um item específico (Botão +)
+	// 2. ANÁLISE PROFUNDA (+)
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
-		if (string.IsNullOrEmpty(item.FullPath)) return;
+		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
 
 		IsLoading = true;
-		OnStatusChanged($"Analisando profundamente {item.Name}...");
+		OnStatusChanged($"Aprofundando análise de {item.Name}...");
 
 		try
 		{
-			// Limpa filhos atuais para evitar duplicação
 			item.Children.Clear();
-
-			// Re-analisa usando o Roslyn Analyzer para pegar dependências deste arquivo específico
 			await PopulateNodeAsync(item, item.FullPath);
-
 			UpdateSelectedCount();
-			OnStatusChanged($"Dependências de {item.Name} carregadas.");
+			OnStatusChanged($"Conteúdo de {item.Name} carregado.");
 		}
 		catch (Exception ex)
 		{
@@ -103,11 +113,35 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
+	// 3. BUSCA
+	[RelayCommand]
+	private void Search(string query)
+	{
+		TreeSearchHelper.Search(ContextTreeItems, query);
+	}
+
+	// 4. VOLTAR
+	[RelayCommand]
+	private void GoBack()
+	{
+		if (_historyStack.Count > 0)
+		{
+			var previousState = _historyStack.Pop();
+			ContextTreeItems.Clear();
+			foreach (var item in previousState) ContextTreeItems.Add(item);
+			UpdateCanGoBack();
+			UpdateSelectedCount();
+			OnStatusChanged("Histórico restaurado.");
+		}
+	}
+
+	private void UpdateCanGoBack() => CanGoBack = _historyStack.Count > 0;
+
+	// Helpers Lógicos
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
 
-		// 1. Métodos (apenas informativo, não é "profundo" no sentido de arquivo)
 		if (analysis.Methods.Any())
 		{
 			var methodsGroup = CreateTreeItem("Métodos", "", "\uEA86", false);
@@ -118,38 +152,37 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			node.Children.Add(methodsGroup);
 		}
 
-		// 2. Dependências
 		if (analysis.Dependencies.Any())
 		{
 			var contextGroup = CreateTreeItem("Contexto / Dependências", "", "\uE71D", false);
 			foreach (var depPath in analysis.Dependencies)
 			{
 				var depName = Path.GetFileName(depPath);
-
-				// CRUCIAL: Ao criar o item de dependência, passamos o FullPath.
-				// Isso ativa a propriedade CanDeepAnalyze = true, habilitando o botão (+)
-				var depNode = CreateTreeItem(depName, depPath, "\uE943", true);
-
-				contextGroup.Children.Add(depNode);
+				contextGroup.Children.Add(CreateTreeItem(depName, depPath, "\uE943", true));
 			}
 			node.Children.Add(contextGroup);
 		}
-
 		node.IsExpanded = true;
 	}
 
-	// Chamado pelo CodeBehind quando clica no item
+	// Interações UI
 	public void SelectFileForPreview(FileSystemItem item)
 	{
-		// Só dispara se tiver caminho válido e arquivo existir
 		if (!string.IsNullOrEmpty(item.FullPath) && File.Exists(item.FullPath))
-		{
 			FileSelectedForPreview?.Invoke(this, item);
-		}
 	}
 
 	[RelayCommand]
 	private void ItemChecked() => UpdateSelectedCount();
+
+	[RelayCommand]
+	private void Close()
+	{
+		IsVisible = false;
+		ContextTreeItems.Clear();
+		_historyStack.Clear();
+		UpdateCanGoBack();
+	}
 
 	[RelayCommand]
 	private async Task CopyContextToClipboardAsync()
@@ -159,12 +192,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		{
 			var filesToCopy = new HashSet<string>();
 			CollectFilesToCopy(ContextTreeItems, filesToCopy);
-
-			if (!filesToCopy.Any())
-			{
-				OnStatusChanged("Nenhum arquivo selecionado para cópia.");
-				return;
-			}
+			if (!filesToCopy.Any()) return;
 
 			var sb = new StringBuilder();
 			sb.AppendLine("/* CONTEXTO SELECIONADO */");
@@ -182,36 +210,16 @@ public partial class ContextAnalysisViewModel : ObservableObject
 				}
 				catch { }
 			}
-
-			var dataPackage = new DataPackage();
-			dataPackage.SetText(sb.ToString());
-			Clipboard.SetContent(dataPackage);
+			var dp = new DataPackage();
+			dp.SetText(sb.ToString());
+			Clipboard.SetContent(dp);
 			OnStatusChanged("Copiado com sucesso!");
 		}
-		finally
-		{
-			IsLoading = false;
-		}
+		finally { IsLoading = false; }
 	}
 
-	[RelayCommand]
-	private void Close()
-	{
-		IsVisible = false;
-		ContextTreeItems.Clear();
-	}
-
-	private FileSystemItem CreateTreeItem(string name, string path, string customIcon, bool isChecked)
-	{
-		return new FileSystemItem
-		{
-			Name = name,
-			FullPath = path,
-			CustomIcon = customIcon,
-			IsChecked = isChecked,
-			IsExpanded = true
-		};
-	}
+	private FileSystemItem CreateTreeItem(string name, string path, string customIcon, bool isChecked) =>
+		new() { Name = name, FullPath = path, CustomIcon = customIcon, IsChecked = isChecked, IsExpanded = true };
 
 	private void UpdateSelectedCount() => SelectedCount = CountCheckedFiles(ContextTreeItems);
 

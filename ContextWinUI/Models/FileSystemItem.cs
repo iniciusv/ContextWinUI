@@ -1,9 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml; // Necessário para Visibility
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using Microsoft.UI.Xaml; // Necessário para Visibility se usar diretamente, ou bool para converter no XAML
 
 namespace ContextWinUI.Models;
 
@@ -31,12 +31,27 @@ public partial class FileSystemItem : ObservableObject
 	[NotifyPropertyChangedFor(nameof(Icon))]
 	private string? customIcon;
 
+	// --- CONTROLE DE BUSCA ---
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(Visibility))]
+	private bool isVisibleInSearch = true;
+
+	// Binding direto no XAML para ocultar itens filtrados sem removê-los da lista
+	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
+
+	// --- LÓGICA DO BOTÃO (+) ---
+	// Só mostramos o botão se for um arquivo físico de código (não pasta, nem agrupador lógico)
+	public bool CanDeepAnalyze => !IsDirectory && !string.IsNullOrEmpty(FullPath) && IsCodeFile;
+
+	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
+
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
 
 	public string Extension => IsDirectory ? string.Empty : Path.GetExtension(FullPath);
-
 	public bool IsCodeFile => !IsDirectory && _codeExtensions.Contains(Extension);
+	public long? FileSize { get; set; }
+	public string FileSizeFormatted => FileSize.HasValue ? FormatBytes(FileSize.Value) : string.Empty;
 
 	public string Icon
 	{
@@ -46,20 +61,6 @@ public partial class FileSystemItem : ObservableObject
 			return IsDirectory ? "\uE8B7" : GetFileIcon();
 		}
 	}
-
-	// NOVO: Propriedade para controlar a visibilidade do botão (+)
-	// Retorna True se tiver um caminho de arquivo válido e não for diretório
-	public bool CanDeepAnalyze => !IsDirectory && !string.IsNullOrEmpty(FullPath) && IsCodeFile;
-
-	// Helper para converter bool para Visibility diretamente no x:Bind (opcional, ou use bool converter)
-	// No WinUI 3 com x:Bind, o cast de bool para Visibility nem sempre é automático sem converter
-	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
-
-	public long? FileSize { get; set; }
-
-	public string FileSizeFormatted => FileSize.HasValue ? FormatBytes(FileSize.Value) : string.Empty;
-
-	// --- Helpers Privados ---
 
 	private static readonly HashSet<string> _codeExtensions = new(StringComparer.OrdinalIgnoreCase)
 	{
