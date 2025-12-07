@@ -168,15 +168,13 @@
 					</Button>
 				</Grid>
 
-				<!-- Code Content (quando NÃO analisando métodos) -->
-				<!-- MUDANÇA AQUI: Usa IsMethodAnalysisHidden ao invés de conversor -->
 				<Grid Grid.Row="1" Visibility="{x:Bind ViewModel.IsMethodAnalysisHidden, Mode=OneWay}">
 					<ScrollViewer Padding="16">
-						<TextBlock Text="{x:Bind ViewModel.FileContent.FileContent, Mode=OneWay}"
-                                   FontFamily="Cascadia Code, Consolas, Courier New"
-                                   FontSize="13"
-                                   IsTextSelectionEnabled="True"
-                                   TextWrapping="NoWrap"/>
+						<RichTextBlock x:Name="CodeRichTextBlock" 
+						   FontFamily="Cascadia Code, Consolas, Courier New"
+						   FontSize="13"
+						   IsTextSelectionEnabled="True"
+						   TextWrapping="NoWrap" />
 					</ScrollViewer>
 				</Grid>
 
