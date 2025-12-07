@@ -82,7 +82,7 @@
 				</TreeView>
 			</Grid>
 
-			<!-- Splitter -->
+			<!-- Splitter- -->
 			<Border Grid.Column="1" Width="8" Background="Transparent"/>
 
 			<!-- Content Viewer -->
