@@ -24,6 +24,9 @@ public partial class FileSystemItem : ObservableObject
 	private bool isSelected;
 
 	[ObservableProperty]
+	private bool isChecked;
+
+	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
 
 	public string Extension => IsDirectory ? string.Empty : Path.GetExtension(FullPath);

@@ -1,175 +1,109 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading.Tasks;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	private readonly FileSystemService _fileSystemService;
-
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> rootItems = new();
-
-	[ObservableProperty]
-	private FileSystemItem? selectedItem;
-
-	[ObservableProperty]
-	private string fileContent = string.Empty;
-
-	[ObservableProperty]
-	private string currentPath = string.Empty;
-
-	[ObservableProperty]
-	private bool isLoading;
+	// Sub-ViewModels
+	public FileExplorerViewModel FileExplorer { get; }
+	public FileContentViewModel FileContent { get; }
+	public FileSelectionViewModel FileSelection { get; }
+	public MethodAnalysisViewModel MethodAnalysis { get; }
 
 	[ObservableProperty]
 	private string statusMessage = "Selecione uma pasta para começar";
 
+	[ObservableProperty]
+	private bool isLoading;
+
 	public MainViewModel()
 	{
-		_fileSystemService = new FileSystemService();
+		// Criar serviços compartilhados
+		var fileSystemService = new FileSystemService();
+		var roslynAnalyzer = new RoslynAnalyzerService();
+
+		// Inicializar sub-ViewModels
+		FileExplorer = new FileExplorerViewModel(fileSystemService);
+		FileContent = new FileContentViewModel(fileSystemService);
+		FileSelection = new FileSelectionViewModel(fileSystemService);
+		MethodAnalysis = new MethodAnalysisViewModel(roslynAnalyzer);
+
+		// Conectar eventos
+		WireUpEvents();
 	}
 
-	[RelayCommand]
-	private async Task BrowseFolderAsync()
+	private void WireUpEvents()
 	{
-		try
+		// Quando um arquivo é selecionado no explorer
+		FileExplorer.FileSelected += async (s, item) =>
 		{
-			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+			await FileContent.LoadFileAsync(item);
+		};
 
-			if (App.MainWindow == null)
+		// Quando rootItems mudam, atualizar selection
+		FileExplorer.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(FileExplorer.RootItems))
 			{
-				StatusMessage = "Erro: Janela principal não encontrada";
-				return;
+				FileSelection.SetRootItems(FileExplorer.RootItems);
 			}
+		};
 
-			var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-			WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-
-			folderPicker.FileTypeFilter.Add("*");
-
-			var folder = await folderPicker.PickSingleFolderAsync();
-
-			if (folder != null)
-			{
-				await LoadDirectoryAsync(folder.Path);
-			}
-		}
-		catch (Exception ex)
+		// Sincronizar estados de loading
+		FileExplorer.PropertyChanged += (s, e) =>
 		{
-			StatusMessage = $"Erro ao selecionar pasta: {ex.Message}";
-		}
+			if (e.PropertyName == nameof(FileExplorer.IsLoading))
+				UpdateLoadingState();
+		};
+
+		FileContent.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(FileContent.IsLoading))
+				UpdateLoadingState();
+		};
+
+		FileSelection.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(FileSelection.IsLoading))
+				UpdateLoadingState();
+		};
+
+		MethodAnalysis.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(MethodAnalysis.IsLoading))
+				UpdateLoadingState();
+		};
+
+		// Sincronizar mensagens de status
+		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
+		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
+		FileSelection.StatusChanged += (s, msg) => StatusMessage = msg;
+		MethodAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 	}
 
-	private async Task LoadDirectoryAsync(string path)
+	private void UpdateLoadingState()
 	{
-		IsLoading = true;
-		StatusMessage = "Carregando...";
-
-		try
-		{
-			CurrentPath = path;
-			RootItems = await _fileSystemService.LoadDirectoryAsync(path);
-			StatusMessage = $"Carregado: {RootItems.Count} itens";
-		}
-		catch (Exception ex)
-		{
-			StatusMessage = $"Erro: {ex.Message}";
-		}
-		finally
-		{
-			IsLoading = false;
-		}
+		IsLoading = FileExplorer.IsLoading ||
+					FileContent.IsLoading ||
+					FileSelection.IsLoading ||
+					MethodAnalysis.IsLoading;
 	}
 
-	[RelayCommand]
-	private async Task LoadFileContentAsync(FileSystemItem? item)
+	// Métodos públicos para a View
+	public void OnFileSelected(FileSystemItem item)
 	{
-		if (item == null || !item.IsCodeFile)
-		{
-			FileContent = string.Empty;
-			return;
-		}
-
-		SelectedItem = item;
-		IsLoading = true;
-
-		try
-		{
-			FileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
-			StatusMessage = $"Arquivo: {item.Name} ({item.FileSizeFormatted})";
-		}
-		catch (Exception ex)
-		{
-			FileContent = $"Erro ao carregar arquivo: {ex.Message}";
-			StatusMessage = "Erro ao carregar arquivo";
-		}
-		finally
-		{
-			IsLoading = false;
-		}
+		FileExplorer.SelectFile(item);
 	}
 
-	[RelayCommand(CanExecute = nameof(CanCopyToClipboard))]
-	private void CopyToClipboard()
+	public async Task AnalyzeFileMethodsAsync(FileSystemItem? item)
 	{
-		if (string.IsNullOrEmpty(FileContent))
-			return;
-
-		var dataPackage = new DataPackage();
-		dataPackage.SetText(FileContent);
-		Clipboard.SetContent(dataPackage);
-
-		StatusMessage = "Conteúdo copiado!";
-	}
-
-	private bool CanCopyToClipboard() => !string.IsNullOrEmpty(FileContent);
-
-	partial void OnFileContentChanged(string value)
-	{
-		CopyToClipboardCommand.NotifyCanExecuteChanged();
-	}
-
-	[RelayCommand]
-	private async Task ExpandItemAsync(FileSystemItem item)
-	{
-		// Se não é diretório, ignora
-		if (!item.IsDirectory)
-			return;
-
-		// Se já carregou os filhos, apenas marca como expandido
-		if (item.Children.Any())
+		if (item != null)
 		{
-			item.IsExpanded = true;
-			return;
-		}
-
-		try
-		{
-			StatusMessage = $"Carregando: {item.Name}...";
-			var children = await _fileSystemService.LoadChildrenAsync(item);
-
-			// Limpa e adiciona os novos filhos
-			item.Children.Clear();
-			foreach (var child in children)
-			{
-				item.Children.Add(child);
-			}
-
-			item.IsExpanded = true;
-			StatusMessage = $"Pasta {item.Name}: {children.Count} itens";
-		}
-		catch (Exception ex)
-		{
-			StatusMessage = $"Erro ao expandir pasta: {ex.Message}";
+			await MethodAnalysis.AnalyzeFileAsync(item);
 		}
 	}
 }

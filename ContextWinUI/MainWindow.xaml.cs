@@ -1,7 +1,9 @@
+using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Threading.Tasks;
 
 namespace ContextWinUI;
 
@@ -15,8 +17,6 @@ public sealed partial class MainWindow : Window
 		ViewModel = new MainViewModel();
 
 		Title = "Context WinUI - Explorador de Código";
-
-		// Configurar tamanho mínimo da janela
 		this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700));
 	}
 
@@ -24,10 +24,7 @@ public sealed partial class MainWindow : Window
 	{
 		if (args.InvokedItem is FileSystemItem item)
 		{
-			if (!item.IsDirectory)
-			{
-				_ = ViewModel.LoadFileContentCommand.ExecuteAsync(item);
-			}
+			ViewModel.OnFileSelected(item);
 		}
 	}
 
@@ -35,7 +32,7 @@ public sealed partial class MainWindow : Window
 	{
 		if (args.Item is FileSystemItem item)
 		{
-			_ = ViewModel.ExpandItemCommand.ExecuteAsync(item);
+			_ = ViewModel.FileExplorer.ExpandItemCommand.ExecuteAsync(item);
 		}
 	}
 
@@ -45,5 +42,12 @@ public sealed partial class MainWindow : Window
 		{
 			item.IsExpanded = false;
 		}
+	}
+
+	// Command para o botão "Analisar Métodos"
+	[RelayCommand]
+	private async Task AnalyzeMethodsAsync()
+	{
+		await ViewModel.AnalyzeFileMethodsAsync(ViewModel.FileContent.SelectedItem);
 	}
 }
