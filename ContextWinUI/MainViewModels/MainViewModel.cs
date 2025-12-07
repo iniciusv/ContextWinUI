@@ -20,6 +20,10 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	private bool isLoading;
 
+	// Propriedade computada para inverter IsVisible
+	[ObservableProperty]
+	private bool isMethodAnalysisHidden = true;
+
 	public MainViewModel()
 	{
 		// Criar serviços compartilhados
@@ -76,6 +80,12 @@ public partial class MainViewModel : ObservableObject
 		{
 			if (e.PropertyName == nameof(MethodAnalysis.IsLoading))
 				UpdateLoadingState();
+
+			// NOVO: Sincronizar IsMethodAnalysisHidden quando IsVisible mudar
+			if (e.PropertyName == nameof(MethodAnalysis.IsVisible))
+			{
+				IsMethodAnalysisHidden = !MethodAnalysis.IsVisible;
+			}
 		};
 
 		// Sincronizar mensagens de status

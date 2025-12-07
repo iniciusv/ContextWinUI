@@ -44,7 +44,6 @@ public sealed partial class MainWindow : Window
 		}
 	}
 
-	// Command para o botão "Analisar Métodos"
 	[RelayCommand]
 	private async Task AnalyzeMethodsAsync()
 	{
