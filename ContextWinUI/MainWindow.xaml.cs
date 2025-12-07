@@ -1,10 +1,11 @@
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.ContextWinUI.Services;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using System.IO;
+using System;
 using System.Threading.Tasks;
 
 namespace ContextWinUI;
@@ -18,14 +19,27 @@ public sealed partial class MainWindow : Window
 	public MainWindow()
 	{
 		InitializeComponent();
+
 		ViewModel = new MainViewModel();
 		_syntaxHighlightService = new SyntaxHighlightService();
 
 		Title = "Context WinUI - Explorador de Código";
-		this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700));
 
-		// Inscrever-se para mudanças no conteúdo do arquivo
+		if (Content is FrameworkElement fe)
+		{
+			fe.Loaded += (s, e) => { this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700)); };
+		}
+
 		ViewModel.FileContent.PropertyChanged += FileContent_PropertyChanged;
+
+		// WIRING DO EVENTO DE PREVIEW DO CONTEXTO
+		// Quando o usuário clica em um arquivo na árvore de contexto (Direita),
+		// o ViewModel de Análise dispara um evento. Nós pegamos esse evento e 
+		// mandamos o ViewModel de Conteúdo carregar o arquivo.
+		ViewModel.ContextAnalysis.FileSelectedForPreview += async (s, item) =>
+		{
+			await ViewModel.FileContent.LoadFileAsync(item);
+		};
 	}
 
 	private void FileContent_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -47,25 +61,34 @@ public sealed partial class MainWindow : Window
 			return;
 		}
 
-		var extension = Path.GetExtension(selectedItem.FullPath).ToLower();
+		var extension = System.IO.Path.GetExtension(selectedItem.FullPath).ToLower();
 
-		// Se for C#, usa o Roslyn (Poderoso!)
 		if (extension == ".cs")
 		{
 			await _roslynHighlightService.HighlightAsync(CodeRichTextBlock, content);
 		}
 		else
 		{
-			// Para outros arquivos (XML, JSON, etc), continua usando o ColorCode antigo
 			_syntaxHighlightService.ApplySyntaxHighlighting(CodeRichTextBlock, content, extension);
 		}
 	}
 
+	// Evento do TreeView da Esquerda (Explorador de Arquivos)
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{
 		if (args.InvokedItem is FileSystemItem item)
 		{
 			ViewModel.OnFileSelected(item);
+		}
+	}
+
+	// NOVO: Evento do TreeView da Direita (Análise de Contexto)
+	private void ContextTreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+	{
+		if (args.InvokedItem is FileSystemItem item)
+		{
+			// Isso chama o método no ViewModel, que dispara o evento FileSelectedForPreview que configuramos no construtor
+			ViewModel.ContextAnalysis.SelectFileForPreview(item);
 		}
 	}
 
@@ -86,8 +109,8 @@ public sealed partial class MainWindow : Window
 	}
 
 	[RelayCommand]
-	private async Task AnalyzeMethodsAsync()
+	private async Task AnalyzeContextAsync()
 	{
-		await ViewModel.AnalyzeFileMethodsAsync(ViewModel.FileContent.SelectedItem);
+		await ViewModel.AnalyzeContextCommandAsync();
 	}
 }

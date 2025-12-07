@@ -1,18 +1,17 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
-using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	// Sub-ViewModels
 	public FileExplorerViewModel FileExplorer { get; }
 	public FileContentViewModel FileContent { get; }
 	public FileSelectionViewModel FileSelection { get; }
-	public MethodAnalysisViewModel MethodAnalysis { get; }
+	public ContextAnalysisViewModel ContextAnalysis { get; }
 
 	[ObservableProperty]
 	private string statusMessage = "Selecione uma pasta para começar";
@@ -20,100 +19,69 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	private bool isLoading;
 
-	// Propriedade computada para inverter IsVisible
-	[ObservableProperty]
-	private bool isMethodAnalysisHidden = true;
+	// REMOVIDO: [ObservableProperty] private bool isContextAnalysisHidden; 
 
 	public MainViewModel()
 	{
-		// Criar serviços compartilhados
 		var fileSystemService = new FileSystemService();
 		var roslynAnalyzer = new RoslynAnalyzerService();
 
-		// Inicializar sub-ViewModels
 		FileExplorer = new FileExplorerViewModel(fileSystemService);
 		FileContent = new FileContentViewModel(fileSystemService);
 		FileSelection = new FileSelectionViewModel(fileSystemService);
-		MethodAnalysis = new MethodAnalysisViewModel(roslynAnalyzer);
+		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService);
 
-		// Conectar eventos
 		WireUpEvents();
 	}
 
 	private void WireUpEvents()
 	{
-		// Quando um arquivo é selecionado no explorer
-		FileExplorer.FileSelected += async (s, item) =>
-		{
-			await FileContent.LoadFileAsync(item);
-		};
+		FileExplorer.FileSelected += async (s, item) => await FileContent.LoadFileAsync(item);
 
-		// Quando rootItems mudam, atualizar selection
 		FileExplorer.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileExplorer.RootItems))
-			{
 				FileSelection.SetRootItems(FileExplorer.RootItems);
-			}
 		};
 
-		// Sincronizar estados de loading
-		FileExplorer.PropertyChanged += (s, e) =>
+		void UpdateLoading() => IsLoading = FileExplorer.IsLoading || FileContent.IsLoading || FileSelection.IsLoading || ContextAnalysis.IsLoading;
+
+		FileExplorer.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
+		FileContent.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
+		FileSelection.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
+
+		ContextAnalysis.PropertyChanged += (s, e) =>
 		{
-			if (e.PropertyName == nameof(FileExplorer.IsLoading))
-				UpdateLoadingState();
+			if (e.PropertyName == nameof(ContextAnalysis.IsLoading)) UpdateLoading();
+			// REMOVIDO: Lógica que atualizava isContextAnalysisHidden
 		};
 
-		FileContent.PropertyChanged += (s, e) =>
-		{
-			if (e.PropertyName == nameof(FileContent.IsLoading))
-				UpdateLoadingState();
-		};
-
-		FileSelection.PropertyChanged += (s, e) =>
-		{
-			if (e.PropertyName == nameof(FileSelection.IsLoading))
-				UpdateLoadingState();
-		};
-
-		MethodAnalysis.PropertyChanged += (s, e) =>
-		{
-			if (e.PropertyName == nameof(MethodAnalysis.IsLoading))
-				UpdateLoadingState();
-
-			// NOVO: Sincronizar IsMethodAnalysisHidden quando IsVisible mudar
-			if (e.PropertyName == nameof(MethodAnalysis.IsVisible))
-			{
-				IsMethodAnalysisHidden = !MethodAnalysis.IsVisible;
-			}
-		};
-
-		// Sincronizar mensagens de status
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileSelection.StatusChanged += (s, msg) => StatusMessage = msg;
-		MethodAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
+		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 	}
 
-	private void UpdateLoadingState()
-	{
-		IsLoading = FileExplorer.IsLoading ||
-					FileContent.IsLoading ||
-					FileSelection.IsLoading ||
-					MethodAnalysis.IsLoading;
-	}
-
-	// Métodos públicos para a View
 	public void OnFileSelected(FileSystemItem item)
 	{
 		FileExplorer.SelectFile(item);
 	}
 
-	public async Task AnalyzeFileMethodsAsync(FileSystemItem? item)
+	public async Task AnalyzeContextCommandAsync()
 	{
-		if (item != null)
+		var selectedFiles = FileSelection.GetCheckedFiles().ToList();
+
+		if (!selectedFiles.Any() && FileContent.SelectedItem?.IsCodeFile == true)
 		{
-			await MethodAnalysis.AnalyzeFileAsync(item);
+			selectedFiles.Add(FileContent.SelectedItem);
 		}
+
+		if (!selectedFiles.Any())
+		{
+			StatusMessage = "Selecione arquivos para analisar.";
+			return;
+		}
+
+		await ContextAnalysis.AnalyzeContextAsync(selectedFiles, FileExplorer.CurrentPath);
 	}
 }

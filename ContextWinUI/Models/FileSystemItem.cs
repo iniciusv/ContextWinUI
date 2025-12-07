@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using Microsoft.UI.Xaml; // Necessário para Visibility se usar diretamente, ou bool para converter no XAML
 
 namespace ContextWinUI.Models;
 
@@ -27,24 +28,45 @@ public partial class FileSystemItem : ObservableObject
 	private bool isChecked;
 
 	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(Icon))]
+	private string? customIcon;
+
+	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
 
 	public string Extension => IsDirectory ? string.Empty : Path.GetExtension(FullPath);
 
-	// Extensões de código comuns
-	private static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
+	public bool IsCodeFile => !IsDirectory && _codeExtensions.Contains(Extension);
+
+	public string Icon
 	{
-		".cs", ".xaml", ".csproj", ".json", ".xml",
-		".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".scss",
-		".py", ".java", ".cpp", ".c", ".h", ".hpp",
-		".go", ".rs", ".swift", ".kt", ".php",
-		".sql", ".sh", ".bat", ".ps1", ".md", ".txt",
-		".yaml", ".yml", ".toml", ".ini", ".config"
+		get
+		{
+			if (!string.IsNullOrEmpty(CustomIcon)) return CustomIcon;
+			return IsDirectory ? "\uE8B7" : GetFileIcon();
+		}
+	}
+
+	// NOVO: Propriedade para controlar a visibilidade do botão (+)
+	// Retorna True se tiver um caminho de arquivo válido e não for diretório
+	public bool CanDeepAnalyze => !IsDirectory && !string.IsNullOrEmpty(FullPath) && IsCodeFile;
+
+	// Helper para converter bool para Visibility diretamente no x:Bind (opcional, ou use bool converter)
+	// No WinUI 3 com x:Bind, o cast de bool para Visibility nem sempre é automático sem converter
+	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
+
+	public long? FileSize { get; set; }
+
+	public string FileSizeFormatted => FileSize.HasValue ? FormatBytes(FileSize.Value) : string.Empty;
+
+	// --- Helpers Privados ---
+
+	private static readonly HashSet<string> _codeExtensions = new(StringComparer.OrdinalIgnoreCase)
+	{
+		".cs", ".xaml", ".csproj", ".json", ".xml", ".js", ".ts", ".tsx", ".jsx",
+		".html", ".css", ".scss", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
+		".go", ".rs", ".swift", ".kt", ".php", ".sql", ".sh", ".bat", ".ps1", ".md", ".txt"
 	};
-
-	public bool IsCodeFile => !IsDirectory && CodeExtensions.Contains(Extension);
-
-	public string Icon => IsDirectory ? "\uE8B7" : GetFileIcon();
 
 	private string GetFileIcon()
 	{
@@ -59,12 +81,6 @@ public partial class FileSystemItem : ObservableObject
 			_ => "\uE8A5"
 		};
 	}
-
-	public long? FileSize { get; set; }
-
-	public string FileSizeFormatted => FileSize.HasValue
-		? FormatBytes(FileSize.Value)
-		: string.Empty;
 
 	private static string FormatBytes(long bytes)
 	{

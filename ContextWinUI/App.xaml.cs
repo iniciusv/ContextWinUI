@@ -4,7 +4,6 @@ namespace ContextWinUI;
 
 public partial class App : Application
 {
-	// Propriedade estática para acessar a janela principal
 	public static MainWindow? MainWindow { get; private set; }
 
 	public App()

@@ -37,49 +37,6 @@ public partial class MethodAnalysisViewModel : ObservableObject
 		_roslynAnalyzer = roslynAnalyzer;
 	}
 
-	public async Task AnalyzeFileAsync(FileSystemItem item)
-	{
-		if (item == null || item.Extension.ToLower() != ".cs")
-		{
-			OnStatusChanged("Selecione um arquivo .cs para análise");
-			return;
-		}
-
-		IsLoading = true;
-		OnStatusChanged("Analisando métodos...");
-
-		try
-		{
-			var dependencies = await _roslynAnalyzer.AnalyzeMethodDependenciesAsync(item.FullPath);
-
-			Methods.Clear();
-			foreach (var dep in dependencies)
-			{
-				Methods.Add(new MethodInfo
-				{
-					Name = dep.MethodName,
-					FullSignature = dep.FullName,
-					FilePath = dep.FilePath,
-					SourceCode = dep.SourceCode,
-					CalledMethods = dep.CalledMethods,
-					UsedTypes = dep.UsedTypes,
-					UsedNamespaces = dep.UsedNamespaces,
-					AccessedMembers = dep.AccessedMembers
-				});
-			}
-
-			IsVisible = true;
-			OnStatusChanged($"Encontrados {Methods.Count} método(s)");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro na análise: {ex.Message}");
-		}
-		finally
-		{
-			IsLoading = false;
-		}
-	}
 
 	[RelayCommand]
 	private void SelectMethod(MethodInfo? method)

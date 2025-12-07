@@ -36,6 +36,11 @@ public partial class FileSelectionViewModel : ObservableObject
 		UpdateSelectedCount();
 	}
 
+	public IEnumerable<FileSystemItem> GetCheckedFiles()
+	{
+		return GetAllCheckedFiles(_rootItems);
+	}
+
 	[RelayCommand]
 	private void ItemChecked(FileSystemItem item)
 	{
