@@ -190,16 +190,17 @@
 									<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13" TextTrimming="CharacterEllipsis"/>
 
 									<Button Grid.Column="3" 
-                                            Content="+" 
-                                            FontSize="12"
-                                            Padding="0"
-                                            Width="24"
-                                            Height="24"
-                                            Margin="8,0,0,0"
-                                            ToolTipService.ToolTip="Aprofundar análise (carregar dependências deste item)"
-                                            Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"
-                                            Command="{Binding ElementName=RootWindow, Path=ViewModel.ContextAnalysis.AnalyzeItemDepthCommand}"
-                                            CommandParameter="{Binding}"/>
+										Content="+" 
+										FontSize="12"
+										Padding="0"
+										Width="24"
+										Height="24"
+										Margin="8,0,0,0"
+										ToolTipService.ToolTip="Aprofundar análise"
+										Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"
+										Tag="{x:Bind}"
+										Click="OnDeepAnalyzeClick">
+																	</Button>
 
 									<ToolTipService.ToolTip>
 										<ToolTip Content="{x:Bind FullPath}"/>

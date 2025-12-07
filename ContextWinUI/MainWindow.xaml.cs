@@ -100,6 +100,14 @@ public sealed partial class MainWindow : Window
 		}
 	}
 
+	private async void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button btn && btn.Tag is FileSystemItem item)
+		{
+			await ViewModel.ContextAnalysis.AnalyzeItemDepthCommand.ExecuteAsync(item);
+		}
+	}
+
 	private void TreeView_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)
 	{
 		if (args.Item is FileSystemItem item)
