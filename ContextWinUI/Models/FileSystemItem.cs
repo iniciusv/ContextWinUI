@@ -1,5 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.UI.Xaml; // Necessário para Visibility
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Models\FileSystemItem.cs ====================
+
+using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -36,11 +38,9 @@ public partial class FileSystemItem : ObservableObject
 	[NotifyPropertyChangedFor(nameof(Visibility))]
 	private bool isVisibleInSearch = true;
 
-	// Binding direto no XAML para ocultar itens filtrados sem removê-los da lista
 	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
 
 	// --- LÓGICA DO BOTÃO (+) ---
-	// Só mostramos o botão se for um arquivo físico de código (não pasta, nem agrupador lógico)
 	public bool CanDeepAnalyze => !IsDirectory && !string.IsNullOrEmpty(FullPath) && IsCodeFile;
 
 	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
@@ -94,5 +94,18 @@ public partial class FileSystemItem : ObservableObject
 			len /= 1024;
 		}
 		return $"{len:0.##} {sizes[order]}";
+	}
+
+	public void SetExpansionRecursively(bool expanded)
+	{
+		IsExpanded = expanded;
+		foreach (var child in Children)
+		{
+			// Se for diretório ou tiver filhos, aplica recursão
+			if (child.IsDirectory || child.Children.Count > 0)
+			{
+				child.SetExpansionRecursively(expanded);
+			}
+		}
 	}
 }

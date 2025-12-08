@@ -8,6 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="using:ContextWinUI.Views"
     xmlns:models="using:ContextWinUI.Models"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
 
@@ -41,11 +42,15 @@
 
 		<Grid Grid.Row="1">
 			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="300" MinWidth="200"/>
-				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="300" MinWidth="150"/>
+
+				<ColumnDefinition Width="12"/>
+
 				<ColumnDefinition Width="*"/>
-				<ColumnDefinition Width="Auto"/>
-				<ColumnDefinition Width="Auto" MinWidth="250"/>
+
+				<ColumnDefinition Width="12"/>
+
+				<ColumnDefinition Width="350" MinWidth="200"/>
 			</Grid.ColumnDefinitions>
 
 			<views:FileExplorerView Grid.Column="0"
@@ -53,20 +58,44 @@
                                     SelectionViewModel="{x:Bind ViewModel.FileSelection}"
                                     FileSelected="OnFileExplorer_FileSelected"/>
 
-			<Border Grid.Column="1" Width="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+			<TextBlock Grid.Column="1" 
+                       Text="&#xE769;" 
+                       FontFamily="Segoe MDL2 Assets" 
+                       HorizontalAlignment="Center" 
+                       VerticalAlignment="Center" 
+                       Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" 
+                       FontSize="8"
+                       IsHitTestVisible="False"/>
+
+			<controls:GridSplitter Grid.Column="1" 
+                                   ResizeBehavior="BasedOnAlignment"
+                                   ResizeDirection="Columns"
+                                   Background="Transparent"
+                                   HorizontalAlignment="Stretch"/>
+
 
 			<views:FileContentView Grid.Column="2"
                                    ContentViewModel="{x:Bind ViewModel.FileContent}"
                                    AnalyzeCommand="{x:Bind AnalyzeContextCommand}"
                                    CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 
-			<Border Grid.Column="3" Width="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"
-                    Visibility="{x:Bind ViewModel.ContextAnalysis.IsVisible, Mode=OneWay}"/>
+			<TextBlock Grid.Column="3" 
+                       Text="&#xE769;" 
+                       FontFamily="Segoe MDL2 Assets" 
+                       HorizontalAlignment="Center" 
+                       VerticalAlignment="Center" 
+                       Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" 
+                       FontSize="8"
+                       IsHitTestVisible="False"/>
+
+			<controls:GridSplitter Grid.Column="3" 
+                                   ResizeBehavior="BasedOnAlignment"
+                                   ResizeDirection="Columns"
+                                   Background="Transparent"
+                                   HorizontalAlignment="Stretch"/>
 
 			<views:ContextAnalysisView Grid.Column="4" 
-                                       Width="350"
-                                       ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"
-                                       Visibility="{x:Bind ViewModel.ContextAnalysis.IsVisible, Mode=OneWay}"/>
+                                       ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"/>
 		</Grid>
 
 		<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"

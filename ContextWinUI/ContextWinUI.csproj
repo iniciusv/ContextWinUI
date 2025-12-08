@@ -44,6 +44,7 @@
   <ItemGroup>
     <PackageReference Include="ColorCode.WinUI" Version="2.0.15" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7175" />
@@ -65,6 +66,9 @@
   <ItemGroup>
     <Page Update="ContextWinUI\ViewModels\FileExplorerView.xaml">
       <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Update="Views\Components\ExpandCollapseActions.xaml">
+      <SubType>Designer</SubType>
     </Page>
   </ItemGroup>
 

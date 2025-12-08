@@ -8,7 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-	<Grid BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,1,0">
+	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
@@ -16,20 +16,30 @@
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
-		<TextBlock Grid.Row="0" Text="Arquivos" Style="{StaticResource SubtitleTextBlockStyle}" Margin="16,12"/>
+		<Grid Grid.Row="0" Margin="16,12">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="Auto"/>
+			</Grid.ColumnDefinitions>
+			<TextBlock Text="Arquivos" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center"/>
+
+			<components:ExpandCollapseActions Grid.Column="1" 
+                                              ExpandAllCommand="{x:Bind ExplorerViewModel.ExpandAllCommand}"
+                                              CollapseAllCommand="{x:Bind ExplorerViewModel.CollapseAllCommand}"/>
+		</Grid>
 
 		<components:SearchBar Grid.Row="1" 
                               SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
                               Margin="16,0,16,8"/>
 
-		<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}">
+		<Grid Grid.Row="2" Padding="16,8">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="*"/>
 			</Grid.ColumnDefinitions>
-			<Button Content="Selecionar Todos" Command="{x:Bind SelectionViewModel.SelectAllCommand}" Style="{StaticResource AccentButtonStyle}" Margin="0,0,8,0"/>
-			<Button Grid.Column="1" Content="Limpar" Command="{x:Bind SelectionViewModel.UnselectAllCommand}" Margin="0,0,8,0"/>
+			<Button Content="Selecionar Todos" Command="{x:Bind SelectionViewModel.SelectAllCommand}" Style="{StaticResource AccentButtonStyle}" Margin="0,0,8,0" FontSize="12" Padding="8,4"/>
+			<Button Grid.Column="1" Content="Limpar" Command="{x:Bind SelectionViewModel.UnselectAllCommand}" Margin="0,0,8,0" FontSize="12" Padding="8,4"/>
 			<TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                 <Run Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}"/>
                 <Run Text="sel."/>

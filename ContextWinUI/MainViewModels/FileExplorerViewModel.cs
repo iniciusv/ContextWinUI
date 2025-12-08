@@ -1,6 +1,8 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\MainViewModels\FileExplorerViewModel.cs ====================
+
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ContextWinUI.Helpers; // Usa o seu Helper de busca visual
+using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
@@ -30,16 +32,34 @@ public partial class FileExplorerViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 	}
 
-	// ---------------------------------------------------------
-	// BUSCA SIMPLES EM MEMÓRIA (IGUAL À TELA DE CONTEXTO)
-	// ---------------------------------------------------------
+	// --- COMANDOS DE BUSCA ---
 	[RelayCommand]
 	private void Search(string query)
 	{
-		// Usa o TreeSearchHelper que já implementamos
-		// Como a árvore já está toda carregada, ele vai filtrar e expandir automaticamente
 		TreeSearchHelper.Search(RootItems, query);
 	}
+
+	// --- NOVOS COMANDOS DE EXPANSÃO (O erro acontece se estes faltarem) ---
+	[RelayCommand]
+	private void ExpandAll()
+	{
+		if (RootItems == null) return;
+		foreach (var item in RootItems)
+		{
+			item.SetExpansionRecursively(true);
+		}
+	}
+
+	[RelayCommand]
+	private void CollapseAll()
+	{
+		if (RootItems == null) return;
+		foreach (var item in RootItems)
+		{
+			item.SetExpansionRecursively(false);
+		}
+	}
+	// ---------------------------------------------------------------------
 
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
@@ -70,15 +90,13 @@ public partial class FileExplorerViewModel : ObservableObject
 	public async Task LoadProjectAsync(string path)
 	{
 		IsLoading = true;
-		OnStatusChanged("Indexando projeto completo..."); // Feedback importante
+		OnStatusChanged("Indexando projeto completo...");
 
 		try
 		{
 			CurrentPath = path;
-
-			// Chama o novo método recursivo
+			// Carrega a árvore recursivamente
 			RootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
-
 			OnStatusChanged($"Projeto carregado. {CountTotalItems(RootItems)} itens indexados.");
 		}
 		catch (Exception ex)
@@ -91,13 +109,10 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	// O comando de expandir agora é puramente visual (o TreeView faz sozinho),
-	// mas mantemos caso você queira logar algo ou forçar comportamento futuro.
-	// Se quiser, pode até remover este comando do XAML, pois o TreeView expande se tiver Children.
+	// Comando auxiliar usado pelo evento Expanding do TreeView (opcional, mas bom manter)
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
 	{
-		// Não faz nada de IO, apenas UI binding
 		item.IsExpanded = true;
 	}
 
@@ -111,7 +126,6 @@ public partial class FileExplorerViewModel : ObservableObject
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 
-	// Helper para contar total (recursivo)
 	private int CountTotalItems(ObservableCollection<FileSystemItem> items)
 	{
 		int count = 0;

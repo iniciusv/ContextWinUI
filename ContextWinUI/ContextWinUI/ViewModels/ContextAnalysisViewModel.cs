@@ -1,6 +1,8 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\ViewModels\ContextAnalysisViewModel.cs ====================
+
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ContextWinUI.Helpers; // Importante para o Search
+using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
@@ -19,7 +21,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly RoslynAnalyzerService _roslynAnalyzer;
 	private readonly FileSystemService _fileSystemService;
 
-	// Histórico para o botão Voltar
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
 	[ObservableProperty]
@@ -46,7 +47,26 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 	}
 
-	// 1. ANÁLISE INICIAL
+	// --- NOVOS COMANDOS DE EXPANSÃO ---
+	[RelayCommand]
+	private void ExpandAll()
+	{
+		foreach (var item in ContextTreeItems)
+		{
+			item.SetExpansionRecursively(true);
+		}
+	}
+
+	[RelayCommand]
+	private void CollapseAll()
+	{
+		foreach (var item in ContextTreeItems)
+		{
+			item.SetExpansionRecursively(false);
+		}
+	}
+	// ----------------------------------
+
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
 		if (!selectedItems.Any()) return;
@@ -87,7 +107,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
-	// 2. ANÁLISE PROFUNDA (+)
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
@@ -113,14 +132,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
-	// 3. BUSCA
 	[RelayCommand]
 	private void Search(string query)
 	{
 		TreeSearchHelper.Search(ContextTreeItems, query);
 	}
 
-	// 4. VOLTAR
 	[RelayCommand]
 	private void GoBack()
 	{
@@ -137,7 +154,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void UpdateCanGoBack() => CanGoBack = _historyStack.Count > 0;
 
-	// Helpers Lógicos
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
@@ -165,7 +181,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		node.IsExpanded = true;
 	}
 
-	// Interações UI
 	public void SelectFileForPreview(FileSystemItem item)
 	{
 		if (!string.IsNullOrEmpty(item.FullPath) && File.Exists(item.FullPath))
@@ -178,6 +193,9 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	[RelayCommand]
 	private void Close()
 	{
+		// Agora o botão fechar apenas limpa os dados, mas o painel permanece (pois é fixo)
+		// Se quiser que ele suma, precisaria colapsar a coluna do Grid no MainWindow, 
+		// mas o requisito foi "permanentemente a direita".
 		IsVisible = false;
 		ContextTreeItems.Clear();
 		_historyStack.Clear();

@@ -1,4 +1,6 @@
-﻿using Microsoft.CodeAnalysis;
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Services\RoslynAnalyzerService.cs ====================
+
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Concurrent;
@@ -13,7 +15,6 @@ public class RoslynAnalyzerService
 {
 	private Dictionary<string, string> _projectTypeMap = new();
 
-	// Estrutura auxiliar para o retorno da análise
 	public class FileAnalysisResult
 	{
 		public List<string> Methods { get; set; } = new();
@@ -57,7 +58,7 @@ public class RoslynAnalyzerService
 		}
 	}
 
-	// Analisa um arquivo individualmente para popular a TreeView
+	// --- CORREÇÃO APLICADA AQUI EMBAIXO ---
 	public async Task<FileAnalysisResult> AnalyzeFileStructureAsync(string filePath)
 	{
 		var result = new FileAnalysisResult();
@@ -72,15 +73,15 @@ public class RoslynAnalyzerService
 			var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
 			foreach (var method in methods)
 			{
-				// Formato: Nome(Params)
 				var paramsList = method.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
 				var signature = $"{method.Identifier.Text}({string.Join(", ", paramsList)})";
 				result.Methods.Add(signature);
 			}
 
-			// 2. Extrair Dependências (Tipos usados)
+			// 2. Extrair Dependências (Tipos usados) - LÓGICA REFINADA
 			var identifiers = root.DescendantNodes()
 				.OfType<IdentifierNameSyntax>()
+				.Where(id => IsValidDependency(id)) // Filtro novo
 				.Select(id => id.Identifier.Text)
 				.Distinct();
 
@@ -98,5 +99,34 @@ public class RoslynAnalyzerService
 		catch { /* Ignorar erros de parse */ }
 
 		return result;
+	}
+
+	/// <summary>
+	/// Verifica se o identificador é uma dependência válida de código (propriedade, variável, retorno)
+	/// e ignora usings e declarações de namespace.
+	/// </summary>
+	private bool IsValidDependency(IdentifierNameSyntax id)
+	{
+		// 1. Ignora se faz parte de um 'using SBrain.Inventory...;'
+		// O FirstAncestorOrSelf sobe na árvore até achar (ou não) um nó desse tipo.
+		if (id.FirstAncestorOrSelf<UsingDirectiveSyntax>() != null)
+		{
+			return false;
+		}
+
+		// 2. Ignora se faz parte da declaração do namespace (ex: namespace Baker.Domain...)
+		// Nota: Não podemos ignorar apenas por ter um pai NamespaceDeclarationSyntax, 
+		// pois todo o código está dentro dele. Temos que ver se o ID faz parte do NOME do namespace.
+		var namespaceDecl = id.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>();
+		if (namespaceDecl != null)
+		{
+			// Se o nó identificador estiver dentro do nó "Name" da declaração do namespace, ignoramos.
+			if (namespaceDecl.Name.Contains(id))
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 }
