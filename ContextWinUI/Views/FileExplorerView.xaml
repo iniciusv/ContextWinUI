@@ -24,6 +24,7 @@
 			<TextBlock Text="Arquivos" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center"/>
 
 			<components:ExpandCollapseActions Grid.Column="1" 
+                                              SyncFocusCommand="{x:Bind ExplorerViewModel.SyncFocusCommand}"
                                               ExpandAllCommand="{x:Bind ExplorerViewModel.ExpandAllCommand}"
                                               CollapseAllCommand="{x:Bind ExplorerViewModel.CollapseAllCommand}"/>
 		</Grid>

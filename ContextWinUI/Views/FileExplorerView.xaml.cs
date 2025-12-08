@@ -41,6 +41,7 @@ public sealed partial class FileExplorerView : UserControl
 		{
 			// Seleciona no VM do Explorer
 			ExplorerViewModel.SelectFile(item);
+
 			// Dispara evento para quem estiver ouvindo (MainWindow) carregar o conteúdo
 			FileSelected?.Invoke(this, item);
 		}
@@ -50,7 +51,6 @@ public sealed partial class FileExplorerView : UserControl
 	{
 		if (args.Item is FileSystemItem item)
 		{
-			// CORREÇÃO: Usar Execute em vez de ExecuteAsync
 			// O RelayCommand gerencia a Task internamente
 			if (ExplorerViewModel.ExpandItemCommand.CanExecute(item))
 			{

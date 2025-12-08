@@ -1,8 +1,9 @@
-﻿using ContextWinUI.Models;
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Views\ContextAnalysisView.xaml.cs ====================
+
+using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using System;
 
 namespace ContextWinUI.Views;
 
@@ -20,22 +21,10 @@ public sealed partial class ContextAnalysisView : UserControl
 	public ContextAnalysisView()
 	{
 		this.InitializeComponent();
-		// Damos um nome ao UserControl para o Binding ElementName no Checkbox funcionar dentro do Template
 		this.Name = "RootAnalysisView";
 	}
 
-	private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
-	{
-		if (sender is Button btn && btn.Tag is FileSystemItem item)
-		{
-			// Verifica se o comando pode ser executado e executa
-			// O ViewModel cuidará do IsLoading, não precisamos esperar (await) aqui
-			if (ContextViewModel.AnalyzeItemDepthCommand.CanExecute(item))
-			{
-				ContextViewModel.AnalyzeItemDepthCommand.Execute(item);
-			}
-		}
-	}
+	// O método OnDeepAnalyzeClick foi removido pois agora usamos Command/CommandParameter no XAML
 
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{

@@ -1,4 +1,6 @@
-﻿using ContextWinUI.Models;
+﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Services\FileSystemService.cs ====================
+
+using ContextWinUI.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -16,7 +18,6 @@ public class FileSystemService
 		"packages", ".idea", "Debug", "Release", ".vscode"
 	};
 
-	// Alterado para carregar tudo de uma vez
 	public async Task<ObservableCollection<FileSystemItem>> LoadProjectRecursivelyAsync(string rootPath)
 	{
 		return await Task.Run(() =>
@@ -26,7 +27,6 @@ public class FileSystemService
 
 			var rootDir = new DirectoryInfo(rootPath);
 
-			// Carrega o conteúdo da raiz recursivamente
 			var children = LoadDirectoryInternal(rootDir);
 
 			foreach (var child in children)
@@ -53,7 +53,6 @@ public class FileSystemService
 			{
 				var folderItem = CreateFileSystemItem(subDir);
 
-				// AQUI ESTÁ A MÁGICA: Já carregamos os filhos imediatamente
 				var children = LoadDirectoryInternal(subDir);
 				foreach (var child in children)
 				{
@@ -80,16 +79,20 @@ public class FileSystemService
 
 	private FileSystemItem CreateFileSystemItem(FileSystemInfo info)
 	{
+		// CORREÇÃO AQUI: Definimos o Type ao invés de IsDirectory
+		var isDir = info is DirectoryInfo;
+
 		var item = new FileSystemItem
 		{
 			Name = info.Name,
 			FullPath = info.FullName,
-			IsDirectory = info is DirectoryInfo,
+			// Define o tipo explicitamente
+			Type = isDir ? FileSystemItemType.Directory : FileSystemItemType.File,
 			IsExpanded = false,
-			Children = new ObservableCollection<FileSystemItem>() // Inicializa vazio
+			Children = new ObservableCollection<FileSystemItem>()
 		};
 
-		if (!item.IsDirectory && info is FileInfo fileInfo)
+		if (!isDir && info is FileInfo fileInfo)
 		{
 			item.FileSize = fileInfo.Length;
 		}

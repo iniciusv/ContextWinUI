@@ -9,6 +9,15 @@ using System.IO;
 
 namespace ContextWinUI.Models;
 
+public enum FileSystemItemType
+{
+	File,
+	Directory,
+	LogicalGroup, // Agrupadores como "Métodos", "Dependências"
+	Method,       // O nó específico de um método
+	Dependency    // O nó de um arquivo dependente
+}
+
 public partial class FileSystemItem : ObservableObject
 {
 	[ObservableProperty]
@@ -17,8 +26,12 @@ public partial class FileSystemItem : ObservableObject
 	[ObservableProperty]
 	private string fullPath = string.Empty;
 
+	// Propriedade nova para identificar métodos
 	[ObservableProperty]
-	private bool isDirectory;
+	private FileSystemItemType type;
+
+	// Armazena a assinatura para o Roslyn encontrar o método no arquivo
+	public string? MethodSignature { get; set; }
 
 	[ObservableProperty]
 	private bool isExpanded;
@@ -40,13 +53,20 @@ public partial class FileSystemItem : ObservableObject
 
 	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
 
-	// --- LÓGICA DO BOTÃO (+) ---
-	public bool CanDeepAnalyze => !IsDirectory && !string.IsNullOrEmpty(FullPath) && IsCodeFile;
-
+	// --- LÓGICA DO BOTÃO (+) (Aprofundar Arquivo) ---
+	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
 	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
+
+	// --- LÓGICA DO BOTÃO (>) (Fluxo do Método) ---
+	// Só aparece se for do tipo Method e tivermos o caminho do arquivo pai
+	public bool CanAnalyzeMethodFlow => Type == FileSystemItemType.Method && !string.IsNullOrEmpty(FullPath);
+	public Visibility MethodFlowVisibility => CanAnalyzeMethodFlow ? Visibility.Visible : Visibility.Collapsed;
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
+
+	// Helpers de compatibilidade com código anterior
+	public bool IsDirectory => Type == FileSystemItemType.Directory;
 
 	public string Extension => IsDirectory ? string.Empty : Path.GetExtension(FullPath);
 	public bool IsCodeFile => !IsDirectory && _codeExtensions.Contains(Extension);
@@ -58,7 +78,9 @@ public partial class FileSystemItem : ObservableObject
 		get
 		{
 			if (!string.IsNullOrEmpty(CustomIcon)) return CustomIcon;
-			return IsDirectory ? "\uE8B7" : GetFileIcon();
+			if (Type == FileSystemItemType.Directory) return "\uE8B7";
+			if (Type == FileSystemItemType.Method) return "\uEA86";
+			return GetFileIcon();
 		}
 	}
 
@@ -101,7 +123,6 @@ public partial class FileSystemItem : ObservableObject
 		IsExpanded = expanded;
 		foreach (var child in Children)
 		{
-			// Se for diretório ou tiver filhos, aplica recursão
 			if (child.IsDirectory || child.Children.Count > 0)
 			{
 				child.SetExpansionRecursively(expanded);

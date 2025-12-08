@@ -1,6 +1,4 @@
-﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Views\Components\ExpandCollapseActions.xaml.cs ====================
-
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Windows.Input;
 
@@ -8,6 +6,17 @@ namespace ContextWinUI.Views.Components;
 
 public sealed partial class ExpandCollapseActions : UserControl
 {
+	// --- NOVO: Propriedade para o comando de Sync/Foco ---
+	public static readonly DependencyProperty SyncFocusCommandProperty =
+		DependencyProperty.Register(nameof(SyncFocusCommand), typeof(ICommand), typeof(ExpandCollapseActions), new PropertyMetadata(null));
+
+	public ICommand SyncFocusCommand
+	{
+		get => (ICommand)GetValue(SyncFocusCommandProperty);
+		set => SetValue(SyncFocusCommandProperty, value);
+	}
+	// -----------------------------------------------------
+
 	public static readonly DependencyProperty ExpandAllCommandProperty =
 		DependencyProperty.Register(nameof(ExpandAllCommand), typeof(ICommand), typeof(ExpandCollapseActions), new PropertyMetadata(null));
 

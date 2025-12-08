@@ -7,6 +7,12 @@
     mc:Ignorable="d">
 
 	<StackPanel Orientation="Horizontal" Spacing="4">
+		<Button Command="{x:Bind SyncFocusCommand}" 
+                ToolTipService.ToolTip="Focar no item atual e fechar outros"
+                Padding="6">
+			<FontIcon Glyph="&#xE81D;" FontSize="12"/>
+		</Button>
+
 		<Button Command="{x:Bind ExpandAllCommand}" 
                 ToolTipService.ToolTip="Expandir tudo"
                 Padding="6">

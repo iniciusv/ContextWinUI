@@ -15,6 +15,9 @@ public partial class FileExplorerViewModel : ObservableObject
 {
 	private readonly FileSystemService _fileSystemService;
 
+	// Campo para armazenar o item atualmente clicado/selecionado
+	private FileSystemItem? _selectedItem;
+
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> rootItems = new();
 
@@ -39,7 +42,9 @@ public partial class FileExplorerViewModel : ObservableObject
 		TreeSearchHelper.Search(RootItems, query);
 	}
 
-	// --- NOVOS COMANDOS DE EXPANSÃO (O erro acontece se estes faltarem) ---
+	// --- COMANDOS DE EXPANSÃO / VISUALIZAÇÃO ---
+
+	// 1. Expandir Tudo
 	[RelayCommand]
 	private void ExpandAll()
 	{
@@ -50,6 +55,7 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
+	// 2. Recolher Tudo
 	[RelayCommand]
 	private void CollapseAll()
 	{
@@ -59,6 +65,50 @@ public partial class FileExplorerViewModel : ObservableObject
 			item.SetExpansionRecursively(false);
 		}
 	}
+
+	// 3. Focar no Item (Sync) - Novo comando que faltava
+	[RelayCommand]
+	private void SyncFocus()
+	{
+		// Se não houver item selecionado ou árvore vazia, ignora
+		if (_selectedItem == null || RootItems == null) return;
+
+		foreach (var item in RootItems)
+		{
+			// A função retorna true se o _selectedItem estiver dentro deste ramo
+			SyncFocusRecursive(item, _selectedItem);
+		}
+	}
+
+	// Lógica recursiva para o SyncFocus
+	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
+	{
+		// Caso base: Encontramos o alvo
+		if (currentItem == targetItem)
+		{
+			// Opcional: Se o alvo for uma pasta, expande ela também
+			if (currentItem.IsDirectory) currentItem.IsExpanded = true;
+			return true;
+		}
+
+		bool keepExpanded = false;
+
+		// Verifica filhos
+		foreach (var child in currentItem.Children)
+		{
+			if (SyncFocusRecursive(child, targetItem))
+			{
+				keepExpanded = true;
+			}
+		}
+
+		// Se keepExpanded for true, expande este nó para mostrar o caminho.
+		// Se for false, fecha para limpar a visão.
+		currentItem.IsExpanded = keepExpanded;
+
+		return keepExpanded;
+	}
+
 	// ---------------------------------------------------------------------
 
 	[RelayCommand]
@@ -109,7 +159,7 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	// Comando auxiliar usado pelo evento Expanding do TreeView (opcional, mas bom manter)
+	// Comando auxiliar usado pelo evento Expanding do TreeView
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
 	{
@@ -118,6 +168,9 @@ public partial class FileExplorerViewModel : ObservableObject
 
 	public void SelectFile(FileSystemItem item)
 	{
+		// Armazena o item para uso no SyncFocus
+		_selectedItem = item;
+
 		if (item.IsCodeFile)
 		{
 			FileSelected?.Invoke(this, item);
