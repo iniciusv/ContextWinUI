@@ -17,7 +17,9 @@ public partial class FileSelectionViewModel : ObservableObject
 	private readonly FileSystemService _fileSystemService;
 	private ObservableCollection<FileSystemItem> _rootItems = new();
 
+	// Propriedade contador. O atributo avisa o botão para verificar se pode ser clicado.
 	[ObservableProperty]
+	[NotifyCanExecuteChangedFor(nameof(CopySelectedFilesCommand))]
 	private int selectedFilesCount;
 
 	[ObservableProperty]
@@ -33,51 +35,35 @@ public partial class FileSelectionViewModel : ObservableObject
 	public void SetRootItems(ObservableCollection<FileSystemItem> items)
 	{
 		_rootItems = items;
-		UpdateSelectedCount();
+		RecalculateSelection();
 	}
 
+	// --- CORREÇÃO DO ERRO ---
+	// Este método é chamado pelo MainViewModel para pegar os arquivos para análise
 	public IEnumerable<FileSystemItem> GetCheckedFiles()
 	{
 		return GetAllCheckedFiles(_rootItems);
 	}
+	// ------------------------
 
-	[RelayCommand]
-	private void ItemChecked(FileSystemItem item)
+	// Método chamado pelo Code-Behind da View quando o CheckBox é clicado
+	public void RecalculateSelection()
 	{
-		UpdateSelectedCount();
-		CopySelectedFilesCommand.NotifyCanExecuteChanged();
+		SelectedFilesCount = GetAllCheckedFiles(_rootItems).Count();
 	}
 
 	[RelayCommand]
 	private void SelectAll()
 	{
 		SetAllItemsChecked(_rootItems, true);
-		UpdateSelectedCount();
-		CopySelectedFilesCommand.NotifyCanExecuteChanged();
+		RecalculateSelection();
 	}
 
 	[RelayCommand]
 	private void UnselectAll()
 	{
 		SetAllItemsChecked(_rootItems, false);
-		UpdateSelectedCount();
-		CopySelectedFilesCommand.NotifyCanExecuteChanged();
-	}
-
-	private void SetAllItemsChecked(ObservableCollection<FileSystemItem> items, bool isChecked)
-	{
-		foreach (var item in items)
-		{
-			if (item.IsCodeFile)
-			{
-				item.IsChecked = isChecked;
-			}
-
-			if (item.IsDirectory && item.Children.Any())
-			{
-				SetAllItemsChecked(item.Children, isChecked);
-			}
-		}
+		RecalculateSelection();
 	}
 
 	[RelayCommand(CanExecute = nameof(CanCopySelectedFiles))]
@@ -85,11 +71,10 @@ public partial class FileSelectionViewModel : ObservableObject
 	{
 		var selectedFiles = GetAllCheckedFiles(_rootItems).ToList();
 
-		if (!selectedFiles.Any())
-			return;
+		if (!selectedFiles.Any()) return;
 
 		IsLoading = true;
-		OnStatusChanged($"Copiando {selectedFiles.Count} arquivo(s)...");
+		OnStatusChanged($"Lendo {selectedFiles.Count} arquivo(s) do disco...");
 
 		try
 		{
@@ -100,7 +85,9 @@ public partial class FileSelectionViewModel : ObservableObject
 				sb.AppendLine($"// ==================== {file.FullPath} ====================");
 				sb.AppendLine();
 
+				// LÊ DO DISCO AGORA (Garante última versão salva)
 				var content = await _fileSystemService.ReadFileContentAsync(file.FullPath);
+
 				sb.AppendLine(content);
 				sb.AppendLine();
 				sb.AppendLine();
@@ -110,11 +97,11 @@ public partial class FileSelectionViewModel : ObservableObject
 			dataPackage.SetText(sb.ToString());
 			Clipboard.SetContent(dataPackage);
 
-			OnStatusChanged($"{selectedFiles.Count} arquivo(s) copiado(s) para a área de transferência!");
+			OnStatusChanged($"{selectedFiles.Count} arquivo(s) copiados!");
 		}
 		catch (Exception ex)
 		{
-			OnStatusChanged($"Erro ao copiar arquivos: {ex.Message}");
+			OnStatusChanged($"Erro: {ex.Message}");
 		}
 		finally
 		{
@@ -124,32 +111,29 @@ public partial class FileSelectionViewModel : ObservableObject
 
 	private bool CanCopySelectedFiles() => SelectedFilesCount > 0;
 
+	// --- Helpers ---
+
+	private void SetAllItemsChecked(ObservableCollection<FileSystemItem> items, bool isChecked)
+	{
+		foreach (var item in items)
+		{
+			if (item.IsCodeFile) item.IsChecked = isChecked;
+			if (item.Children.Any()) SetAllItemsChecked(item.Children, isChecked);
+		}
+	}
+
 	private IEnumerable<FileSystemItem> GetAllCheckedFiles(ObservableCollection<FileSystemItem> items)
 	{
 		foreach (var item in items)
 		{
-			if (item.IsChecked && item.IsCodeFile)
-			{
-				yield return item;
-			}
+			if (item.IsChecked && item.IsCodeFile) yield return item;
 
-			if (item.IsDirectory && item.Children.Any())
+			if (item.Children.Any())
 			{
-				foreach (var child in GetAllCheckedFiles(item.Children))
-				{
-					yield return child;
-				}
+				foreach (var child in GetAllCheckedFiles(item.Children)) yield return child;
 			}
 		}
 	}
 
-	private void UpdateSelectedCount()
-	{
-		SelectedFilesCount = GetAllCheckedFiles(_rootItems).Count();
-	}
-
-	private void OnStatusChanged(string message)
-	{
-		StatusChanged?.Invoke(this, message);
-	}
+	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 }

@@ -1,5 +1,6 @@
 <UserControl
     x:Class="ContextWinUI.Views.FileExplorerView"
+    x:Name="RootExplorerView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:ContextWinUI.Models"
@@ -61,7 +62,11 @@
                                   HasUnrealizedChildren="{x:Bind IsDirectory}">
 
 						<StackPanel Orientation="Horizontal" Spacing="8">
-							<CheckBox IsChecked="{x:Bind IsChecked, Mode=TwoWay}" Visibility="{x:Bind IsCodeFile}" MinWidth="0" Padding="0" VerticalAlignment="Center"/>
+							<CheckBox IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
+                                      Visibility="{x:Bind IsCodeFile}" 
+                                      Click="OnCheckBoxClick"
+                                      MinWidth="0" Padding="0" VerticalAlignment="Center"/>
+
 							<FontIcon Glyph="{x:Bind Icon}" FontSize="16"/>
 							<TextBlock Text="{x:Bind Name}" VerticalAlignment="Center"/>
 							<TextBlock Text="{x:Bind FileSizeFormatted}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" VerticalAlignment="Center" Visibility="{x:Bind IsCodeFile}"/>
