@@ -88,7 +88,7 @@ public partial class FileSystemItem : ObservableObject
 	{
 		".cs", ".xaml", ".csproj", ".json", ".xml", ".js", ".ts", ".tsx", ".jsx",
 		".html", ".css", ".scss", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
-		".go", ".rs", ".swift", ".kt", ".php", ".sql", ".sh", ".bat", ".ps1", ".md", ".txt"
+		".go", ".rs", ".swift", ".kt", ".php", ".sql", ".sh", ".bat", ".ps1", ".md", ".txt", ".razor"
 	};
 
 	private string GetFileIcon()
