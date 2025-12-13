@@ -21,6 +21,9 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IFileSystemItemFactory _itemFactory;
 
+	// --- NOVA DEPENDÊNCIA PÚBLICA (Para a View usar) ---
+	public ITagManagementUiService TagService { get; }
+
 	// Histórico de navegação para o botão "Voltar"
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
@@ -50,14 +53,17 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
 	public event EventHandler<string>? StatusChanged;
 
+	// --- CONSTRUTOR ATUALIZADO ---
 	public ContextAnalysisViewModel(
 			IRoslynAnalyzerService roslynAnalyzer,
 			IFileSystemService fileSystemService,
-			IFileSystemItemFactory itemFactory)
+			IFileSystemItemFactory itemFactory,
+			ITagManagementUiService tagService) // <--- Injeção
 	{
 		_roslynAnalyzer = roslynAnalyzer;
 		_fileSystemService = fileSystemService;
 		_itemFactory = itemFactory;
+		TagService = tagService; // <--- Atribuição
 	}
 
 	private void RegisterItemEventsRecursively(FileSystemItem item)

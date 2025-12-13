@@ -11,8 +11,11 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject
 {
-	// Dependência apenas da Interface do Manager
+	// Dependência do Manager (Dados)
 	private readonly IProjectSessionManager _sessionManager;
+
+	// Dependência do Serviço de UI (Tags) - Exposto para a View usar
+	public ITagManagementUiService TagService { get; }
 
 	// Item com foco visual (azul)
 	private FileSystemItem? _selectedItem;
@@ -29,25 +32,23 @@ public partial class FileExplorerViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelected;
 	public event EventHandler<string>? StatusChanged;
 
-	public FileExplorerViewModel(IProjectSessionManager sessionManager)
+	// CONSTRUTOR ATUALIZADO
+	public FileExplorerViewModel(
+		IProjectSessionManager sessionManager,
+		ITagManagementUiService tagService)
 	{
 		_sessionManager = sessionManager;
+		TagService = tagService;
 
-		// INSCRIÇÃO: Quando o Manager terminar de carregar tudo (arquivos + cache + tags)
-		// ele vai disparar este evento.
+		// INSCRIÇÃO: Quando o Manager terminar de carregar tudo
 		_sessionManager.ProjectLoaded += OnProjectLoaded;
 	}
 
-	/// <summary>
-	/// Reage ao evento de projeto carregado pelo Manager.
-	/// </summary>
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
-		// Atualiza a UI com a árvore já montada e enriquecida (tags, etc)
+		// Atualiza a UI com a árvore já montada e enriquecida
 		RootItems = e.RootItems;
 		CurrentPath = e.RootPath;
-
-		// (Opcional) Poderia expandir automaticamente o primeiro nível aqui se quisesse
 	}
 
 	[RelayCommand]
@@ -57,7 +58,7 @@ public partial class FileExplorerViewModel : ObservableObject
 		{
 			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
 
-			// Configuração para WinUI 3 (Necessário obter o Handle da Janela)
+			// Configuração para WinUI 3 (Handle da Janela)
 			if (App.MainWindow != null)
 			{
 				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
@@ -70,8 +71,6 @@ public partial class FileExplorerViewModel : ObservableObject
 
 			if (folder != null)
 			{
-				// DELEGAÇÃO: Não carregamos aqui. Pedimos ao Manager.
-				// O Manager vai limpar a memória, ler o disco, ler o JSON e chamar OnProjectLoaded.
 				await _sessionManager.OpenProjectAsync(folder.Path);
 			}
 		}
@@ -82,7 +81,6 @@ public partial class FileExplorerViewModel : ObservableObject
 	}
 
 	// --- COMANDOS VISUAIS (Busca, Expansão, Foco) ---
-	// Estes comandos operam sobre a coleção RootItems já carregada na memória.
 
 	[RelayCommand]
 	private void Search(string query)
@@ -104,7 +102,6 @@ public partial class FileExplorerViewModel : ObservableObject
 		foreach (var item in RootItems) item.SetExpansionRecursively(false);
 	}
 
-	// Comando "SyncFocus" (Botão de Alvo): Foca no item selecionado e fecha os outros ramos
 	[RelayCommand]
 	private void SyncFocus()
 	{
@@ -118,7 +115,6 @@ public partial class FileExplorerViewModel : ObservableObject
 
 	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
 	{
-		// Graças ao Flyweight, podemos comparar FullPath com segurança
 		if (currentItem.FullPath == targetItem.FullPath)
 		{
 			if (currentItem.IsDirectory) currentItem.IsExpanded = true;
@@ -138,15 +134,12 @@ public partial class FileExplorerViewModel : ObservableObject
 		return keepExpanded;
 	}
 
-	// Comando interno usado pelo evento "Expanding" do TreeView para lazy loading (se houvesse)
-	// ou apenas para atualizar estado visual
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
 	{
 		item.IsExpanded = true;
 	}
 
-	// Chamado pela View quando o usuário clica num item
 	public void SelectFile(FileSystemItem item)
 	{
 		_selectedItem = item;

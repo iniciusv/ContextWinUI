@@ -26,40 +26,28 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// ---------------------------------------------------------
-		// 1. BOOTSTRAPPING (Configuração de Dependências)
-		// ---------------------------------------------------------
-
-		// Factory (Flyweight): Garante unicidade dos objetos FileSystemItem/State
+		// 1. Instanciar dependências
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
-
-		// Serviços de Baixo Nível
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
 		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
 
-		// Manager (Orquestrador): Coordena carregamento, cache e persistência
+		// NOVO SERVIÇO
+		ITagManagementUiService tagService = new TagManagementUiService();
+
 		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 
-		// ---------------------------------------------------------
-		// 2. INJEÇÃO NOS VIEWMODELS
-		// ---------------------------------------------------------
+		// 2. Injeção nos ViewModels (AQUI ESTAVA O ERRO)
 
-		// Explorer: Recebe o Manager para comandar a abertura de projetos
-		FileExplorer = new FileExplorerViewModel(_sessionManager);
+		// Passando tagService para o Explorer
+		FileExplorer = new FileExplorerViewModel(_sessionManager, tagService);
 
-		// Content: Precisa ler arquivos do disco
 		FileContent = new FileContentViewModel(fileSystemService);
-
-		// Selection: Precisa ler arquivos para exportação
 		FileSelection = new FileSelectionViewModel(fileSystemService);
 
-		// Analysis: Precisa do Roslyn, acesso a arquivos e da Factory (para criar nós de dependência)
-		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, itemFactory);
+		// ContextAnalysis também precisa gerenciar tags, injete nele também!
+		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, itemFactory, tagService);
 
-		// ---------------------------------------------------------
-		// 3. CONEXÃO DE EVENTOS (Wiring)
-		// ---------------------------------------------------------
 		WireUpEvents();
 	}
 

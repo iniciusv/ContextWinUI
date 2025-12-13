@@ -2,12 +2,18 @@
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace ContextWinUI.Views;
 
 public sealed partial class FileExplorerView : UserControl
 {
+	// Tags padrão sugeridas
+	private readonly List<string> _standardTags = new() { "Importante", "Revisar", "Documentação", "Bug", "Refatorar" };
+
 	public static readonly DependencyProperty ExplorerViewModelProperty =
 		DependencyProperty.Register(nameof(ExplorerViewModel), typeof(FileExplorerViewModel), typeof(FileExplorerView), new PropertyMetadata(null));
 
@@ -33,14 +39,13 @@ public sealed partial class FileExplorerView : UserControl
 		this.InitializeComponent();
 	}
 
-	// --- LÓGICA DE UI E TAGS ---
+	// --- LÓGICA DE UI E CONVERSORES VISUAIS ---
 
-	// Método estático para ser chamado pelo x:Bind na View
-	public static Microsoft.UI.Xaml.Media.Brush GetIconColor(bool isDirectory)
+	public static Brush GetIconColor(bool isDirectory)
 	{
 		return isDirectory
-			? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemControlForegroundAccentBrush"]
-			: (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+			? (Brush)Application.Current.Resources["SystemControlForegroundAccentBrush"]
+			: (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
 	}
 
 	private void OnCheckBoxClick(object sender, RoutedEventArgs e)
@@ -52,50 +57,54 @@ public sealed partial class FileExplorerView : UserControl
 		}
 	}
 
-	// --- GERENCIAMENTO DE TAGS (MENU DE CONTEXTO) ---
+	// --- GERENCIAMENTO DE TAGS DINÂMICO ---
 
-	private void AddTag_Click(object sender, RoutedEventArgs e)
+	private void OnTagMenuOpening(object sender, object e)
 	{
-		if (sender is MenuFlyoutItem menuItem &&
-			menuItem.DataContext is FileSystemItem item &&
-			menuItem.Tag is string tag)
+		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem item)
 		{
-			if (!item.SharedState.Tags.Contains(tag))
-				item.SharedState.Tags.Add(tag);
-		}
-	}
+			// 1. Limpa itens anteriores para reconstruir
+			flyout.Items.Clear();
 
-	private async void AddNewTag_Click(object sender, RoutedEventArgs e)
-	{
-		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
-		{
-			var textBox = new TextBox { PlaceholderText = "Ex: Precisa Refatorar" };
-			var dialog = new ContentDialog
+			// 2. Opção fixa: Nova Tag Customizada
+			var newTagItem = new MenuFlyoutItem { Text = "Nova Tag...", Icon = new FontIcon { Glyph = "\uE710" } };
+			newTagItem.Click += (s, args) => _ = ExplorerViewModel.TagService.PromptAndAddTagAsync(item.SharedState.Tags, this.XamlRoot);
+			flyout.Items.Add(newTagItem);
+
+			flyout.Items.Add(new MenuFlyoutSeparator());
+
+			// 3. Constrói lista: Tags Padrão + Tags que o item já tem (Union remove duplicatas)
+			var allTagsDisplay = _standardTags.Union(item.SharedState.Tags).OrderBy(x => x).ToList();
+
+			foreach (var tag in allTagsDisplay)
 			{
-				Title = "Nova Tag",
-				Content = textBox,
-				PrimaryButtonText = "Adicionar",
-				CloseButtonText = "Cancelar",
-				DefaultButton = ContentDialogButton.Primary,
-				XamlRoot = this.XamlRoot // Importante para WinUI 3
-			};
+				// Verifica se o item possui essa tag
+				var isChecked = item.SharedState.Tags.Contains(tag);
 
-			var result = await dialog.ShowAsync();
+				// Cria um item de menu que funciona como Checkbox
+				var toggleItem = new ToggleMenuFlyoutItem
+				{
+					Text = tag,
+					IsChecked = isChecked
+				};
 
-			if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(textBox.Text))
-			{
-				var newTag = textBox.Text.Trim();
-				if (!item.SharedState.Tags.Contains(newTag))
-					item.SharedState.Tags.Add(newTag);
+				// Ação: Toggle (Adicionar/Remover)
+				toggleItem.Click += (s, args) =>
+				{
+					ExplorerViewModel.TagService.ToggleTag(item.SharedState.Tags, tag);
+				};
+
+				flyout.Items.Add(toggleItem);
 			}
-		}
-	}
 
-	private void ClearTags_Click(object sender, RoutedEventArgs e)
-	{
-		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
-		{
-			item.SharedState.Tags.Clear();
+			// 4. Opção de Limpar (só se tiver tags)
+			if (item.SharedState.Tags.Any())
+			{
+				flyout.Items.Add(new MenuFlyoutSeparator());
+				var clearItem = new MenuFlyoutItem { Text = "Limpar Tags", Icon = new FontIcon { Glyph = "\uE74D" } };
+				clearItem.Click += (s, args) => ExplorerViewModel.TagService.ClearTags(item.SharedState.Tags);
+				flyout.Items.Add(clearItem);
+			}
 		}
 	}
 

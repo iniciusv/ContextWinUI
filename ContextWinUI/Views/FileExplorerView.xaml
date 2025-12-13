@@ -77,15 +77,7 @@
                                   HasUnrealizedChildren="{x:Bind IsDirectory}">
 
 						<TreeViewItem.ContextFlyout>
-							<MenuFlyout>
-								<MenuFlyoutItem Text="Nova Tag..." Click="AddNewTag_Click" Icon="Add"/>
-								<MenuFlyoutSeparator/>
-								<MenuFlyoutItem Text="Tag: Importante" Click="AddTag_Click" Tag="Importante" Icon="Flag"/>
-								<MenuFlyoutItem Text="Tag: Revisar" Click="AddTag_Click" Tag="Revisar" Icon="Edit"/>
-								<MenuFlyoutItem Text="Tag: Documentação" Click="AddTag_Click" Tag="Documentação" Icon="Page"/>
-								<MenuFlyoutSeparator/>
-								<MenuFlyoutItem Text="Limpar Tags" Click="ClearTags_Click" Icon="Delete"/>
-							</MenuFlyout>
+							<MenuFlyout Opening="OnTagMenuOpening" />
 						</TreeViewItem.ContextFlyout>
 
 						<Grid>
@@ -94,6 +86,7 @@
 								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="Auto"/>
 							</Grid.ColumnDefinitions>
 
