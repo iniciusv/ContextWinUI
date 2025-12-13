@@ -1,0 +1,43 @@
+<UserControl
+    x:Class="ContextWinUI.Views.PrePromptView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<Grid Grid.Row="0" Margin="16,12">
+			<StackPanel Orientation="Horizontal" Spacing="8">
+				<FontIcon Glyph="&#xE8C4;" FontSize="16"/>
+				<TextBlock Text="Pré-Prompt &amp; Configurações" Style="{StaticResource SubtitleTextBlockStyle}"/>
+			</StackPanel>
+		</Grid>
+
+		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="16,0,16,12">
+			<TextBlock Text="Ao copiar:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7"/>
+
+			<CheckBox Content="Omitir 'using/imports'" 
+                      IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}"/>
+
+			<CheckBox Content="Omitir Comentários" 
+                      IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
+		</StackPanel>
+
+		<TextBox Grid.Row="2"
+                 Margin="16,0,16,16"
+                 Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 PlaceholderText="Instruções globais (ex: 'Você é um especialista em C#...')."
+                 FontFamily="Consolas, Courier New"
+                 CornerRadius="4" BorderThickness="0"/>
+	</Grid>
+</UserControl>

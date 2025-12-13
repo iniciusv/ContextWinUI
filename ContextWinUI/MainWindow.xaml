@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="ContextWinUI.MainWindow"
     x:Name="RootWindow"
@@ -7,7 +6,6 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="using:ContextWinUI.Views"
-    xmlns:models="using:ContextWinUI.Models"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
@@ -32,8 +30,8 @@
 			</Grid.ColumnDefinitions>
 
 			<Button Grid.Column="0" 
-            Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
-            ToolTipService.ToolTip="Abrir pasta do projeto">
+                    Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
+                    ToolTipService.ToolTip="Abrir pasta do projeto">
 				<StackPanel Orientation="Horizontal" Spacing="8">
 					<FontIcon Glyph="&#xE8B7;" FontSize="16"/>
 					<TextBlock Text="Abrir"/>
@@ -41,10 +39,10 @@
 			</Button>
 
 			<Button Grid.Column="1" 
-            Margin="8,0,0,0"
-            Command="{x:Bind ViewModel.SaveWorkCommand}"
-            Style="{StaticResource AccentButtonStyle}"
-            ToolTipService.ToolTip="Salvar tags e cache de análise">
+                    Margin="8,0,0,0"
+                    Command="{x:Bind ViewModel.SaveWorkCommand}"
+                    Style="{StaticResource AccentButtonStyle}"
+                    ToolTipService.ToolTip="Salvar tags, contexto e cache">
 				<StackPanel Orientation="Horizontal" Spacing="8">
 					<FontIcon Glyph="&#xE74E;" FontSize="16"/>
 					<TextBlock Text="Salvar"/>
@@ -52,78 +50,59 @@
 			</Button>
 
 			<TextBlock Grid.Column="2" 
-               Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
-               VerticalAlignment="Center"
-               Margin="16,0,0,0"
-               TextTrimming="CharacterEllipsis"
-               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                       Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
+                       VerticalAlignment="Center"
+                       Margin="16,0,0,0"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
 			<ProgressRing Grid.Column="3" 
-                  IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" 
-                  Width="20" Height="20" 
-                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"/>
+                          IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" 
+                          Width="20" Height="20" 
+                          Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"/>
 		</Grid>
-		
+
 		<Grid Grid.Row="1">
 			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="300" MinWidth="150"/>
-
+				<ColumnDefinition Width="300" MinWidth="250"/>
 				<ColumnDefinition Width="12"/>
-
 				<ColumnDefinition Width="*"/>
-
 				<ColumnDefinition Width="12"/>
-
-				<ColumnDefinition Width="350" MinWidth="200"/>
+				<ColumnDefinition Width="350" MinWidth="250"/>
 			</Grid.ColumnDefinitions>
 
 			<views:FileExplorerView Grid.Column="0"
-                                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
-                                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
-                                    FileSelected="OnFileExplorer_FileSelected"/>
+                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
+                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
+                    FileSelected="OnFileExplorer_FileSelected"/>
 
-			<TextBlock Grid.Column="1" 
-                       Text="&#xE769;" 
-                       FontFamily="Segoe MDL2 Assets" 
-                       HorizontalAlignment="Center" 
-                       VerticalAlignment="Center" 
-                       Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" 
-                       FontSize="8"
-                       IsHitTestVisible="False"/>
+			<TextBlock Grid.Column="1" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
+			<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
-			<controls:GridSplitter Grid.Column="1" 
-                                   ResizeBehavior="BasedOnAlignment"
-                                   ResizeDirection="Columns"
-                                   Background="Transparent"
-                                   HorizontalAlignment="Stretch"/>
+			<Pivot Grid.Column="2">
 
+				<PivotItem Header="Arquivo Atual" Margin="0">
+					<views:FileContentView 
+                           ContentViewModel="{x:Bind ViewModel.FileContent}"
+                           AnalyzeCommand="{x:Bind ViewModel.AnalyzeContextCommand}"
+                           CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
+				</PivotItem>
 
-			<views:FileContentView Grid.Column="2"
-                                   ContentViewModel="{x:Bind ViewModel.FileContent}"
-                                   AnalyzeCommand="{x:Bind AnalyzeContextCommand}"
-                                   CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
+				<PivotItem Header="Pré-Prompt Global" Margin="0">
+					<views:PrePromptView 
+                           ViewModel="{x:Bind ViewModel.PrePrompt}"/>
+				</PivotItem>
 
-			<TextBlock Grid.Column="3" 
-                       Text="&#xE769;" 
-                       FontFamily="Segoe MDL2 Assets" 
-                       HorizontalAlignment="Center" 
-                       VerticalAlignment="Center" 
-                       Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" 
-                       FontSize="8"
-                       IsHitTestVisible="False"/>
+			</Pivot>
 
-			<controls:GridSplitter Grid.Column="3" 
-                                   ResizeBehavior="BasedOnAlignment"
-                                   ResizeDirection="Columns"
-                                   Background="Transparent"
-                                   HorizontalAlignment="Stretch"/>
+			<TextBlock Grid.Column="3" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
+			<controls:GridSplitter Grid.Column="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
 			<views:ContextAnalysisView Grid.Column="4" 
                                        ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"/>
 		</Grid>
 
-		<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+		<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
 			<TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                        FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

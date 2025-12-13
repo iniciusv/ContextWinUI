@@ -36,9 +36,11 @@ public sealed partial class MainWindow : Window
 		ViewModel.OnFileSelected(item);
 	}
 
+	// --- CORREÇÃO AQUI ---
+	// Usamos o ExecuteAsync do comando gerado pelo RelayCommand
 	[RelayCommand]
 	private async Task AnalyzeContextAsync()
 	{
-		await ViewModel.AnalyzeContextCommandAsync();
+		await ViewModel.AnalyzeContextCommand.ExecuteAsync(null);
 	}
 }

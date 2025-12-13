@@ -35,41 +35,31 @@ public sealed partial class ContextAnalysisView : UserControl
 		}
 	}
 
-	// --- LÓGICA DE LOTE (Detecta se veio da Tree ou da List) ---
-
+	// --- MENU DINÂMICO UNIFICADO ---
 	private void OnTagMenuOpening(object sender, object e)
 	{
 		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem rightClickedItem)
 		{
 			flyout.Items.Clear();
-
 			List<FileSystemItem> targetItems = new();
 
-			// Pega itens selecionados de ambos os controles
-			// (Nota: Em WinUI, só um deles estará ativo visualmente por vez, mas a propriedade SelectedItems pode reter estado.
-			// A verificação 'Contains' resolve isso).
+			// Pega seleções de todos os controles
+			// Nota: O controle que não estiver em uso geralmente terá 0 SelectedItems, 
+			// mas usamos o 'Contains' para saber de onde veio o clique.
 			var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
 			var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
+			var gitSelection = GitListView.SelectedItems.Cast<FileSystemItem>().ToList();
 
-			if (treeSelection.Contains(rightClickedItem))
-			{
-				targetItems = treeSelection;
-			}
-			else if (listSelection.Contains(rightClickedItem))
-			{
-				targetItems = listSelection;
-			}
-			else
-			{
-				targetItems.Add(rightClickedItem);
-			}
+			if (treeSelection.Contains(rightClickedItem)) targetItems = treeSelection;
+			else if (listSelection.Contains(rightClickedItem)) targetItems = listSelection;
+			else if (gitSelection.Contains(rightClickedItem)) targetItems = gitSelection;
+			else targetItems.Add(rightClickedItem);
 
+			// Gera Menu
 			string headerText = targetItems.Count > 1 ? $"Nova Tag ({targetItems.Count} itens)..." : "Nova Tag...";
-
 			var newTagItem = new MenuFlyoutItem { Text = headerText, Icon = new FontIcon { Glyph = "\uE710" } };
 			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagToBatchAsync(targetItems, this.XamlRoot);
 			flyout.Items.Add(newTagItem);
-
 			flyout.Items.Add(new MenuFlyoutSeparator());
 
 			var allTagsDisplay = _standardTags.Union(targetItems.SelectMany(x => x.SharedState.Tags)).Distinct().OrderBy(x => x).ToList();
@@ -77,18 +67,8 @@ public sealed partial class ContextAnalysisView : UserControl
 			foreach (var tag in allTagsDisplay)
 			{
 				var isChecked = targetItems.All(i => i.SharedState.Tags.Contains(tag));
-
-				var toggleItem = new ToggleMenuFlyoutItem
-				{
-					Text = tag,
-					IsChecked = isChecked
-				};
-
-				toggleItem.Click += (s, args) =>
-				{
-					ContextViewModel.TagService.BatchToggleTag(targetItems, tag);
-				};
-
+				var toggleItem = new ToggleMenuFlyoutItem { Text = tag, IsChecked = isChecked };
+				toggleItem.Click += (s, args) => ContextViewModel.TagService.BatchToggleTag(targetItems, tag);
 				flyout.Items.Add(toggleItem);
 			}
 
@@ -96,11 +76,7 @@ public sealed partial class ContextAnalysisView : UserControl
 			{
 				flyout.Items.Add(new MenuFlyoutSeparator());
 				var clearItem = new MenuFlyoutItem { Text = "Limpar Tags", Icon = new FontIcon { Glyph = "\uE74D" } };
-				clearItem.Click += (s, args) =>
-				{
-					foreach (var item in targetItems)
-						ContextViewModel.TagService.ClearTags(item.SharedState.Tags);
-				};
+				clearItem.Click += (s, args) => { foreach (var item in targetItems) ContextViewModel.TagService.ClearTags(item.SharedState.Tags); };
 				flyout.Items.Add(clearItem);
 			}
 		}

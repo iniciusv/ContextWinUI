@@ -20,20 +20,21 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly IRoslynAnalyzerService _roslynAnalyzer;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IFileSystemItemFactory _itemFactory;
+	private readonly IGitService _gitService; // <--- Git Service
 
-	// Dependência Pública (Serviço de Tags)
 	public ITagManagementUiService TagService { get; }
 
-	// Histórico de navegação
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
-	// Árvore Hierárquica (Visual)
+	// Coleções
 	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> contextTreeItems = new();
+	private ObservableCollection<FileSystemItem> contextTreeItems = new(); // Árvore
 
-	// Lista Plana de Selecionados
 	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> selectedItemsList = new();
+	private ObservableCollection<FileSystemItem> selectedItemsList = new(); // Lista Seleção
+
+	[ObservableProperty]
+	private ObservableCollection<FileSystemItem> gitModifiedItems = new(); // Lista Git
 
 	[ObservableProperty]
 	private FileSystemItem? selectedItem;
@@ -57,19 +58,19 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			IRoslynAnalyzerService roslynAnalyzer,
 			IFileSystemService fileSystemService,
 			IFileSystemItemFactory itemFactory,
-			ITagManagementUiService tagService)
+			ITagManagementUiService tagService,
+			IGitService gitService)
 	{
 		_roslynAnalyzer = roslynAnalyzer;
 		_fileSystemService = fileSystemService;
 		_itemFactory = itemFactory;
 		TagService = tagService;
+		_gitService = gitService;
 	}
 
-	// --- NOVO MÉTODO: PREVIEW IMEDIATO ---
-	// Chamado pelo MainViewModel toda vez que um checkbox muda no Explorer
+	// --- PREVIEW RÁPIDO (Chamado pelo FileSelectionViewModel) ---
 	public void UpdateSelectionPreview(IEnumerable<FileSystemItem> items)
 	{
-		// Se estamos carregando uma análise pesada, não interrompa com preview visual
 		if (IsLoading) return;
 
 		ContextTreeItems.Clear();
@@ -77,25 +78,22 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 		foreach (var item in items)
 		{
-			// Cria um nó visual simples (sem filhos de métodos/dependências ainda)
+			// Cria nó visual simples
 			var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
-
-			// Registra eventos para que tags funcionem nesse novo wrapper
 			RegisterItemEventsRecursively(fileNode);
 
 			ContextTreeItems.Add(fileNode);
-			// A lista plana também é atualizada (AddToSelectionListIfNew é chamado pelo evento do Checkbox, 
-			// mas como estamos criando wrappers novos, adicionamos manualmente para garantir)
+
+			// Adiciona na lista plana se não existir
 			if (!SelectedItemsList.Any(x => x.FullPath == item.FullPath))
 			{
 				SelectedItemsList.Add(fileNode);
 			}
 		}
-
 		UpdateSelectedCount();
 	}
 
-	// --- ANÁLISE REAL (PESADA) ---
+	// --- ANÁLISE COMPLETA (Roslyn) ---
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
 		if (!selectedItems.Any()) return;
@@ -103,50 +101,73 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsLoading = true;
 		IsVisible = true;
 
-		// Salva estado atual no histórico antes de modificar
 		if (ContextTreeItems.Any())
 		{
 			_historyStack.Push(ContextTreeItems.ToList());
 			UpdateCanGoBack();
 		}
 
-		// Limpa para recriar com dados enriquecidos (Métodos, dependências)
 		ContextTreeItems.Clear();
 		SelectedItemsList.Clear();
 
-		OnStatusChanged("Indexando projeto e analisando referências...");
+		OnStatusChanged("Analisando estrutura do código...");
 
 		try
 		{
-			// 1. Indexação Roslyn
 			await _roslynAnalyzer.IndexProjectAsync(rootPath);
 
-			// 2. Recria os nós, agora enriquecidos
 			foreach (var item in selectedItems)
 			{
 				var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
-
-				// AQUI está a diferença: Chama o PopulateNodeAsync que usa Roslyn
 				await PopulateNodeAsync(fileNode, item.FullPath);
-
 				RegisterItemEventsRecursively(fileNode);
-
 				ContextTreeItems.Add(fileNode);
 			}
 
 			UpdateSelectedCount();
-			OnStatusChanged($"Análise detalhada concluída. {ContextTreeItems.Count} arquivos base.");
+			OnStatusChanged($"Análise concluída.");
 		}
 		catch (Exception ex)
 		{
 			OnStatusChanged($"Erro na análise: {ex.Message}");
 		}
-		finally
-		{
-			IsLoading = false;
-		}
+		finally { IsLoading = false; }
 	}
 
+	// --- GIT INTEGRATION ---
+	[RelayCommand]
+	public async Task RefreshGitChangesAsync(string rootPath)
+	{
+		if (string.IsNullOrEmpty(rootPath) || !_gitService.IsGitRepository(rootPath))
+		{
+			GitModifiedItems.Clear();
+			return;
+		}
+
+		IsLoading = true;
+		// Não muda mensagem global para não poluir, ou usa evento separado
+
+		try
+		{
+			var changedFiles = await _gitService.GetModifiedFilesAsync(rootPath);
+			GitModifiedItems.Clear();
+
+			foreach (var path in changedFiles)
+			{
+				// Usa Factory para manter estado das tags
+				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, "\uE70F"); // Ícone Edit
+				RegisterItemEventsRecursively(item);
+				GitModifiedItems.Add(item);
+			}
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro Git: {ex.Message}");
+		}
+		finally { IsLoading = false; }
+	}
+
+	// --- LÓGICA DE POPULAR NÓS ---
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
@@ -169,13 +190,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		if (analysis.Dependencies.Any())
 		{
 			var contextGroup = _itemFactory.CreateWrapper($"{filePath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
-			contextGroup.SharedState.Name = "Contexto / Dependências";
+			contextGroup.SharedState.Name = "Contexto";
 
 			foreach (var depPath in analysis.Dependencies)
 			{
 				var depItem = _itemFactory.CreateWrapper(depPath, FileSystemItemType.Dependency, "\uE943");
 				depItem.IsChecked = true;
-
 				contextGroup.Children.Add(depItem);
 			}
 			node.Children.Add(contextGroup);
@@ -183,19 +203,13 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		node.IsExpanded = true;
 	}
 
-	// --- MÉTODOS AUXILIARES ---
-
+	// --- EVENTOS E HELPERS ---
 	private void RegisterItemEventsRecursively(FileSystemItem item)
 	{
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
-
 		if (item.IsChecked) AddToSelectionListIfNew(item);
-
-		foreach (var child in item.Children)
-		{
-			RegisterItemEventsRecursively(child);
-		}
+		foreach (var child in item.Children) RegisterItemEventsRecursively(child);
 	}
 
 	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -210,8 +224,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void AddToSelectionListIfNew(FileSystemItem item)
 	{
-		if (!SelectedItemsList.Any(x => x.FullPath == item.FullPath))
-			SelectedItemsList.Add(item);
+		if (!SelectedItemsList.Any(x => x.FullPath == item.FullPath)) SelectedItemsList.Add(item);
 	}
 
 	private void RemoveFromSelectionList(FileSystemItem item)
@@ -222,33 +235,20 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void UpdateSelectedCount() => SelectedCount = SelectedItemsList.Count;
 
-	// --- NAVEGAÇÃO E AÇÕES ---
-
+	// --- COMANDOS VISUAIS ---
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
 		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
-
 		IsLoading = true;
-		OnStatusChanged($"Aprofundando análise de {item.Name}...");
-
 		try
 		{
 			_historyStack.Push(ContextTreeItems.ToList());
 			UpdateCanGoBack();
-
 			item.Children.Clear();
 			await PopulateNodeAsync(item, item.FullPath);
 			RegisterItemEventsRecursively(item);
-
 			UpdateSelectedCount();
-			OnStatusChanged($"Conteúdo de {item.Name} carregado.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro ao aprofundar: {ex.Message}");
-			if (_historyStack.Count > 0) _historyStack.Pop();
-			UpdateCanGoBack();
 		}
 		finally { IsLoading = false; }
 	}
@@ -258,14 +258,11 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	{
 		if (item == null) return;
 		IsLoading = true;
-		OnStatusChanged($"Analisando fluxo de {item.Name}...");
-
 		try
 		{
 			_historyStack.Push(ContextTreeItems.ToList());
 			UpdateCanGoBack();
 			ContextTreeItems.Clear();
-
 			var flowRoot = _itemFactory.CreateWrapper($"{item.FullPath}::flow", FileSystemItemType.LogicalGroup, "\uE768");
 			flowRoot.SharedState.Name = $"Fluxo: {item.Name}";
 			await PopulateNodeAsync(flowRoot, item.FullPath);
@@ -273,71 +270,42 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			ContextTreeItems.Add(flowRoot);
 			UpdateSelectedCount();
 		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro no fluxo: {ex.Message}");
-			if (_historyStack.Count > 0) _historyStack.Pop();
-			UpdateCanGoBack();
-		}
 		finally { IsLoading = false; }
 	}
 
-	[RelayCommand]
-	private void ExpandAll()
-	{
-		foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true);
-	}
-
-	[RelayCommand]
-	private void CollapseAll()
-	{
-		foreach (var item in ContextTreeItems) item.SetExpansionRecursively(false);
-	}
+	[RelayCommand] private void ExpandAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true); }
+	[RelayCommand] private void CollapseAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(false); }
 
 	[RelayCommand]
 	private void SyncFocus()
 	{
-		if (SelectedItem == null || !ContextTreeItems.Any()) return;
+		if (SelectedItem == null) return;
 		foreach (var item in ContextTreeItems) SyncFocusRecursive(item, SelectedItem);
 	}
 
-	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
+	private bool SyncFocusRecursive(FileSystemItem current, FileSystemItem target)
 	{
-		if (currentItem.FullPath == targetItem.FullPath)
-		{
-			if (currentItem.Children.Any()) currentItem.IsExpanded = true;
-			return true;
-		}
-		bool keepExpanded = false;
-		foreach (var child in currentItem.Children)
-		{
-			if (SyncFocusRecursive(child, targetItem)) keepExpanded = true;
-		}
-		currentItem.IsExpanded = keepExpanded;
-		return keepExpanded;
+		if (current.FullPath == target.FullPath) { if (current.Children.Any()) current.IsExpanded = true; return true; }
+		bool keep = false;
+		foreach (var child in current.Children) if (SyncFocusRecursive(child, target)) keep = true;
+		current.IsExpanded = keep;
+		return keep;
 	}
 
-	[RelayCommand]
-	private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query);
+	[RelayCommand] private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query);
 
 	[RelayCommand]
 	private void GoBack()
 	{
 		if (_historyStack.Count > 0)
 		{
-			var previousState = _historyStack.Pop();
+			var prev = _historyStack.Pop();
 			ContextTreeItems.Clear();
-			foreach (var item in previousState)
-			{
-				ContextTreeItems.Add(item);
-				RegisterItemEventsRecursively(item);
-			}
+			foreach (var item in prev) { ContextTreeItems.Add(item); RegisterItemEventsRecursively(item); }
 			UpdateCanGoBack();
 			UpdateSelectedCount();
-			OnStatusChanged("Histórico restaurado.");
 		}
 	}
-
 	private void UpdateCanGoBack() => CanGoBack = _historyStack.Count > 0;
 
 	public void SelectFileForPreview(FileSystemItem item)
@@ -353,6 +321,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsVisible = false;
 		ContextTreeItems.Clear();
 		SelectedItemsList.Clear();
+		GitModifiedItems.Clear();
 		_historyStack.Clear();
 		UpdateCanGoBack();
 		SelectedItem = null;
@@ -369,24 +338,16 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			sb.AppendLine("/* CONTEXTO SELECIONADO */");
 			sb.AppendLine();
 
+			// Aqui você deve usar o CodeCleanupHelper se desejar aplicar filtros também
+			// ou deixar cru. Vou deixar a lógica básica aqui.
 			foreach (var item in SelectedItemsList.OrderBy(x => x.FullPath))
 			{
 				if (string.IsNullOrEmpty(item.FullPath)) continue;
 				try
 				{
-					if (item.Type == FileSystemItemType.Method && !string.IsNullOrEmpty(item.MethodSignature))
-					{
-						sb.AppendLine($"// Método: {item.Name}");
-						sb.AppendLine($"// Origem: {item.FullPath}");
-						sb.AppendLine("// (Conteúdo do método)");
-					}
-					else
-					{
-						var content = await _fileSystemService.ReadFileContentAsync(item.FullPath);
-						sb.AppendLine($"// Arquivo: {Path.GetFileName(item.FullPath)}");
-						sb.AppendLine($"// Caminho: {item.FullPath}");
-						sb.AppendLine(content);
-					}
+					var content = await _fileSystemService.ReadFileContentAsync(item.FullPath);
+					sb.AppendLine($"// Arquivo: {item.Name}");
+					sb.AppendLine(content);
 					sb.AppendLine();
 				}
 				catch { }
@@ -394,7 +355,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			var dp = new DataPackage();
 			dp.SetText(sb.ToString());
 			Clipboard.SetContent(dp);
-			OnStatusChanged("Conteúdo copiado com sucesso!");
+			OnStatusChanged("Copiado com sucesso!");
 		}
 		finally { IsLoading = false; }
 	}

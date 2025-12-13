@@ -16,7 +16,6 @@ public partial class FileSharedState : ObservableObject
 	[ObservableProperty]
 	private string name = string.Empty;
 
-	// Esta é a propriedade mágica. Mudou aqui, reflete em todas as árvores.
 	[ObservableProperty]
 	private bool isChecked;
 
@@ -26,7 +25,6 @@ public partial class FileSharedState : ObservableObject
 	[ObservableProperty]
 	private ObservableCollection<string> tags = new();
 
-	// Cache de conteúdo (opcional, para não ler disco repetidamente)
 	public string? ContentCache { get; set; }
 
 	public string Extension => Path.GetExtension(FullPath);

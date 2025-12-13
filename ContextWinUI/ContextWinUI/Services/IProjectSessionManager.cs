@@ -5,15 +5,20 @@ namespace ContextWinUI.Services;
 
 public interface IProjectSessionManager
 {
-	// Propriedades de Estado
+	// --- Configurações Persistidas ---
+	string PrePrompt { get; set; }
+	bool OmitUsings { get; set; }
+	bool OmitComments { get; set; }
+
+	// --- Estado do Projeto ---
 	string? CurrentProjectPath { get; }
 	bool IsProjectLoaded { get; }
 
-	// Eventos para notificar os ViewModels
+	// --- Eventos ---
 	event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
-	event EventHandler<string>? StatusChanged; // Para atualizar a barra de status
+	event EventHandler<string>? StatusChanged;
 
-	// Ações
+	// --- Ações ---
 	Task OpenProjectAsync(string path);
 	Task SaveSessionAsync();
 	void CloseProject();

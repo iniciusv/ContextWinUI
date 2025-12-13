@@ -13,67 +13,80 @@ namespace ContextWinUI.Services;
 
 public class PersistenceService : IPersistenceService
 {
-	// Pasta onde os caches serão salvos (dentro da pasta do App)
-	private readonly string _cacheDirectory;
+	// Pasta onde os caches ficarão (ao lado do executável)
+	private const string AppCacheFolderName = "ContextWinUI_Cache";
 
-	public PersistenceService()
+	public async Task SaveProjectCacheAsync(string projectRootPath, IEnumerable<FileSharedState> states, string prePrompt, bool omitUsings, bool omitComments)
 	{
-		// Define pasta "Cache" ao lado do executável
-		var appPath = AppDomain.CurrentDomain.BaseDirectory;
-		_cacheDirectory = Path.Combine(appPath, "UserCache");
-
-		if (!Directory.Exists(_cacheDirectory))
-			Directory.CreateDirectory(_cacheDirectory);
-	}
-
-	public async Task SaveProjectCacheAsync(string projectRootPath, IEnumerable<FileSharedState> states)
-	{
-		// Filtra apenas arquivos que têm algo relevante para salvar (ex: Tags ou marcados)
-		// Se quiser salvar TUDO para acelerar o load da árvore, remova o Where.
-		var relevantItems = states.Where(s => s.Tags.Any() || s.IsChecked).ToList();
-
-		if (!relevantItems.Any()) return;
-
-		var dto = new ProjectCacheDto
+		try
 		{
-			RootPath = projectRootPath,
-			Files = relevantItems.Select(s => new FileMetadataDto
+			var cacheFilePath = GetCacheFilePath(projectRootPath);
+			var cacheDir = Path.GetDirectoryName(cacheFilePath);
+
+			if (cacheDir != null && !Directory.Exists(cacheDir))
 			{
-				// Salvamos caminho relativo para o cache funcionar mesmo se movermos a pasta do projeto
-				RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
-				Tags = s.Tags.ToList()
-			}).ToList()
-		};
+				Directory.CreateDirectory(cacheDir);
+			}
 
-		var filePath = GetCacheFilePath(projectRootPath);
-		var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
+			var dto = new ProjectCacheDto
+			{
+				RootPath = projectRootPath,
+				PrePrompt = prePrompt,
+				OmitUsings = omitUsings,
+				OmitComments = omitComments,
+				Files = states.Select(s => new FileMetadataDto
+				{
+					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
+					Tags = s.Tags.ToList()
+				}).ToList()
+			};
 
-		await File.WriteAllTextAsync(filePath, json);
+			var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
+			await File.WriteAllTextAsync(cacheFilePath, json);
+		}
+		catch (Exception)
+		{
+			throw;
+		}
 	}
 
 	public async Task<ProjectCacheDto?> LoadProjectCacheAsync(string projectRootPath)
 	{
-		var filePath = GetCacheFilePath(projectRootPath);
-
-		if (!File.Exists(filePath)) return null;
-
 		try
 		{
-			var json = await File.ReadAllTextAsync(filePath);
+			var cacheFilePath = GetCacheFilePath(projectRootPath);
+
+			if (!File.Exists(cacheFilePath)) return null;
+
+			var json = await File.ReadAllTextAsync(cacheFilePath);
 			return JsonSerializer.Deserialize<ProjectCacheDto>(json);
 		}
 		catch
 		{
-			return null; // Cache corrompido ou inválido
+			return null;
 		}
 	}
 
-	// Gera um nome de arquivo único baseado no caminho do projeto
-	private string GetCacheFilePath(string projectRootPath)
+	// Gera um caminho único para o arquivo de cache baseado no caminho do projeto
+	private string GetCacheFilePath(string projectPath)
+	{
+		// Pega o diretório onde o executável está rodando
+		var appDir = AppDomain.CurrentDomain.BaseDirectory;
+		var cacheDir = Path.Combine(appDir, AppCacheFolderName);
+
+		var name = Path.GetFileName(projectPath.TrimEnd(Path.DirectorySeparatorChar));
+		var hash = CreateMd5(projectPath);
+
+		var fileName = $"{name}_{hash}.json";
+
+		return Path.Combine(cacheDir, fileName);
+	}
+
+	private string CreateMd5(string input)
 	{
 		using var md5 = MD5.Create();
-		var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(projectRootPath.ToLowerInvariant()));
-		var hex = BitConverter.ToString(hash).Replace("-", "").ToLower();
-		return Path.Combine(_cacheDirectory, $"proj_{hex}.json");
+		var inputBytes = Encoding.ASCII.GetBytes(input.ToLowerInvariant()); // Normaliza para minúsculo
+		var hashBytes = md5.ComputeHash(inputBytes);
+		return Convert.ToHexString(hashBytes);
 	}
 }

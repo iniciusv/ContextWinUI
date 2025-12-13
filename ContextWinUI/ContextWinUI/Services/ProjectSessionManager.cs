@@ -1,9 +1,7 @@
 ﻿using ContextWinUI.ContextWinUI.Models;
 using ContextWinUI.Models;
 using System;
-using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
@@ -13,6 +11,11 @@ public class ProjectSessionManager : IProjectSessionManager
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IPersistenceService _persistenceService;
 	private readonly IFileSystemItemFactory _itemFactory;
+
+	// Estado Global da Sessão
+	public string PrePrompt { get; set; } = string.Empty;
+	public bool OmitUsings { get; set; }
+	public bool OmitComments { get; set; }
 
 	public string? CurrentProjectPath { get; private set; }
 	public bool IsProjectLoaded => !string.IsNullOrEmpty(CurrentProjectPath);
@@ -35,28 +38,33 @@ public class ProjectSessionManager : IProjectSessionManager
 		if (string.IsNullOrWhiteSpace(path)) return;
 
 		NotifyStatus("Iniciando carregamento do projeto...");
-		CloseProject(); // Garante limpeza anterior
+		CloseProject();
 
 		CurrentProjectPath = path;
 
 		try
 		{
-			// 1. Carrega estrutura física (Disco)
-			// A Factory já vai criando os Wrappers/States
+			// 1. Carrega Arquivos
 			NotifyStatus("Lendo arquivos do disco...");
 			var rootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
 
-			// 2. Carrega Metadados (Cache JSON)
+			// 2. Carrega Cache
 			NotifyStatus("Verificando cache de metadados...");
 			var cache = await _persistenceService.LoadProjectCacheAsync(path);
 
 			if (cache != null)
 			{
-				NotifyStatus("Aplicando tags e histórico...");
+				NotifyStatus("Aplicando histórico e contexto...");
 				ApplyCacheToMemory(path, cache);
 			}
+			else
+			{
+				// Padrões se não houver cache
+				PrePrompt = string.Empty;
+				OmitUsings = false;
+				OmitComments = false;
+			}
 
-			// 3. Notifica todo o sistema que o projeto está pronto
 			NotifyStatus("Projeto carregado com sucesso.");
 			ProjectLoaded?.Invoke(this, new ProjectLoadedEventArgs(path, rootItems));
 		}
@@ -75,12 +83,17 @@ public class ProjectSessionManager : IProjectSessionManager
 
 		try
 		{
-			// Pega todos os estados da memória via Factory
-			var allStates = _itemFactory.GetAllStates(); // Método que criamos no passo anterior
+			var allStates = _itemFactory.GetAllStates();
 
-			await _persistenceService.SaveProjectCacheAsync(CurrentProjectPath, allStates);
+			// Salva passando todas as configs atuais
+			await _persistenceService.SaveProjectCacheAsync(
+				CurrentProjectPath,
+				allStates,
+				PrePrompt,
+				OmitUsings,
+				OmitComments);
 
-			NotifyStatus("Sessão salva.");
+			NotifyStatus("Sessão salva com sucesso (local).");
 		}
 		catch (Exception ex)
 		{
@@ -91,30 +104,30 @@ public class ProjectSessionManager : IProjectSessionManager
 	public void CloseProject()
 	{
 		CurrentProjectPath = null;
-		_itemFactory.ClearCache(); // Limpa a memória dos Flyweights
-								   // Poderíamos disparar um evento ProjectClosed aqui se necessário
+		PrePrompt = string.Empty;
+		OmitUsings = false;
+		OmitComments = false;
+		_itemFactory.ClearCache();
 	}
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
+		// Restaura configurações
+		PrePrompt = cache.PrePrompt ?? string.Empty;
+		OmitUsings = cache.OmitUsings;
+		OmitComments = cache.OmitComments;
+
+		// Restaura Tags
 		foreach (var fileDto in cache.Files)
 		{
 			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
-
-			// A Factory é inteligente:
-			// Como acabamos de carregar o LoadProjectRecursivelyAsync, o estado JÁ EXISTE no dicionário.
-			// O CreateWrapper vai apenas recuperar esse estado existente.
 			var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
 
-			// Atualiza o estado compartilhado
 			wrapper.SharedState.Tags.Clear();
 			foreach (var tag in fileDto.Tags)
 			{
 				wrapper.SharedState.Tags.Add(tag);
 			}
-
-			// Opcional: Se salvou estado de seleção
-			// wrapper.IsChecked = true; 
 		}
 	}
 
