@@ -26,44 +26,52 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// 1. Instanciar dependências
+		// 1. BOOTSTRAPPING
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
 		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
-
-		// NOVO SERVIÇO
 		ITagManagementUiService tagService = new TagManagementUiService();
 
 		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 
-		// 2. Injeção nos ViewModels (AQUI ESTAVA O ERRO)
-
-		// Passando tagService para o Explorer
+		// 2. INJEÇÃO NOS VIEWMODELS
 		FileExplorer = new FileExplorerViewModel(_sessionManager, tagService);
-
 		FileContent = new FileContentViewModel(fileSystemService);
 		FileSelection = new FileSelectionViewModel(fileSystemService);
-
-		// ContextAnalysis também precisa gerenciar tags, injete nele também!
 		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, itemFactory, tagService);
 
+		// 3. CONEXÃO DE EVENTOS (Wiring)
 		WireUpEvents();
 	}
 
 	private void WireUpEvents()
 	{
-		// Conexão: Selecionou no Explorer -> Carrega no Visualizador
+		// Explorer -> Content (Preview)
 		FileExplorer.FileSelected += async (s, item) => await FileContent.LoadFileAsync(item);
 
-		// Conexão: Explorer carregou novos itens -> Atualiza a base do ViewModel de Seleção em Massa
+		// Explorer -> Selection (Sincroniza base de itens para contagem)
 		FileExplorer.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileExplorer.RootItems))
 				FileSelection.SetRootItems(FileExplorer.RootItems);
 		};
 
-		// Consolidação do Loading (Qualquer um carregando = App carregando)
+		// --- NOVA CONEXÃO: Sincronização em Tempo Real (Selection -> ContextAnalysis) ---
+		// Toda vez que a contagem de arquivos selecionados mudar (check/uncheck), 
+		// atualizamos o visual da Análise de Contexto.
+		FileSelection.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(FileSelection.SelectedFilesCount))
+			{
+				// Pega a lista atualizada de checked
+				var currentSelection = FileSelection.GetCheckedFiles();
+				// Atualiza o visual da outra tela sem rodar análise pesada
+				ContextAnalysis.UpdateSelectionPreview(currentSelection);
+			}
+		};
+
+		// Loading Global
 		void UpdateLoading() => IsLoading = FileExplorer.IsLoading || FileContent.IsLoading || FileSelection.IsLoading || ContextAnalysis.IsLoading;
 
 		FileExplorer.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
@@ -71,28 +79,25 @@ public partial class MainViewModel : ObservableObject
 		FileSelection.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 		ContextAnalysis.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 
-		// Consolidação de Mensagens de Status (O Manager tem prioridade)
+		// Status Global
 		_sessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
-
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileSelection.StatusChanged += (s, msg) => StatusMessage = msg;
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 	}
 
-	// Chamado pelo Code-Behind da View (MainWindow.xaml.cs)
 	public void OnFileSelected(FileSystemItem item)
 	{
 		FileExplorer.SelectFile(item);
 	}
 
-	// Comando: Analisar Contexto
+	// Comando: Analisar Contexto (Agora aprofunda a análise dos itens já mostrados)
 	public async Task AnalyzeContextCommandAsync()
 	{
-		// Pega arquivos marcados no Checkbox
 		var selectedFiles = FileSelection.GetCheckedFiles().ToList();
 
-		// Fallback: Se nada marcado, usa o arquivo aberto no editor
+		// Fallback: Usa arquivo aberto se não houver seleção
 		if (!selectedFiles.Any() && FileContent.SelectedItem?.IsCodeFile == true)
 		{
 			selectedFiles.Add(FileContent.SelectedItem);
@@ -104,9 +109,9 @@ public partial class MainViewModel : ObservableObject
 			return;
 		}
 
-		// Inicia a análise usando o caminho atual do projeto
 		if (_sessionManager.CurrentProjectPath != null)
 		{
+			// Isso agora vai rodar o Roslyn e substituir os nós simples por nós ricos
 			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
 		}
 	}
@@ -115,16 +120,12 @@ public partial class MainViewModel : ObservableObject
 	public async Task SaveWorkAsync()
 	{
 		if (IsLoading) return;
-
 		IsLoading = true;
 		try
 		{
 			await _sessionManager.SaveSessionAsync();
 			StatusMessage = "Projeto e tags salvos com sucesso.";
 		}
-		finally
-		{
-			IsLoading = false;
-		}
+		finally { IsLoading = false; }
 	}
 }
