@@ -23,23 +23,47 @@
 			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
 
-		<Grid Grid.Row="0" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+		<Grid Grid.Row="0" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
 
-			<Button Content="Selecionar Pasta" 
-                    Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
-                    Style="{StaticResource AccentButtonStyle}"/>
+			<Button Grid.Column="0" 
+            Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
+            ToolTipService.ToolTip="Abrir pasta do projeto">
+				<StackPanel Orientation="Horizontal" Spacing="8">
+					<FontIcon Glyph="&#xE8B7;" FontSize="16"/>
+					<TextBlock Text="Abrir"/>
+				</StackPanel>
+			</Button>
 
-			<TextBlock Grid.Column="1" 
-                       Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
-                       VerticalAlignment="Center"
-                       Margin="16,0,0,0"
-                       TextTrimming="CharacterEllipsis"/>
+			<Button Grid.Column="1" 
+            Margin="8,0,0,0"
+            Command="{x:Bind ViewModel.SaveWorkCommand}"
+            Style="{StaticResource AccentButtonStyle}"
+            ToolTipService.ToolTip="Salvar tags e cache de análise">
+				<StackPanel Orientation="Horizontal" Spacing="8">
+					<FontIcon Glyph="&#xE74E;" FontSize="16"/>
+					<TextBlock Text="Salvar"/>
+				</StackPanel>
+			</Button>
+
+			<TextBlock Grid.Column="2" 
+               Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
+               VerticalAlignment="Center"
+               Margin="16,0,0,0"
+               TextTrimming="CharacterEllipsis"
+               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+			<ProgressRing Grid.Column="3" 
+                  IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" 
+                  Width="20" Height="20" 
+                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"/>
 		</Grid>
-
+		
 		<Grid Grid.Row="1">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="300" MinWidth="150"/>

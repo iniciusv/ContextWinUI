@@ -98,13 +98,6 @@ public partial class MainViewModel : ObservableObject
 		FileExplorer.SelectFile(item);
 	}
 
-	// Comando: Salvar Cache e Tags (Delega para o Manager)
-	[RelayCommand]
-	public async Task SaveWorkAsync()
-	{
-		await _sessionManager.SaveSessionAsync();
-	}
-
 	// Comando: Analisar Contexto
 	public async Task AnalyzeContextCommandAsync()
 	{
@@ -127,6 +120,23 @@ public partial class MainViewModel : ObservableObject
 		if (_sessionManager.CurrentProjectPath != null)
 		{
 			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
+		}
+	}
+
+	[RelayCommand]
+	public async Task SaveWorkAsync()
+	{
+		if (IsLoading) return;
+
+		IsLoading = true;
+		try
+		{
+			await _sessionManager.SaveSessionAsync();
+			StatusMessage = "Projeto e tags salvos com sucesso.";
+		}
+		finally
+		{
+			IsLoading = false;
 		}
 	}
 }
