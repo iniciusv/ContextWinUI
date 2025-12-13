@@ -9,14 +9,14 @@ namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	// ViewModels Filhos
+	// --- VIEW MODELS FILHOS ---
 	public FileExplorerViewModel FileExplorer { get; }
 	public FileContentViewModel FileContent { get; }
-	public FileSelectionViewModel FileSelection { get; }
-	public ContextAnalysisViewModel ContextAnalysis { get; }
+	public FileSelectionViewModel FileSelection { get; } // Seleção do Explorer (Checkboxes)
+	public ContextAnalysisViewModel ContextAnalysis { get; } // Painel Direito
 	public PrePromptViewModel PrePrompt { get; }
 
-	// Serviços e Gerenciadores
+	// --- SERVIÇOS E GERENCIADORES ---
 	private readonly IProjectSessionManager _sessionManager;
 
 	[ObservableProperty]
@@ -27,49 +27,57 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// 1. BOOTSTRAPPING
+		// 1. BOOTSTRAPPING (Criação dos Serviços)
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
 		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
 		ITagManagementUiService tagService = new TagManagementUiService();
-
-		// Novo serviço Git
 		IGitService gitService = new GitService();
+		ISelectionIOService selectionIOService = new SelectionIOService(); // Novo serviço de IO
 
-		// Manager
+		// Manager de Sessão
 		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 
-		// 2. INJEÇÃO NOS VIEWMODELS
+		// 2. INJEÇÃO E CRIAÇÃO DOS VIEWMODELS
+
+		// Explorer e Conteúdo
 		FileExplorer = new FileExplorerViewModel(_sessionManager, tagService);
-
 		FileContent = new FileContentViewModel(fileSystemService);
-
-		// CORREÇÃO: Passando _sessionManager aqui
 		FileSelection = new FileSelectionViewModel(fileSystemService, _sessionManager);
-
-		// INJEÇÃO GIT: Passando gitService aqui
-		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, itemFactory, tagService, gitService);
-
 		PrePrompt = new PrePromptViewModel(_sessionManager);
 
-		// 3. WIRING (Eventos)
+		// Sub-ViewModel para a lista de Seleção da Análise (Composição)
+		var contextSelectionVM = new ContextSelectionViewModel(itemFactory, selectionIOService);
+
+		// ViewModel de Análise (Recebe o Sub-ViewModel injetado)
+		ContextAnalysis = new ContextAnalysisViewModel(
+			roslynAnalyzer,
+			fileSystemService,
+			itemFactory,
+			tagService,
+			gitService,
+			contextSelectionVM
+		);
+
+		// 3. WIRING (Conexão de Eventos)
 		WireUpEvents();
 	}
 
 	private void WireUpEvents()
 	{
-		// Explorer -> Content Preview
+		// Quando seleciona um arquivo na árvore do Explorer -> Carrega no Visualizador
 		FileExplorer.FileSelected += async (s, item) => await FileContent.LoadFileAsync(item);
 
-		// Explorer -> Selection Base
+		// Mantém o FileSelectionViewModel sincronizado com a árvore do Explorer
 		FileExplorer.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileExplorer.RootItems))
 				FileSelection.SetRootItems(FileExplorer.RootItems);
 		};
 
-		// Selection -> Context Analysis Preview (Tempo Real)
+		// --- SINCRONIZAÇÃO EM TEMPO REAL ---
+		// Quando usuário marca/desmarca checkbox no Explorer -> Atualiza o Preview na Análise
 		FileSelection.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileSelection.SelectedFilesCount))
@@ -79,7 +87,7 @@ public partial class MainViewModel : ObservableObject
 			}
 		};
 
-		// Loading Global
+		// Consolidação de Loading
 		void UpdateLoading() => IsLoading = FileExplorer.IsLoading || FileContent.IsLoading || FileSelection.IsLoading || ContextAnalysis.IsLoading;
 
 		FileExplorer.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
@@ -87,7 +95,7 @@ public partial class MainViewModel : ObservableObject
 		FileSelection.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 		ContextAnalysis.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 
-		// Status Global
+		// Consolidação de Status
 		_sessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
@@ -95,17 +103,19 @@ public partial class MainViewModel : ObservableObject
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 	}
 
+	// Chamado pelo Code-Behind da View
 	public void OnFileSelected(FileSystemItem item)
 	{
 		FileExplorer.SelectFile(item);
 	}
 
+	// Comando Principal: Analisar Contexto
 	[RelayCommand]
 	public async Task AnalyzeContextAsync()
 	{
 		var selectedFiles = FileSelection.GetCheckedFiles().ToList();
 
-		// Fallback: Usa arquivo aberto se não houver seleção
+		// Fallback: Se nada selecionado, usa o arquivo aberto
 		if (!selectedFiles.Any() && FileContent.SelectedItem?.IsCodeFile == true)
 		{
 			selectedFiles.Add(FileContent.SelectedItem);
@@ -119,10 +129,10 @@ public partial class MainViewModel : ObservableObject
 
 		if (_sessionManager.CurrentProjectPath != null)
 		{
-			// Opcional: Atualiza o Git antes de analisar
+			// 1. Atualiza Git
 			await ContextAnalysis.RefreshGitChangesAsync(_sessionManager.CurrentProjectPath);
 
-			// Roda análise profunda do Roslyn
+			// 2. Roda Análise Roslyn (Isso vai popular a árvore e atualizar a lista de seleção)
 			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
 		}
 	}
