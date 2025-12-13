@@ -10,7 +10,6 @@ namespace ContextWinUI.Views;
 
 public sealed partial class ContextAnalysisView : UserControl
 {
-	// Tags padrão sugeridas
 	private readonly List<string> _standardTags = new() { "Importante", "Revisar", "Documentação", "Bug", "Refatorar" };
 
 	public static readonly DependencyProperty ContextViewModelProperty =
@@ -36,30 +35,48 @@ public sealed partial class ContextAnalysisView : UserControl
 		}
 	}
 
-	// --- LÓGICA DINÂMICA DO MENU DE TAGS ---
+	// --- LÓGICA DE LOTE (Detecta se veio da Tree ou da List) ---
 
 	private void OnTagMenuOpening(object sender, object e)
 	{
-		// Funciona tanto para o TreeView quanto para o ListView, desde que o DataContext seja FileSystemItem
-		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem item)
+		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem rightClickedItem)
 		{
-			// 1. Limpa menu
 			flyout.Items.Clear();
 
-			// 2. Nova Tag
-			var newTagItem = new MenuFlyoutItem { Text = "Nova Tag...", Icon = new FontIcon { Glyph = "\uE710" } };
-			// Usa ContextViewModel.TagService
-			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagAsync(item.SharedState.Tags, this.XamlRoot);
+			List<FileSystemItem> targetItems = new();
+
+			// Pega itens selecionados de ambos os controles
+			// (Nota: Em WinUI, só um deles estará ativo visualmente por vez, mas a propriedade SelectedItems pode reter estado.
+			// A verificação 'Contains' resolve isso).
+			var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
+			var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
+
+			if (treeSelection.Contains(rightClickedItem))
+			{
+				targetItems = treeSelection;
+			}
+			else if (listSelection.Contains(rightClickedItem))
+			{
+				targetItems = listSelection;
+			}
+			else
+			{
+				targetItems.Add(rightClickedItem);
+			}
+
+			string headerText = targetItems.Count > 1 ? $"Nova Tag ({targetItems.Count} itens)..." : "Nova Tag...";
+
+			var newTagItem = new MenuFlyoutItem { Text = headerText, Icon = new FontIcon { Glyph = "\uE710" } };
+			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagToBatchAsync(targetItems, this.XamlRoot);
 			flyout.Items.Add(newTagItem);
 
 			flyout.Items.Add(new MenuFlyoutSeparator());
 
-			// 3. Lista Dinâmica (Padrão + Atuais)
-			var allTagsDisplay = _standardTags.Union(item.SharedState.Tags).OrderBy(x => x).ToList();
+			var allTagsDisplay = _standardTags.Union(targetItems.SelectMany(x => x.SharedState.Tags)).Distinct().OrderBy(x => x).ToList();
 
 			foreach (var tag in allTagsDisplay)
 			{
-				var isChecked = item.SharedState.Tags.Contains(tag);
+				var isChecked = targetItems.All(i => i.SharedState.Tags.Contains(tag));
 
 				var toggleItem = new ToggleMenuFlyoutItem
 				{
@@ -69,34 +86,23 @@ public sealed partial class ContextAnalysisView : UserControl
 
 				toggleItem.Click += (s, args) =>
 				{
-					ContextViewModel.TagService.ToggleTag(item.SharedState.Tags, tag);
+					ContextViewModel.TagService.BatchToggleTag(targetItems, tag);
 				};
 
 				flyout.Items.Add(toggleItem);
 			}
 
-			// 4. Opção Limpar
-			if (item.SharedState.Tags.Any())
+			if (targetItems.Any(i => i.SharedState.Tags.Any()))
 			{
 				flyout.Items.Add(new MenuFlyoutSeparator());
 				var clearItem = new MenuFlyoutItem { Text = "Limpar Tags", Icon = new FontIcon { Glyph = "\uE74D" } };
-				clearItem.Click += (s, args) => ContextViewModel.TagService.ClearTags(item.SharedState.Tags);
+				clearItem.Click += (s, args) =>
+				{
+					foreach (var item in targetItems)
+						ContextViewModel.TagService.ClearTags(item.SharedState.Tags);
+				};
 				flyout.Items.Add(clearItem);
 			}
-
-			// 5. (Opcional) Manter a opção "Remover da Seleção" se estivermos no contexto da Lista de Seleção
-			// Para isso, precisaria verificar se o sender vem do ListView ou se faz sentido adicionar aqui.
-			// Se você quiser manter o item "Remover da Seleção" que existia no XAML original da Lista,
-			// você deve adicioná-lo manualmente aqui no início ou fim.
-
-			/* Exemplo:
-			if (flyout.Target is FrameworkElement fe && fe.FindParent<ListView>() != null) {
-				flyout.Items.Add(new MenuFlyoutSeparator());
-				var removeItem = new MenuFlyoutItem { Text = "Remover da Seleção", Icon = new FontIcon { Glyph = "Remove" } };
-				removeItem.Click += (s, args) => item.IsChecked = false;
-				flyout.Items.Add(removeItem);
-			}
-			*/
 		}
 	}
 }

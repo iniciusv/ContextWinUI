@@ -62,7 +62,7 @@
 			</StackPanel>
 		</Grid>
 
-		<TreeView Grid.Row="3" 
+		<TreeView Grid.Row="3"
                   ItemsSource="{x:Bind ExplorerViewModel.RootItems, Mode=OneWay}" 
                   SelectionMode="Single" 
                   ItemInvoked="TreeView_ItemInvoked" 

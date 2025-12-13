@@ -57,7 +57,8 @@
 
 					<components:SearchBar Grid.Row="0" SearchCommand="{x:Bind ContextViewModel.SearchCommand}" Margin="16,8,16,8"/>
 
-					<TreeView Grid.Row="1" 
+					<TreeView Grid.Row="1"
+                              x:Name="AnalysisTreeView"
                               ItemsSource="{x:Bind ContextViewModel.ContextTreeItems, Mode=OneWay}" 
                               SelectionMode="Single"
                               ItemInvoked="TreeView_ItemInvoked">
@@ -82,15 +83,9 @@
 										</Grid.ColumnDefinitions>
 
 										<CheckBox Grid.Column="0" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" MinWidth="0" Padding="0" VerticalAlignment="Center" Margin="0,0,8,0"/>
-
 										<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" Foreground="{ThemeResource SystemAccentColor}" Margin="0,0,8,0"/>
-
 										<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13" TextTrimming="CharacterEllipsis"/>
-
-										<components:TagChipsControl Grid.Column="3" 
-                                                                    TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" 
-                                                                    Margin="8,0,0,0" 
-                                                                    VerticalAlignment="Center"/>
+										<components:TagChipsControl Grid.Column="3" TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" Margin="8,0,0,0" VerticalAlignment="Center"/>
 
 										<Button Grid.Column="4" Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="10" Padding="0" Width="24" Height="24" Margin="8,0,0,0"
                                                 Visibility="{x:Bind MethodFlowVisibility, Mode=OneWay}"
@@ -120,11 +115,13 @@
 
 					<TextBlock Grid.Row="0" Text="Itens marcados para exportação:" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Margin="16,8"/>
 
-					<ListView Grid.Row="1" ItemsSource="{x:Bind ContextViewModel.SelectedItemsList, Mode=OneWay}" SelectionMode="None">
+					<ListView Grid.Row="1" 
+                              x:Name="AnalysisListView"
+                              ItemsSource="{x:Bind ContextViewModel.SelectedItemsList, Mode=OneWay}" 
+                              SelectionMode="Extended">
 						<ListView.ItemTemplate>
 							<DataTemplate x:DataType="models:FileSystemItem">
 								<Grid Padding="0,4">
-
 									<Grid.ContextFlyout>
 										<MenuFlyout Opening="OnTagMenuOpening" />
 									</Grid.ContextFlyout>
