@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:ContextWinUI.Models"
     xmlns:components="using:ContextWinUI.Views.Components"
+    xmlns:views="using:ContextWinUI.Views"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -22,7 +23,11 @@
 				<ColumnDefinition Width="*"/>
 				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
-			<TextBlock Text="Arquivos" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center"/>
+
+			<StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+				<FontIcon Glyph="&#xE838;" FontSize="16"/>
+				<TextBlock Text="Explorador" Style="{StaticResource SubtitleTextBlockStyle}"/>
+			</StackPanel>
 
 			<components:ExpandCollapseActions Grid.Column="1" 
                                               SyncFocusCommand="{x:Bind ExplorerViewModel.SyncFocusCommand}"
@@ -34,18 +39,27 @@
                               SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
                               Margin="16,0,16,8"/>
 
-		<Grid Grid.Row="2" Padding="16,8">
+		<Grid Grid.Row="2" Padding="16,8" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="*"/>
 			</Grid.ColumnDefinitions>
-			<Button Content="Selecionar Todos" Command="{x:Bind SelectionViewModel.SelectAllCommand}" Style="{StaticResource AccentButtonStyle}" Margin="0,0,8,0" FontSize="12" Padding="8,4"/>
-			<Button Grid.Column="1" Content="Limpar" Command="{x:Bind SelectionViewModel.UnselectAllCommand}" Margin="0,0,8,0" FontSize="12" Padding="8,4"/>
-			<TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                <Run Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}"/>
-                <Run Text="sel."/>
-			</TextBlock>
+
+			<Button Content="Todos" 
+                    Command="{x:Bind SelectionViewModel.SelectAllCommand}" 
+                    Style="{StaticResource AccentButtonStyle}" 
+                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
+
+			<Button Grid.Column="1" 
+                    Content="Nenhum" 
+                    Command="{x:Bind SelectionViewModel.UnselectAllCommand}" 
+                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
+
+			<StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
+				<TextBlock Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}" FontWeight="SemiBold"/>
+				<TextBlock Text="selecionados" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+			</StackPanel>
 		</Grid>
 
 		<TreeView Grid.Row="3" 
@@ -54,6 +68,7 @@
                   ItemInvoked="TreeView_ItemInvoked" 
                   Expanding="TreeView_Expanding" 
                   Collapsed="TreeView_Collapsed">
+
 			<TreeView.ItemTemplate>
 				<DataTemplate x:DataType="models:FileSystemItem">
 					<TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}" 
@@ -61,16 +76,52 @@
                                   Visibility="{x:Bind Visibility, Mode=OneWay}"
                                   HasUnrealizedChildren="{x:Bind IsDirectory}">
 
-						<StackPanel Orientation="Horizontal" Spacing="8">
-							<CheckBox IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
+						<TreeViewItem.ContextFlyout>
+							<MenuFlyout>
+								<MenuFlyoutItem Text="Nova Tag..." Click="AddNewTag_Click" Icon="Add"/>
+								<MenuFlyoutSeparator/>
+								<MenuFlyoutItem Text="Tag: Importante" Click="AddTag_Click" Tag="Importante" Icon="Flag"/>
+								<MenuFlyoutItem Text="Tag: Revisar" Click="AddTag_Click" Tag="Revisar" Icon="Edit"/>
+								<MenuFlyoutItem Text="Tag: Documentação" Click="AddTag_Click" Tag="Documentação" Icon="Page"/>
+								<MenuFlyoutSeparator/>
+								<MenuFlyoutItem Text="Limpar Tags" Click="ClearTags_Click" Icon="Delete"/>
+							</MenuFlyout>
+						</TreeViewItem.ContextFlyout>
+
+						<Grid>
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="Auto"/>
+							</Grid.ColumnDefinitions>
+
+							<CheckBox Grid.Column="0"
+                                      IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
                                       Visibility="{x:Bind IsCodeFile}" 
                                       Click="OnCheckBoxClick"
-                                      MinWidth="0" Padding="0" VerticalAlignment="Center"/>
+                                      MinWidth="0" Padding="0" VerticalAlignment="Center" Margin="0,0,8,0"/>
 
-							<FontIcon Glyph="{x:Bind Icon}" FontSize="16"/>
-							<TextBlock Text="{x:Bind Name}" VerticalAlignment="Center"/>
-							<TextBlock Text="{x:Bind FileSizeFormatted}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" VerticalAlignment="Center" Visibility="{x:Bind IsCodeFile}"/>
-						</StackPanel>
+							<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="16" Margin="0,0,8,0" 
+                                      Foreground="{x:Bind views:FileExplorerView.GetIconColor(IsDirectory), Mode=OneWay}"/>
+
+							<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center"/>
+
+							<components:TagChipsControl Grid.Column="3" 
+                                                        TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" 
+                                                        Margin="8,0,0,0" 
+                                                        VerticalAlignment="Center"/>
+
+							<TextBlock Grid.Column="4" 
+                                       Text="{x:Bind FileSizeFormatted}" 
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                       FontSize="11" 
+                                       VerticalAlignment="Center" 
+                                       HorizontalAlignment="Right"
+                                       Margin="8,0,0,0"
+                                       Visibility="{x:Bind IsCodeFile}"/>
+						</Grid>
 					</TreeViewItem>
 				</DataTemplate>
 			</TreeView.ItemTemplate>

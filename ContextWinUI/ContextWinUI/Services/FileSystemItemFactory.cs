@@ -1,5 +1,6 @@
 ﻿using ContextWinUI.Models;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 
 namespace ContextWinUI.Services;
@@ -47,6 +48,11 @@ public class FileSystemItemFactory: IFileSystemItemFactory
 		}
 
 		return item;
+	}
+
+	public IEnumerable<FileSharedState> GetAllStates()
+	{
+		return _sharedStates.Values;
 	}
 
 	public void ClearCache()

@@ -67,6 +67,9 @@
     <Page Update="ContextWinUI\ViewModels\FileExplorerView.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Update="Views\Components\TagChipsControl.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Views\Components\ExpandCollapseActions.xaml">
       <SubType>Designer</SubType>
     </Page>

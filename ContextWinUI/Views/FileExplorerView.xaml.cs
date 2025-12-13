@@ -33,19 +33,73 @@ public sealed partial class FileExplorerView : UserControl
 		this.InitializeComponent();
 	}
 
-	// --- CORREÇÃO: Garante atualização instantânea da contagem ---
+	// --- LÓGICA DE UI E TAGS ---
+
+	// Método estático para ser chamado pelo x:Bind na View
+	public static Microsoft.UI.Xaml.Media.Brush GetIconColor(bool isDirectory)
+	{
+		return isDirectory
+			? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemControlForegroundAccentBrush"]
+			: (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+	}
+
 	private void OnCheckBoxClick(object sender, RoutedEventArgs e)
 	{
 		if (sender is CheckBox chk && chk.DataContext is FileSystemItem item)
 		{
-			// Força a atualização do Model
 			item.IsChecked = chk.IsChecked ?? false;
-
-			// Recalcula contagem no ViewModel
 			SelectionViewModel?.RecalculateSelection();
 		}
 	}
-	// -----------------------------------------------------------
+
+	// --- GERENCIAMENTO DE TAGS (MENU DE CONTEXTO) ---
+
+	private void AddTag_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is MenuFlyoutItem menuItem &&
+			menuItem.DataContext is FileSystemItem item &&
+			menuItem.Tag is string tag)
+		{
+			if (!item.SharedState.Tags.Contains(tag))
+				item.SharedState.Tags.Add(tag);
+		}
+	}
+
+	private async void AddNewTag_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
+		{
+			var textBox = new TextBox { PlaceholderText = "Ex: Precisa Refatorar" };
+			var dialog = new ContentDialog
+			{
+				Title = "Nova Tag",
+				Content = textBox,
+				PrimaryButtonText = "Adicionar",
+				CloseButtonText = "Cancelar",
+				DefaultButton = ContentDialogButton.Primary,
+				XamlRoot = this.XamlRoot // Importante para WinUI 3
+			};
+
+			var result = await dialog.ShowAsync();
+
+			if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(textBox.Text))
+			{
+				var newTag = textBox.Text.Trim();
+				if (!item.SharedState.Tags.Contains(newTag))
+					item.SharedState.Tags.Add(newTag);
+			}
+		}
+	}
+
+	private void ClearTags_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
+		{
+			item.SharedState.Tags.Clear();
+		}
+	}
+
+	// --- EVENTOS DO TREEVIEW ---
 
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{
@@ -59,9 +113,7 @@ public sealed partial class FileExplorerView : UserControl
 	private void TreeView_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
 	{
 		if (args.Item is FileSystemItem item && ExplorerViewModel.ExpandItemCommand.CanExecute(item))
-		{
 			ExplorerViewModel.ExpandItemCommand.Execute(item);
-		}
 	}
 
 	private void TreeView_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)

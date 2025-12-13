@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.ObjectModel;
 using System.IO;
 
 namespace ContextWinUI.Models;
@@ -21,6 +22,9 @@ public partial class FileSharedState : ObservableObject
 
 	[ObservableProperty]
 	private long? fileSize;
+
+	[ObservableProperty]
+	private ObservableCollection<string> tags = new();
 
 	// Cache de conteúdo (opcional, para não ler disco repetidamente)
 	public string? ContentCache { get; set; }

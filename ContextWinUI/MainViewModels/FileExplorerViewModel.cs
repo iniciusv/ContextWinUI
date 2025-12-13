@@ -11,9 +11,10 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject
 {
-	private readonly IFileSystemService _fileSystemService;
-	private readonly IFileSystemItemFactory _itemFactory;
+	// Dependência apenas da Interface do Manager
+	private readonly IProjectSessionManager _sessionManager;
 
+	// Item com foco visual (azul)
 	private FileSystemItem? _selectedItem;
 
 	[ObservableProperty]
@@ -28,11 +29,60 @@ public partial class FileExplorerViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelected;
 	public event EventHandler<string>? StatusChanged;
 
-	public FileExplorerViewModel(IFileSystemService fileSystemService, IFileSystemItemFactory itemFactory)
+	public FileExplorerViewModel(IProjectSessionManager sessionManager)
 	{
-		_fileSystemService = fileSystemService;
-		_itemFactory = itemFactory;
+		_sessionManager = sessionManager;
+
+		// INSCRIÇÃO: Quando o Manager terminar de carregar tudo (arquivos + cache + tags)
+		// ele vai disparar este evento.
+		_sessionManager.ProjectLoaded += OnProjectLoaded;
 	}
+
+	/// <summary>
+	/// Reage ao evento de projeto carregado pelo Manager.
+	/// </summary>
+	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
+	{
+		// Atualiza a UI com a árvore já montada e enriquecida (tags, etc)
+		RootItems = e.RootItems;
+		CurrentPath = e.RootPath;
+
+		// (Opcional) Poderia expandir automaticamente o primeiro nível aqui se quisesse
+	}
+
+	[RelayCommand]
+	private async Task BrowseFolderAsync()
+	{
+		try
+		{
+			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+
+			// Configuração para WinUI 3 (Necessário obter o Handle da Janela)
+			if (App.MainWindow != null)
+			{
+				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
+			}
+
+			folderPicker.FileTypeFilter.Add("*");
+
+			var folder = await folderPicker.PickSingleFolderAsync();
+
+			if (folder != null)
+			{
+				// DELEGAÇÃO: Não carregamos aqui. Pedimos ao Manager.
+				// O Manager vai limpar a memória, ler o disco, ler o JSON e chamar OnProjectLoaded.
+				await _sessionManager.OpenProjectAsync(folder.Path);
+			}
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao selecionar pasta: {ex.Message}");
+		}
+	}
+
+	// --- COMANDOS VISUAIS (Busca, Expansão, Foco) ---
+	// Estes comandos operam sobre a coleção RootItems já carregada na memória.
 
 	[RelayCommand]
 	private void Search(string query)
@@ -44,22 +94,17 @@ public partial class FileExplorerViewModel : ObservableObject
 	private void ExpandAll()
 	{
 		if (RootItems == null) return;
-		foreach (var item in RootItems)
-		{
-			item.SetExpansionRecursively(true);
-		}
+		foreach (var item in RootItems) item.SetExpansionRecursively(true);
 	}
 
 	[RelayCommand]
 	private void CollapseAll()
 	{
 		if (RootItems == null) return;
-		foreach (var item in RootItems)
-		{
-			item.SetExpansionRecursively(false);
-		}
+		foreach (var item in RootItems) item.SetExpansionRecursively(false);
 	}
 
+	// Comando "SyncFocus" (Botão de Alvo): Foca no item selecionado e fecha os outros ramos
 	[RelayCommand]
 	private void SyncFocus()
 	{
@@ -73,7 +118,7 @@ public partial class FileExplorerViewModel : ObservableObject
 
 	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
 	{
-		// Comparação segura por Path via Flyweight
+		// Graças ao Flyweight, podemos comparar FullPath com segurança
 		if (currentItem.FullPath == targetItem.FullPath)
 		{
 			if (currentItem.IsDirectory) currentItem.IsExpanded = true;
@@ -93,70 +138,15 @@ public partial class FileExplorerViewModel : ObservableObject
 		return keepExpanded;
 	}
 
-	// --- CARREGAMENTO DE ARQUIVOS ---
-
-	[RelayCommand]
-	private async Task BrowseFolderAsync()
-	{
-		try
-		{
-			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
-
-			// Gambiarra necessária para WinUI 3 Window Handle
-			if (App.MainWindow != null)
-			{
-				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-			}
-
-			folderPicker.FileTypeFilter.Add("*");
-			var folder = await folderPicker.PickSingleFolderAsync();
-
-			if (folder != null)
-			{
-				await LoadProjectAsync(folder.Path);
-			}
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro ao selecionar pasta: {ex.Message}");
-		}
-	}
-
-	public async Task LoadProjectAsync(string path)
-	{
-		IsLoading = true;
-		OnStatusChanged("Indexando projeto completo...");
-
-		// Opcional: Limpar cache da factory ao carregar novo projeto?
-		// _itemFactory.ClearCache(); 
-
-		try
-		{
-			CurrentPath = path;
-
-			// O serviço agora usa a Factory internamente, retornando Wrappers
-			RootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
-
-			OnStatusChanged($"Projeto carregado. {CountTotalItems(RootItems)} itens indexados.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro: {ex.Message}");
-		}
-		finally
-		{
-			IsLoading = false;
-		}
-	}
-
-	// Comando auxiliar usado pelo evento Expanding do TreeView
+	// Comando interno usado pelo evento "Expanding" do TreeView para lazy loading (se houvesse)
+	// ou apenas para atualizar estado visual
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
 	{
 		item.IsExpanded = true;
 	}
 
+	// Chamado pela View quando o usuário clica num item
 	public void SelectFile(FileSystemItem item)
 	{
 		_selectedItem = item;
@@ -168,16 +158,4 @@ public partial class FileExplorerViewModel : ObservableObject
 	}
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
-
-	private int CountTotalItems(ObservableCollection<FileSystemItem> items)
-	{
-		int count = 0;
-		foreach (var item in items)
-		{
-			count++;
-			if (item.Children.Count > 0)
-				count += CountTotalItems(item.Children);
-		}
-		return count;
-	}
 }
