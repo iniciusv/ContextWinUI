@@ -14,7 +14,7 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileSelectionViewModel : ObservableObject
 {
-	private readonly FileSystemService _fileSystemService;
+	private readonly IFileSystemService _fileSystemService;
 	private ObservableCollection<FileSystemItem> _rootItems = new();
 
 	// Propriedade contador. O atributo avisa o botão para verificar se pode ser clicado.
@@ -27,7 +27,7 @@ public partial class FileSelectionViewModel : ObservableObject
 
 	public event EventHandler<string>? StatusChanged;
 
-	public FileSelectionViewModel(FileSystemService fileSystemService)
+	public FileSelectionViewModel(IFileSystemService fileSystemService)
 	{
 		_fileSystemService = fileSystemService;
 	}
@@ -38,19 +38,9 @@ public partial class FileSelectionViewModel : ObservableObject
 		RecalculateSelection();
 	}
 
-	// --- CORREÇÃO DO ERRO ---
-	// Este método é chamado pelo MainViewModel para pegar os arquivos para análise
-	public IEnumerable<FileSystemItem> GetCheckedFiles()
-	{
-		return GetAllCheckedFiles(_rootItems);
-	}
-	// ------------------------
+    public IEnumerable<FileSystemItem> GetCheckedFiles() => GetAllCheckedFiles(_rootItems);
 
-	// Método chamado pelo Code-Behind da View quando o CheckBox é clicado
-	public void RecalculateSelection()
-	{
-		SelectedFilesCount = GetAllCheckedFiles(_rootItems).Count();
-	}
+    public void RecalculateSelection() => SelectedFilesCount = GetAllCheckedFiles(_rootItems).Count();
 
 	[RelayCommand]
 	private void SelectAll()

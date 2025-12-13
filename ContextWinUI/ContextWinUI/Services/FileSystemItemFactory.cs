@@ -7,7 +7,7 @@ namespace ContextWinUI.Services;
 /// <summary>
 /// FACTORY / CACHE: Gerencia o ciclo de vida dos Flyweights.
 /// </summary>
-public class FileSystemItemFactory
+public class FileSystemItemFactory: IFileSystemItemFactory
 {
 	// Dicionário thread-safe para garantir unicidade baseada no caminho
 	private readonly ConcurrentDictionary<string, FileSharedState> _sharedStates = new();

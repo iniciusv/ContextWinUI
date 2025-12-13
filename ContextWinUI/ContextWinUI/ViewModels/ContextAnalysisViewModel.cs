@@ -17,9 +17,9 @@ namespace ContextWinUI.ViewModels;
 
 public partial class ContextAnalysisViewModel : ObservableObject
 {
-	private readonly RoslynAnalyzerService _roslynAnalyzer;
-	private readonly FileSystemService _fileSystemService;
-	private readonly FileSystemItemFactory _itemFactory;
+	private readonly IRoslynAnalyzerService _roslynAnalyzer;
+	private readonly IFileSystemService _fileSystemService;
+	private readonly IFileSystemItemFactory _itemFactory;
 
 	// Histórico de navegação para o botão "Voltar"
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
@@ -50,26 +50,21 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
 	public event EventHandler<string>? StatusChanged;
 
-	public ContextAnalysisViewModel(RoslynAnalyzerService roslynAnalyzer, FileSystemService fileSystemService, FileSystemItemFactory itemFactory)
+	public ContextAnalysisViewModel(
+			IRoslynAnalyzerService roslynAnalyzer,
+			IFileSystemService fileSystemService,
+			IFileSystemItemFactory itemFactory)
 	{
 		_roslynAnalyzer = roslynAnalyzer;
 		_fileSystemService = fileSystemService;
 		_itemFactory = itemFactory;
 	}
 
-	// --- SINCRONIZAÇÃO REATIVA (O Coração do Flyweight) ---
-
-	/// <summary>
-	/// Registra ouvintes nos wrappers da árvore.
-	/// Quando o SharedState de um item muda (ex: IsChecked), o Wrapper dispara PropertyChanged.
-	/// </summary>
 	private void RegisterItemEventsRecursively(FileSystemItem item)
 	{
-		// Remove antes de adicionar para evitar vazamento de memória ou eventos duplicados
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
 
-		// Se o item já nasceu marcado (ex: dependência vinda do Explorer), garante que esteja na lista
 		if (item.IsChecked)
 		{
 			AddToSelectionListIfNew(item);
@@ -83,7 +78,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		// Se a propriedade IsChecked mudou no Wrapper (refletindo o SharedState)
 		if (sender is FileSystemItem item && e.PropertyName == nameof(FileSystemItem.IsChecked))
 		{
 			if (item.IsChecked)
@@ -100,7 +94,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void AddToSelectionListIfNew(FileSystemItem item)
 	{
-		// Evita duplicatas visuais na lista plana baseada no caminho do arquivo
 		if (!SelectedItemsList.Any(x => x.FullPath == item.FullPath))
 		{
 			SelectedItemsList.Add(item);
@@ -109,7 +102,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	private void RemoveFromSelectionList(FileSystemItem item)
 	{
-		// Remove o item da lista plana baseada no caminho
 		var toRemove = SelectedItemsList.FirstOrDefault(x => x.FullPath == item.FullPath);
 		if (toRemove != null)
 		{
@@ -118,9 +110,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	}
 
 	private void UpdateSelectedCount() => SelectedCount = SelectedItemsList.Count;
-
-
-	// --- COMANDOS DE ANÁLISE ---
 
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
@@ -136,27 +125,20 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 
 		ContextTreeItems.Clear();
-		// Nota: Não limpamos SelectedItemsList aqui para manter a persistência da seleção
-		// entre diferentes visualizações, a menos que seja um comportamento desejado limpar tudo.
-		// Para este exemplo, vou limpar para começar uma nova análise "limpa".
 		SelectedItemsList.Clear();
 
 		OnStatusChanged("Indexando projeto e analisando referências...");
 
 		try
 		{
-			// Indexa todo o projeto para resolver referências cruzadas
 			await _roslynAnalyzer.IndexProjectAsync(rootPath);
 
 			foreach (var item in selectedItems)
 			{
-				// USA A FACTORY: Cria um wrapper raiz para a árvore de análise
 				var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
 
-				// Popula filhos (Métodos e Dependências)
 				await PopulateNodeAsync(fileNode, item.FullPath);
 
-				// Registra eventos para sincronização
 				RegisterItemEventsRecursively(fileNode);
 
 				ContextTreeItems.Add(fileNode);
@@ -179,10 +161,8 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
 
-		// 1. Grupo de Métodos
 		if (analysis.Methods.Any())
 		{
-			// Cria um nó lógico (não existe arquivo real, usamos um path fictício para chave do cache)
 			var methodsGroup = _itemFactory.CreateWrapper($"{filePath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
 			methodsGroup.SharedState.Name = "Métodos"; // Sobrescreve nome visual
 
@@ -196,7 +176,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			node.Children.Add(methodsGroup);
 		}
 
-		// 2. Grupo de Dependências
 		if (analysis.Dependencies.Any())
 		{
 			var contextGroup = _itemFactory.CreateWrapper($"{filePath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
@@ -204,12 +183,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 			foreach (var depPath in analysis.Dependencies)
 			{
-				// AQUI OCORRE A MÁGICA:
-				// Se 'depPath' já foi carregado no Explorer ou em outra parte da árvore,
-				// CreateWrapper retorna um novo nó visual, mas apontando para o MESMO estado (IsChecked).
 				var depItem = _itemFactory.CreateWrapper(depPath, FileSystemItemType.Dependency, "\uE943");
-
-				// Opcional: Se quiser que dependências já venham marcadas por padrão:
 				depItem.IsChecked = true;
 
 				contextGroup.Children.Add(depItem);
@@ -347,7 +321,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			foreach (var item in previousState)
 			{
 				ContextTreeItems.Add(item);
-				// Segurança: garante que eventos estejam ativos
 				RegisterItemEventsRecursively(item);
 			}
 			UpdateCanGoBack();

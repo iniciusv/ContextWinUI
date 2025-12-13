@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
 
-public class FileSystemService
+public class FileSystemService: IFileSystemService
 {
-	private readonly FileSystemItemFactory _itemFactory;
+	private readonly IFileSystemItemFactory _itemFactory;
 
 	private static readonly HashSet<string> IgnoredFolders = new(StringComparer.OrdinalIgnoreCase)
 	{
@@ -19,7 +19,7 @@ public class FileSystemService
 	};
 
 	// Construtor atualizado
-	public FileSystemService(FileSystemItemFactory itemFactory)
+	public FileSystemService(IFileSystemItemFactory itemFactory)
 	{
 		_itemFactory = itemFactory;
 	}

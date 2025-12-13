@@ -13,8 +13,8 @@ public partial class MainViewModel : ObservableObject
 	public FileSelectionViewModel FileSelection { get; }
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 
-	// Serviço Factory Centralizado
-	private readonly FileSystemItemFactory _itemFactory;
+	// Podemos manter a referência privada como Interface também, por boa prática
+	private readonly IFileSystemItemFactory _itemFactory;
 
 	[ObservableProperty]
 	private string statusMessage = "Selecione uma pasta para começar";
@@ -24,18 +24,26 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// Instancia a Factory Singleton para este contexto
-		_itemFactory = new FileSystemItemFactory();
+		// 1. INSTANCIAÇÃO CONCRETA (Acontece apenas aqui)
+		// Criamos os objetos reais que fazem o trabalho pesado.
+		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
+		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
+		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
 
-		// Passa a factory para o FileSystemService
-		var fileSystemService = new FileSystemService(_itemFactory);
-		var roslynAnalyzer = new RoslynAnalyzerService();
+		// Guardamos referência local se precisarmos (opcional)
+		_itemFactory = itemFactory;
 
-		FileExplorer = new FileExplorerViewModel(fileSystemService, _itemFactory);
+		// 2. INJEÇÃO DE DEPENDÊNCIA
+		// Passamos os objetos para os ViewModels, que os receberão como Interfaces.
+
+		FileExplorer = new FileExplorerViewModel(fileSystemService, itemFactory);
+
+		// FileContentViewModel também deve ser atualizado para receber IFileSystemService
 		FileContent = new FileContentViewModel(fileSystemService);
-		// Note que FileSelection usa a coleção do Explorer, não precisa da factory direta
+
 		FileSelection = new FileSelectionViewModel(fileSystemService);
-		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, _itemFactory);
+
+		ContextAnalysis = new ContextAnalysisViewModel(roslynAnalyzer, fileSystemService, itemFactory);
 
 		WireUpEvents();
 	}

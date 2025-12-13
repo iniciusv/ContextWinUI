@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
 
-public class RoslynAnalyzerService
+public class RoslynAnalyzerService : IRoslynAnalyzerService
 {
 	// Mapa global do projeto: NomeDoTipo (SimpleName) -> CaminhoDoArquivo
 	private Dictionary<string, string> _projectTypeMap = new();

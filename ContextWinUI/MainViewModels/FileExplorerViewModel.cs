@@ -11,10 +11,9 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject
 {
-	private readonly FileSystemService _fileSystemService;
-	private readonly FileSystemItemFactory _itemFactory;
+	private readonly IFileSystemService _fileSystemService;
+	private readonly IFileSystemItemFactory _itemFactory;
 
-	// Campo para armazenar o item atualmente clicado/selecionado (foco visual)
 	private FileSystemItem? _selectedItem;
 
 	[ObservableProperty]
@@ -29,20 +28,17 @@ public partial class FileExplorerViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelected;
 	public event EventHandler<string>? StatusChanged;
 
-	public FileExplorerViewModel(FileSystemService fileSystemService, FileSystemItemFactory itemFactory)
+	public FileExplorerViewModel(IFileSystemService fileSystemService, IFileSystemItemFactory itemFactory)
 	{
 		_fileSystemService = fileSystemService;
 		_itemFactory = itemFactory;
 	}
 
-	// --- COMANDOS DE BUSCA ---
 	[RelayCommand]
 	private void Search(string query)
 	{
 		TreeSearchHelper.Search(RootItems, query);
 	}
-
-	// --- COMANDOS DE VISUALIZAÇÃO ---
 
 	[RelayCommand]
 	private void ExpandAll()

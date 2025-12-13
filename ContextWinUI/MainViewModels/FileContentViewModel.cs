@@ -11,7 +11,7 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileContentViewModel : ObservableObject
 {
-	private readonly FileSystemService _fileSystemService;
+	private readonly IFileSystemService _fileSystemService;
 
 	[ObservableProperty]
 	private FileSystemItem? selectedItem;
@@ -24,7 +24,7 @@ public partial class FileContentViewModel : ObservableObject
 
 	public event EventHandler<string>? StatusChanged;
 
-	public FileContentViewModel(FileSystemService fileSystemService)
+	public FileContentViewModel(IFileSystemService fileSystemService)
 	{
 		_fileSystemService = fileSystemService;
 	}
