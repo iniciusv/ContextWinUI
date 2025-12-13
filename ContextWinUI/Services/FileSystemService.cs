@@ -1,6 +1,4 @@
-﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Services\FileSystemService.cs ====================
-
-using ContextWinUI.Models;
+﻿using ContextWinUI.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -12,11 +10,19 @@ namespace ContextWinUI.Services;
 
 public class FileSystemService
 {
+	private readonly FileSystemItemFactory _itemFactory;
+
 	private static readonly HashSet<string> IgnoredFolders = new(StringComparer.OrdinalIgnoreCase)
 	{
 		"bin", "obj", ".vs", ".git", ".svn", "node_modules",
 		"packages", ".idea", "Debug", "Release", ".vscode"
 	};
+
+	// Construtor atualizado
+	public FileSystemService(FileSystemItemFactory itemFactory)
+	{
+		_itemFactory = itemFactory;
+	}
 
 	public async Task<ObservableCollection<FileSystemItem>> LoadProjectRecursivelyAsync(string rootPath)
 	{
@@ -26,14 +32,9 @@ public class FileSystemService
 			if (!Directory.Exists(rootPath)) return items;
 
 			var rootDir = new DirectoryInfo(rootPath);
-
 			var children = LoadDirectoryInternal(rootDir);
 
-			foreach (var child in children)
-			{
-				items.Add(child);
-			}
-
+			foreach (var child in children) items.Add(child);
 			return items;
 		});
 	}
@@ -44,66 +45,37 @@ public class FileSystemService
 
 		try
 		{
-			// 1. Diretórios (Recursão)
 			var subDirs = dir.GetDirectories()
 							 .Where(d => !IgnoredFolders.Contains(d.Name))
 							 .OrderBy(d => d.Name);
 
 			foreach (var subDir in subDirs)
 			{
-				var folderItem = CreateFileSystemItem(subDir);
-
+				// USA A FACTORY
+				var folderItem = _itemFactory.CreateWrapper(subDir);
 				var children = LoadDirectoryInternal(subDir);
-				foreach (var child in children)
-				{
-					folderItem.Children.Add(child);
-				}
 
+				foreach (var child in children) folderItem.Children.Add(child);
 				items.Add(folderItem);
 			}
 
-			// 2. Arquivos
 			var files = dir.GetFiles().OrderBy(f => f.Name);
 			foreach (var file in files)
 			{
-				items.Add(CreateFileSystemItem(file));
+				// USA A FACTORY
+				items.Add(_itemFactory.CreateWrapper(file));
 			}
 		}
-		catch (UnauthorizedAccessException)
-		{
-			// Ignora pastas sem permissão
-		}
+		catch (UnauthorizedAccessException) { }
 
 		return items;
-	}
-
-	private FileSystemItem CreateFileSystemItem(FileSystemInfo info)
-	{
-		// CORREÇÃO AQUI: Definimos o Type ao invés de IsDirectory
-		var isDir = info is DirectoryInfo;
-
-		var item = new FileSystemItem
-		{
-			Name = info.Name,
-			FullPath = info.FullName,
-			// Define o tipo explicitamente
-			Type = isDir ? FileSystemItemType.Directory : FileSystemItemType.File,
-			IsExpanded = false,
-			Children = new ObservableCollection<FileSystemItem>()
-		};
-
-		if (!isDir && info is FileInfo fileInfo)
-		{
-			item.FileSize = fileInfo.Length;
-		}
-
-		return item;
 	}
 
 	public async Task<string> ReadFileContentAsync(string filePath)
 	{
 		try
 		{
+			// Opcional: Implementar cache no Flyweight aqui se desejar
 			return await File.ReadAllTextAsync(filePath);
 		}
 		catch (Exception ex)

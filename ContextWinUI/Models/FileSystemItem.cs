@@ -1,77 +1,89 @@
-﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\Models\FileSystemItem.cs ====================
-
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 
 namespace ContextWinUI.Models;
 
-public enum FileSystemItemType
+/// <summary>
+/// WRAPPER / PROXY: Representa um nó na árvore visual (estado extrínseco).
+/// Contém dados de posição (Pai, Filhos, Expandido) e aponta para o SharedState.
+/// </summary>
+public partial class FileSystemItem : ObservableObject, IDisposable
 {
-	File,
-	Directory,
-	LogicalGroup, // Agrupadores como "Métodos", "Dependências"
-	Method,       // O nó específico de um método
-	Dependency    // O nó de um arquivo dependente
-}
+	// Referência ao Flyweight
+	public FileSharedState SharedState { get; }
 
-public partial class FileSystemItem : ObservableObject
-{
-	[ObservableProperty]
-	private string name = string.Empty;
+	// Construtor forçado para exigir o estado
+	public FileSystemItem(FileSharedState sharedState)
+	{
+		SharedState = sharedState;
 
-	[ObservableProperty]
-	private string fullPath = string.Empty;
+		// Inscreve-se para notificar a UI quando o estado compartilhado mudar
+		SharedState.PropertyChanged += OnSharedStateChanged;
+	}
 
-	// Propriedade nova para identificar métodos
+	// --- PROPRIEDADES PROXY (Apontam para o SharedState) ---
+
+	public string Name => SharedState.Name;
+
+	public string FullPath => SharedState.FullPath;
+
+	public string FileSizeFormatted => SharedState.FileSize.HasValue ? FormatBytes(SharedState.FileSize.Value) : string.Empty;
+
+	// O "IsChecked" é lido e escrito diretamente no objeto compartilhado
+	public bool IsChecked
+	{
+		get => SharedState.IsChecked;
+		set
+		{
+			if (SharedState.IsChecked != value)
+			{
+				SharedState.IsChecked = value;
+				// Não precisamos chamar OnPropertyChanged aqui manualmente 
+				// porque o evento do SharedState vai disparar o listener abaixo
+			}
+		}
+	}
+
+	// --- PROPRIEDADES VISUAIS (Específicas deste nó/instância) ---
+
 	[ObservableProperty]
 	private FileSystemItemType type;
-
-	// Armazena a assinatura para o Roslyn encontrar o método no arquivo
-	public string? MethodSignature { get; set; }
 
 	[ObservableProperty]
 	private bool isExpanded;
 
 	[ObservableProperty]
-	private bool isSelected;
-
-	[ObservableProperty]
-	private bool isChecked;
+	private bool isSelected; // Foco visual (azulzinho), diferente de Checkbox
 
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(Icon))]
 	private string? customIcon;
 
-	// --- CONTROLE DE BUSCA ---
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(Visibility))]
 	private bool isVisibleInSearch = true;
 
-	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
-
-	// --- LÓGICA DO BOTÃO (+) (Aprofundar Arquivo) ---
-	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
-	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
-
-	// --- LÓGICA DO BOTÃO (>) (Fluxo do Método) ---
-	// Só aparece se for do tipo Method e tivermos o caminho do arquivo pai
-	public bool CanAnalyzeMethodFlow => Type == FileSystemItemType.Method && !string.IsNullOrEmpty(FullPath);
-	public Visibility MethodFlowVisibility => CanAnalyzeMethodFlow ? Visibility.Visible : Visibility.Collapsed;
+	// Assinatura de método é específica deste nó (ex: um nó de método dentro de um arquivo)
+	public string? MethodSignature { get; set; }
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
 
-	// Helpers de compatibilidade com código anterior
-	public bool IsDirectory => Type == FileSystemItemType.Directory;
+	// --- Lógica Visual ---
 
-	public string Extension => IsDirectory ? string.Empty : Path.GetExtension(FullPath);
-	public bool IsCodeFile => !IsDirectory && _codeExtensions.Contains(Extension);
-	public long? FileSize { get; set; }
-	public string FileSizeFormatted => FileSize.HasValue ? FormatBytes(FileSize.Value) : string.Empty;
+	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
+	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
+	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
+	public bool CanAnalyzeMethodFlow => Type == FileSystemItemType.Method && !string.IsNullOrEmpty(FullPath);
+	public Visibility MethodFlowVisibility => CanAnalyzeMethodFlow ? Visibility.Visible : Visibility.Collapsed;
+
+	public bool IsDirectory => Type == FileSystemItemType.Directory;
+	public bool IsCodeFile => !IsDirectory && _codeExtensions.Contains(SharedState.Extension);
 
 	public string Icon
 	{
@@ -80,7 +92,24 @@ public partial class FileSystemItem : ObservableObject
 			if (!string.IsNullOrEmpty(CustomIcon)) return CustomIcon;
 			if (Type == FileSystemItemType.Directory) return "\uE8B7";
 			if (Type == FileSystemItemType.Method) return "\uEA86";
+			if (Type == FileSystemItemType.Dependency) return "\uE943";
 			return GetFileIcon();
+		}
+	}
+
+	// --- Helpers e Eventos ---
+
+	private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		// Se o estado compartilhado mudou "IsChecked", avisamos a UI deste Wrapper
+		// que a propriedade "IsChecked" DESTE wrapper mudou.
+		if (e.PropertyName == nameof(FileSharedState.IsChecked))
+		{
+			OnPropertyChanged(nameof(IsChecked));
+		}
+		else if (e.PropertyName == nameof(FileSharedState.Name))
+		{
+			OnPropertyChanged(nameof(Name));
 		}
 	}
 
@@ -93,7 +122,7 @@ public partial class FileSystemItem : ObservableObject
 
 	private string GetFileIcon()
 	{
-		return Extension.ToLower() switch
+		return SharedState.Extension.ToLower() switch
 		{
 			".cs" => "\uE943",
 			".xaml" => "\uE8A5",
@@ -123,10 +152,17 @@ public partial class FileSystemItem : ObservableObject
 		IsExpanded = expanded;
 		foreach (var child in Children)
 		{
-			if (child.IsDirectory || child.Children.Count > 0)
+			// Otimização: Só propaga se fizer sentido (Pastas ou Grupos)
+			if (child.IsDirectory || child.Type == FileSystemItemType.LogicalGroup)
 			{
 				child.SetExpansionRecursively(expanded);
 			}
 		}
+	}
+
+	// Importante para evitar vazamento de memória dos eventos
+	public void Dispose()
+	{
+		SharedState.PropertyChanged -= OnSharedStateChanged;
 	}
 }

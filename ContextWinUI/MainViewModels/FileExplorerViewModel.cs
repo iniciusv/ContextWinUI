@@ -1,6 +1,4 @@
-﻿// ==================== C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\MainViewModels\FileExplorerViewModel.cs ====================
-
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
@@ -14,8 +12,9 @@ namespace ContextWinUI.ViewModels;
 public partial class FileExplorerViewModel : ObservableObject
 {
 	private readonly FileSystemService _fileSystemService;
+	private readonly FileSystemItemFactory _itemFactory;
 
-	// Campo para armazenar o item atualmente clicado/selecionado
+	// Campo para armazenar o item atualmente clicado/selecionado (foco visual)
 	private FileSystemItem? _selectedItem;
 
 	[ObservableProperty]
@@ -30,9 +29,10 @@ public partial class FileExplorerViewModel : ObservableObject
 	public event EventHandler<FileSystemItem>? FileSelected;
 	public event EventHandler<string>? StatusChanged;
 
-	public FileExplorerViewModel(FileSystemService fileSystemService)
+	public FileExplorerViewModel(FileSystemService fileSystemService, FileSystemItemFactory itemFactory)
 	{
 		_fileSystemService = fileSystemService;
+		_itemFactory = itemFactory;
 	}
 
 	// --- COMANDOS DE BUSCA ---
@@ -42,9 +42,8 @@ public partial class FileExplorerViewModel : ObservableObject
 		TreeSearchHelper.Search(RootItems, query);
 	}
 
-	// --- COMANDOS DE EXPANSÃO / VISUALIZAÇÃO ---
+	// --- COMANDOS DE VISUALIZAÇÃO ---
 
-	// 1. Expandir Tudo
 	[RelayCommand]
 	private void ExpandAll()
 	{
@@ -55,7 +54,6 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	// 2. Recolher Tudo
 	[RelayCommand]
 	private void CollapseAll()
 	{
@@ -66,34 +64,27 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	// 3. Focar no Item (Sync) - Novo comando que faltava
 	[RelayCommand]
 	private void SyncFocus()
 	{
-		// Se não houver item selecionado ou árvore vazia, ignora
 		if (_selectedItem == null || RootItems == null) return;
 
 		foreach (var item in RootItems)
 		{
-			// A função retorna true se o _selectedItem estiver dentro deste ramo
 			SyncFocusRecursive(item, _selectedItem);
 		}
 	}
 
-	// Lógica recursiva para o SyncFocus
 	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
 	{
-		// Caso base: Encontramos o alvo
-		if (currentItem == targetItem)
+		// Comparação segura por Path via Flyweight
+		if (currentItem.FullPath == targetItem.FullPath)
 		{
-			// Opcional: Se o alvo for uma pasta, expande ela também
 			if (currentItem.IsDirectory) currentItem.IsExpanded = true;
 			return true;
 		}
 
 		bool keepExpanded = false;
-
-		// Verifica filhos
 		foreach (var child in currentItem.Children)
 		{
 			if (SyncFocusRecursive(child, targetItem))
@@ -102,14 +93,11 @@ public partial class FileExplorerViewModel : ObservableObject
 			}
 		}
 
-		// Se keepExpanded for true, expande este nó para mostrar o caminho.
-		// Se for false, fecha para limpar a visão.
 		currentItem.IsExpanded = keepExpanded;
-
 		return keepExpanded;
 	}
 
-	// ---------------------------------------------------------------------
+	// --- CARREGAMENTO DE ARQUIVOS ---
 
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
@@ -117,13 +105,15 @@ public partial class FileExplorerViewModel : ObservableObject
 		try
 		{
 			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+
+			// Gambiarra necessária para WinUI 3 Window Handle
 			if (App.MainWindow != null)
 			{
 				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
 				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
 			}
-			folderPicker.FileTypeFilter.Add("*");
 
+			folderPicker.FileTypeFilter.Add("*");
 			var folder = await folderPicker.PickSingleFolderAsync();
 
 			if (folder != null)
@@ -142,11 +132,16 @@ public partial class FileExplorerViewModel : ObservableObject
 		IsLoading = true;
 		OnStatusChanged("Indexando projeto completo...");
 
+		// Opcional: Limpar cache da factory ao carregar novo projeto?
+		// _itemFactory.ClearCache(); 
+
 		try
 		{
 			CurrentPath = path;
-			// Carrega a árvore recursivamente
+
+			// O serviço agora usa a Factory internamente, retornando Wrappers
 			RootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
+
 			OnStatusChanged($"Projeto carregado. {CountTotalItems(RootItems)} itens indexados.");
 		}
 		catch (Exception ex)
@@ -168,7 +163,6 @@ public partial class FileExplorerViewModel : ObservableObject
 
 	public void SelectFile(FileSystemItem item)
 	{
-		// Armazena o item para uso no SyncFocus
 		_selectedItem = item;
 
 		if (item.IsCodeFile)
