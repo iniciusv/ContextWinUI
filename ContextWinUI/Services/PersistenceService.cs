@@ -39,11 +39,12 @@ public class PersistenceService : IPersistenceService
 				PrePrompt = prePrompt,
 				OmitUsings = omitUsings,
 				OmitComments = omitComments,
-				IncludeStructure = includeStructure,         // <--- Salvando
-				StructureOnlyFolders = structureOnlyFolders, // <--- Salvando
+				IncludeStructure = includeStructure,
+				StructureOnlyFolders = structureOnlyFolders,
 				Files = states.Select(s => new FileMetadataDto
 				{
 					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
+					IsIgnored = s.IsIgnored, // Persistindo status
 					Tags = s.Tags.ToList()
 				}).ToList()
 			};

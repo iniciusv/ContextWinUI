@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 
 namespace ContextWinUI.Models;
 
 public class FileMetadataDto
 {
 	public string RelativePath { get; set; } = string.Empty;
+	public bool IsIgnored { get; set; } // Novo campo
 	public List<string> Tags { get; set; } = new();
 }

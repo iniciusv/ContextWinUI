@@ -1,5 +1,6 @@
 ﻿using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -11,7 +12,7 @@ namespace ContextWinUI.Views;
 
 public sealed partial class FileExplorerView : UserControl
 {
-	// Tags padrão sugeridas
+
 	private readonly List<string> _standardTags = new() { "Importante", "Revisar", "Documentação", "Bug", "Refatorar" };
 
 	public static readonly DependencyProperty ExplorerViewModelProperty =
@@ -39,10 +40,14 @@ public sealed partial class FileExplorerView : UserControl
 		this.InitializeComponent();
 	}
 
-	// --- LÓGICA DE UI E CONVERSORES VISUAIS ---
-
-	public static Brush GetIconColor(bool isDirectory)
+	// Assinatura atualizada para receber o status IsIgnored
+	public static Brush GetIconColor(bool isDirectory, bool isIgnored)
 	{
+		if (isIgnored)
+		{
+			return new SolidColorBrush(Colors.Red);
+		}
+
 		return isDirectory
 			? (Brush)Application.Current.Resources["SystemControlForegroundAccentBrush"]
 			: (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
@@ -57,38 +62,52 @@ public sealed partial class FileExplorerView : UserControl
 		}
 	}
 
-	// --- GERENCIAMENTO DE TAGS DINÂMICO ---
-
 	private void OnTagMenuOpening(object sender, object e)
 	{
 		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem item)
 		{
-			// 1. Limpa itens anteriores para reconstruir
+
 			flyout.Items.Clear();
 
-			// 2. Opção fixa: Nova Tag Customizada
+			// --- Menu Ignorar Pasta (Novo) ---
+			if (item.IsDirectory)
+			{
+				var ignoreItem = new ToggleMenuFlyoutItem
+				{
+					Text = "Ignorar Pasta",
+					IsChecked = item.SharedState.IsIgnored,
+					Icon = new FontIcon { Glyph = "\uE74D" } // Delete icon style
+				};
+
+				ignoreItem.Click += (s, args) =>
+				{
+					item.SharedState.IsIgnored = !item.SharedState.IsIgnored;
+				};
+
+				flyout.Items.Add(ignoreItem);
+				flyout.Items.Add(new MenuFlyoutSeparator());
+			}
+			// ---------------------------------
+
 			var newTagItem = new MenuFlyoutItem { Text = "Nova Tag...", Icon = new FontIcon { Glyph = "\uE710" } };
 			newTagItem.Click += (s, args) => _ = ExplorerViewModel.TagService.PromptAndAddTagAsync(item.SharedState.Tags, this.XamlRoot);
 			flyout.Items.Add(newTagItem);
 
 			flyout.Items.Add(new MenuFlyoutSeparator());
 
-			// 3. Constrói lista: Tags Padrão + Tags que o item já tem (Union remove duplicatas)
 			var allTagsDisplay = _standardTags.Union(item.SharedState.Tags).OrderBy(x => x).ToList();
 
 			foreach (var tag in allTagsDisplay)
 			{
-				// Verifica se o item possui essa tag
+
 				var isChecked = item.SharedState.Tags.Contains(tag);
 
-				// Cria um item de menu que funciona como Checkbox
 				var toggleItem = new ToggleMenuFlyoutItem
 				{
 					Text = tag,
 					IsChecked = isChecked
 				};
 
-				// Ação: Toggle (Adicionar/Remover)
 				toggleItem.Click += (s, args) =>
 				{
 					ExplorerViewModel.TagService.ToggleTag(item.SharedState.Tags, tag);
@@ -97,7 +116,6 @@ public sealed partial class FileExplorerView : UserControl
 				flyout.Items.Add(toggleItem);
 			}
 
-			// 4. Opção de Limpar (só se tiver tags)
 			if (item.SharedState.Tags.Any())
 			{
 				flyout.Items.Add(new MenuFlyoutSeparator());
@@ -107,8 +125,6 @@ public sealed partial class FileExplorerView : UserControl
 			}
 		}
 	}
-
-	// --- EVENTOS DO TREEVIEW ---
 
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{

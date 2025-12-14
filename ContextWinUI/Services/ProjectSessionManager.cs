@@ -63,7 +63,6 @@ public class ProjectSessionManager : IProjectSessionManager
 			NotifyStatus($"Erro ao selecionar pasta: {ex.Message}");
 		}
 	}
-	// ----------------------------------------
 
 	public async Task OpenProjectAsync(string path)
 	{
@@ -151,7 +150,11 @@ public class ProjectSessionManager : IProjectSessionManager
 		foreach (var fileDto in cache.Files)
 		{
 			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
+
 			var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
+
+			wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
+
 			wrapper.SharedState.Tags.Clear();
 			foreach (var tag in fileDto.Tags) wrapper.SharedState.Tags.Add(tag);
 		}

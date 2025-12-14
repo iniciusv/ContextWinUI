@@ -66,10 +66,16 @@ public static class TreeSearchHelper
 		}
 	}
 
-	// --- LOGICA RECURSIVA DE BUSCA ---
 	private static bool SearchRecursive(FileSystemItem item, string query, bool isTagSearch, CancellationToken token)
 	{
 		if (token.IsCancellationRequested) return false;
+
+		// OTIMIZAÇÃO: Se estiver marcado para ignorar, não processa este item nem seus filhos
+		if (item.SharedState.IsIgnored)
+		{
+			item.IsVisibleInSearch = false;
+			return false;
+		}
 
 		bool isSelfMatch = false;
 
@@ -92,7 +98,7 @@ public static class TreeSearchHelper
 		item.IsVisibleInSearch = isSelfMatch || hasMatchingChildren;
 
 		if (hasMatchingChildren) item.IsExpanded = true;
-		else if (item.IsDirectory) item.IsExpanded = false; // Contrai se não for resultado
+		else if (item.IsDirectory) item.IsExpanded = false;
 
 		return item.IsVisibleInSearch;
 	}

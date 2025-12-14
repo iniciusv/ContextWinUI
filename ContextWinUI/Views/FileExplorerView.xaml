@@ -97,7 +97,7 @@
                                       MinWidth="0" Padding="0" VerticalAlignment="Center" Margin="0,0,8,0"/>
 
 							<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="16" Margin="0,0,8,0" 
-                                      Foreground="{x:Bind views:FileExplorerView.GetIconColor(IsDirectory), Mode=OneWay}"/>
+                                      Foreground="{x:Bind views:FileExplorerView.GetIconColor(IsDirectory, SharedState.IsIgnored), Mode=OneWay}"/>
 
 							<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center"/>
 

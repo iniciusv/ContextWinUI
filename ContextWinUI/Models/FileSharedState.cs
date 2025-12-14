@@ -4,10 +4,6 @@ using System.IO;
 
 namespace ContextWinUI.Models;
 
-/// <summary>
-/// FLYWEIGHT: Representa o estado intrínseco e compartilhado de um arquivo.
-/// Existe apenas UMA instância desta classe por caminho de arquivo em toda a aplicação.
-/// </summary>
 public partial class FileSharedState : ObservableObject
 {
 	[ObservableProperty]
@@ -18,6 +14,9 @@ public partial class FileSharedState : ObservableObject
 
 	[ObservableProperty]
 	private bool isChecked;
+
+	[ObservableProperty]
+	private bool isIgnored; // <--- CORRIGIDO: Removido o atributo problemático. O ObservableProperty já cuida da notificação.
 
 	[ObservableProperty]
 	private long? fileSize;
