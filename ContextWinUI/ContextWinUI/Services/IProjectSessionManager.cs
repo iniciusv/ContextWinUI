@@ -9,16 +9,15 @@ public interface IProjectSessionManager
 	string PrePrompt { get; set; }
 	bool OmitUsings { get; set; }
 	bool OmitComments { get; set; }
+	bool IncludeStructure { get; set; }    
+	bool StructureOnlyFolders { get; set; }
 
-	// --- Estado do Projeto ---
 	string? CurrentProjectPath { get; }
 	bool IsProjectLoaded { get; }
 
-	// --- Eventos ---
 	event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	event EventHandler<string>? StatusChanged;
 
-	// --- Ações ---
 	Task OpenProjectAsync(string path);
 	Task SaveSessionAsync();
 	void CloseProject();

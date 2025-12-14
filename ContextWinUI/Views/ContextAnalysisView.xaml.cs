@@ -27,10 +27,21 @@ public sealed partial class ContextAnalysisView : UserControl
 		this.Name = "RootAnalysisView";
 	}
 
+	// Clique na Árvore (já existia)
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{
 		if (args.InvokedItem is FileSystemItem item)
 		{
+			ContextViewModel?.SelectFileForPreview(item);
+		}
+	}
+
+	// --- NOVO: Clique nas Listas (Seleção e Git) ---
+	private void OnListViewItemClick(object sender, ItemClickEventArgs e)
+	{
+		if (e.ClickedItem is FileSystemItem item)
+		{
+			// Dispara o evento que o MainViewModel está ouvindo para carregar o arquivo
 			ContextViewModel?.SelectFileForPreview(item);
 		}
 	}
@@ -43,9 +54,6 @@ public sealed partial class ContextAnalysisView : UserControl
 			flyout.Items.Clear();
 			List<FileSystemItem> targetItems = new();
 
-			// Pega seleções de todos os controles
-			// Nota: O controle que não estiver em uso geralmente terá 0 SelectedItems, 
-			// mas usamos o 'Contains' para saber de onde veio o clique.
 			var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
 			var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
 			var gitSelection = GitListView.SelectedItems.Cast<FileSystemItem>().ToList();
@@ -55,7 +63,6 @@ public sealed partial class ContextAnalysisView : UserControl
 			else if (gitSelection.Contains(rightClickedItem)) targetItems = gitSelection;
 			else targetItems.Add(rightClickedItem);
 
-			// Gera Menu
 			string headerText = targetItems.Count > 1 ? $"Nova Tag ({targetItems.Count} itens)..." : "Nova Tag...";
 			var newTagItem = new MenuFlyoutItem { Text = headerText, Icon = new FontIcon { Glyph = "\uE710" } };
 			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagToBatchAsync(targetItems, this.XamlRoot);

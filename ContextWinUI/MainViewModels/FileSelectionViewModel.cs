@@ -1,6 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ContextWinUI.Helpers; // Helper novo
+using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
@@ -16,7 +16,7 @@ namespace ContextWinUI.ViewModels;
 public partial class FileSelectionViewModel : ObservableObject
 {
 	private readonly IFileSystemService _fileSystemService;
-	private readonly IProjectSessionManager _sessionManager; // Injeção necessária
+	private readonly IProjectSessionManager _sessionManager;
 	private ObservableCollection<FileSystemItem> _rootItems = new();
 
 	[ObservableProperty]
@@ -66,9 +66,11 @@ public partial class FileSelectionViewModel : ObservableObject
 
 		IsLoading = true;
 
-		// Lê as configurações do SessionManager no momento exato da cópia
+		// Lê configs
 		bool omitUsings = _sessionManager.OmitUsings;
 		bool omitComments = _sessionManager.OmitComments;
+		bool includeStructure = _sessionManager.IncludeStructure;
+		bool structureOnlyFolders = _sessionManager.StructureOnlyFolders;
 		string prePrompt = _sessionManager.PrePrompt;
 
 		OnStatusChanged($"Processando {selectedFiles.Count} arquivos...");
@@ -77,16 +79,28 @@ public partial class FileSelectionViewModel : ObservableObject
 		{
 			var sb = new StringBuilder();
 
-			// 1. Adiciona o Pré-Prompt se houver
+			// 1. Pré-Prompt
 			if (!string.IsNullOrWhiteSpace(prePrompt))
 			{
 				sb.AppendLine("/* --- INSTRUÇÕES GLOBAIS (CONTEXTO) --- */");
 				sb.AppendLine(prePrompt);
 				sb.AppendLine();
-				sb.AppendLine("/* --- INÍCIO DOS ARQUIVOS --- */");
+			}
+
+			// 2. Estrutura de Pastas (NOVO)
+			if (includeStructure)
+			{
+				sb.AppendLine("/* --- ESTRUTURA DO PROJETO --- */");
+				// Gera a árvore baseada na raiz completa do projeto carregado
+				var treeStr = StructureGeneratorHelper.GenerateTree(_rootItems, structureOnlyFolders);
+				sb.AppendLine(treeStr);
 				sb.AppendLine();
 			}
 
+			sb.AppendLine("/* --- CONTEÚDO DOS ARQUIVOS --- */");
+			sb.AppendLine();
+
+			// 3. Conteúdo dos Arquivos
 			foreach (var file in selectedFiles)
 			{
 				sb.AppendLine($"// ==================== {file.FullPath} ====================");
@@ -95,7 +109,6 @@ public partial class FileSelectionViewModel : ObservableObject
 				var rawContent = await _fileSystemService.ReadFileContentAsync(file.FullPath);
 				var extension = System.IO.Path.GetExtension(file.FullPath);
 
-				// 2. Limpa o código com o Helper
 				var cleanContent = CodeCleanupHelper.ProcessCode(rawContent, extension, omitUsings, omitComments);
 
 				sb.AppendLine(cleanContent);
@@ -107,7 +120,7 @@ public partial class FileSelectionViewModel : ObservableObject
 			dataPackage.SetText(sb.ToString());
 			Clipboard.SetContent(dataPackage);
 
-			OnStatusChanged($"{selectedFiles.Count} arquivos copiados com sucesso!");
+			OnStatusChanged("Copiado com sucesso!");
 		}
 		catch (Exception ex)
 		{

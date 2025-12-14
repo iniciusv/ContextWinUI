@@ -13,10 +13,16 @@ namespace ContextWinUI.Services;
 
 public class PersistenceService : IPersistenceService
 {
-	// Pasta onde os caches ficarão (ao lado do executável)
 	private const string AppCacheFolderName = "ContextWinUI_Cache";
 
-	public async Task SaveProjectCacheAsync(string projectRootPath, IEnumerable<FileSharedState> states, string prePrompt, bool omitUsings, bool omitComments)
+	public async Task SaveProjectCacheAsync(
+		string projectRootPath,
+		IEnumerable<FileSharedState> states,
+		string prePrompt,
+		bool omitUsings,
+		bool omitComments,
+		bool includeStructure,
+		bool structureOnlyFolders)
 	{
 		try
 		{
@@ -34,6 +40,8 @@ public class PersistenceService : IPersistenceService
 				PrePrompt = prePrompt,
 				OmitUsings = omitUsings,
 				OmitComments = omitComments,
+				IncludeStructure = includeStructure,         // <--- Salvando
+				StructureOnlyFolders = structureOnlyFolders, // <--- Salvando
 				Files = states.Select(s => new FileMetadataDto
 				{
 					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
@@ -44,10 +52,7 @@ public class PersistenceService : IPersistenceService
 			var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
 			await File.WriteAllTextAsync(cacheFilePath, json);
 		}
-		catch (Exception)
-		{
-			throw;
-		}
+		catch (Exception) { throw; }
 	}
 
 	public async Task<ProjectCacheDto?> LoadProjectCacheAsync(string projectRootPath)
@@ -55,37 +60,27 @@ public class PersistenceService : IPersistenceService
 		try
 		{
 			var cacheFilePath = GetCacheFilePath(projectRootPath);
-
 			if (!File.Exists(cacheFilePath)) return null;
 
 			var json = await File.ReadAllTextAsync(cacheFilePath);
 			return JsonSerializer.Deserialize<ProjectCacheDto>(json);
 		}
-		catch
-		{
-			return null;
-		}
+		catch { return null; }
 	}
 
-	// Gera um caminho único para o arquivo de cache baseado no caminho do projeto
 	private string GetCacheFilePath(string projectPath)
 	{
-		// Pega o diretório onde o executável está rodando
 		var appDir = AppDomain.CurrentDomain.BaseDirectory;
 		var cacheDir = Path.Combine(appDir, AppCacheFolderName);
-
 		var name = Path.GetFileName(projectPath.TrimEnd(Path.DirectorySeparatorChar));
 		var hash = CreateMd5(projectPath);
-
-		var fileName = $"{name}_{hash}.json";
-
-		return Path.Combine(cacheDir, fileName);
+		return Path.Combine(cacheDir, $"{name}_{hash}.json");
 	}
 
 	private string CreateMd5(string input)
 	{
 		using var md5 = MD5.Create();
-		var inputBytes = Encoding.ASCII.GetBytes(input.ToLowerInvariant()); // Normaliza para minúsculo
+		var inputBytes = Encoding.ASCII.GetBytes(input.ToLowerInvariant());
 		var hashBytes = md5.ComputeHash(inputBytes);
 		return Convert.ToHexString(hashBytes);
 	}

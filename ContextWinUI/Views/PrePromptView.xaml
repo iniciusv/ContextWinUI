@@ -10,6 +10,7 @@
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
@@ -20,23 +21,27 @@
 			</StackPanel>
 		</Grid>
 
-		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="16,0,16,12">
-			<TextBlock Text="Ao copiar:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7"/>
-
-			<CheckBox Content="Omitir 'using/imports'" 
-                      IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}"/>
-
-			<CheckBox Content="Omitir Comentários" 
-                      IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
+		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="16,0,16,8">
+			<TextBlock Text="Limpeza:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" Width="70"/>
+			<CheckBox Content="Omitir 'using/imports'" IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}"/>
+			<CheckBox Content="Omitir Comentários" IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
 		</StackPanel>
 
-		<TextBox Grid.Row="2"
+		<StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="24" Margin="16,0,16,16">
+			<TextBlock Text="Estrutura:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" Width="70"/>
+			<CheckBox Content="Incluir Árvore de Pastas" IsChecked="{x:Bind ViewModel.IncludeStructure, Mode=TwoWay}"/>
+			<CheckBox Content="Apenas Pastas (Sem Arquivos)" 
+                      IsChecked="{x:Bind ViewModel.StructureOnlyFolders, Mode=TwoWay}"
+                      IsEnabled="{x:Bind ViewModel.IncludeStructure, Mode=OneWay}"/>
+		</StackPanel>
+
+		<TextBox Grid.Row="3"
                  Margin="16,0,16,16"
                  Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 PlaceholderText="Instruções globais (ex: 'Você é um especialista em C#...')."
+                 PlaceholderText="Instruções globais..."
                  FontFamily="Consolas, Courier New"
                  CornerRadius="4" BorderThickness="0"/>
 	</Grid>
