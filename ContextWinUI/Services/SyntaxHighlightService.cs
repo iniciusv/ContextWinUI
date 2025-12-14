@@ -2,12 +2,11 @@
 using ColorCode.Common;
 using ColorCode.Styling;
 using ContextWinUI.Helpers;
-using ContextWinUI.Services;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using System;
 
-namespace ContextWinUI.ContextWinUI.Services;
+namespace ContextWinUI.Services;
 
 public class SyntaxHighlightService
 {

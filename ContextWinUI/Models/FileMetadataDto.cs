@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.ContextWinUI.Models;
+namespace ContextWinUI.Models;
 
 public class FileMetadataDto
 {

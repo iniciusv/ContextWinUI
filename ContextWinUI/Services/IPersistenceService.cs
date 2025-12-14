@@ -1,10 +1,6 @@
-﻿using ContextWinUI.ContextWinUI.Models;
-using ContextWinUI.Models;
+﻿using ContextWinUI.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-
-using ContextWinUI.ContextWinUI.Models;
-using ContextWinUI.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 

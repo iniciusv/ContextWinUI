@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace ContextWinUI.ContextWinUI.Models;
+namespace ContextWinUI.Models;
 
 public class ProjectCacheDto
 {

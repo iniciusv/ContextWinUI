@@ -1,5 +1,4 @@
-﻿using ContextWinUI.ContextWinUI.Services;
-using ContextWinUI.Services;
+﻿using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

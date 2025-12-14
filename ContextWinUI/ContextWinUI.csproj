@@ -15,8 +15,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="ContextWinUI\ViewModels\ContextAnalysisView.xaml" />
-    <None Remove="ContextWinUI\ViewModels\FileContentView.xaml" />
+    <None Remove="ViewModels\ContextAnalysisView.xaml" />
+    <None Remove="ViewModels\FileContentView.xaml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -55,19 +55,6 @@
     <Folder Include="Converters\" />
   </ItemGroup>
   <ItemGroup>
-    <Page Update="ContextWinUI\ViewModels\ContextAnalysisView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Update="ContextWinUI\ViewModels\FileContentView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Update="ContextWinUI\ViewModels\FileExplorerView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
     <Page Update="Views\Components\TagChipsControl.xaml">
       <SubType>Designer</SubType>
     </Page>

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using ColorCode.Styling; // Para acessar o StyleDictionary
 using Windows.UI;
 
-namespace ContextWinUI.ContextWinUI.Services;
+namespace ContextWinUI.Services;
 
 public class RoslynHighlightService
 {
