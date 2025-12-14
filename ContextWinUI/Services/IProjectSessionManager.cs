@@ -17,7 +17,7 @@ public interface IProjectSessionManager
 
 	event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	event EventHandler<string>? StatusChanged;
-
+	Task LoadProjectAsync();
 	Task OpenProjectAsync(string path);
 	Task SaveSessionAsync();
 	void CloseProject();

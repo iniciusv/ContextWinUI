@@ -10,6 +10,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading; // Necessário para CancellationToken
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -18,20 +19,15 @@ namespace ContextWinUI.ViewModels;
 public partial class ContextAnalysisViewModel : ObservableObject
 {
 	private readonly IRoslynAnalyzerService _roslynAnalyzer;
-	private readonly IFileSystemService _fileSystemService; // Usado para leitura de conteúdo na cópia
+	private readonly IFileSystemService _fileSystemService;
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IGitService _gitService;
 
-	// --- DEPENDÊNCIAS PÚBLICAS ---
 	public ITagManagementUiService TagService { get; }
-
-	// O ViewModel Filho que gerencia a Lista Plana e IO
 	public ContextSelectionViewModel SelectionVM { get; }
 
-	// --- ESTADO INTERNO ---
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
-	// Coleções que este VM ainda gerencia (Árvore e Git)
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> contextTreeItems = new();
 
@@ -50,7 +46,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	[ObservableProperty]
 	private bool canGoBack;
 
-	// Atalho para View exibir contagem
 	public int SelectedCount => SelectionVM.SelectedItemsList.Count;
 
 	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
@@ -62,7 +57,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			IFileSystemItemFactory itemFactory,
 			ITagManagementUiService tagService,
 			IGitService gitService,
-			ContextSelectionViewModel selectionVM) // <--- Recebe o filho injetado
+			ContextSelectionViewModel selectionVM)
 	{
 		_roslynAnalyzer = roslynAnalyzer;
 		_fileSystemService = fileSystemService;
@@ -71,7 +66,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		_gitService = gitService;
 		SelectionVM = selectionVM;
 
-		// Ouve mudanças no filho para notificar a View sobre o contador
 		SelectionVM.SelectedItemsList.CollectionChanged += (s, e) =>
 		{
 			OnPropertyChanged(nameof(SelectedCount));
@@ -80,26 +74,23 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	// --- MÉTODOS DE ORQUESTRAÇÃO ---
 
-	// Chamado em tempo real quando checkboxes mudam no Explorer
 	public void UpdateSelectionPreview(IEnumerable<FileSystemItem> items)
 	{
 		if (IsLoading) return;
 
 		ContextTreeItems.Clear();
-		SelectionVM.Clear(); // Delega limpeza
+		SelectionVM.Clear();
 
 		foreach (var item in items)
 		{
-			// Cria wrapper visual
 			var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
 			RegisterItemEventsRecursively(fileNode);
 
 			ContextTreeItems.Add(fileNode);
-			SelectionVM.AddItem(fileNode); // Delega adição
+			SelectionVM.AddItem(fileNode);
 		}
 	}
 
-	// Chamado pelo botão "Analisar Contexto" (Roslyn pesado)
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
 		if (!selectedItems.Any()) return;
@@ -114,8 +105,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 
 		ContextTreeItems.Clear();
-		// Não limpamos o SelectionVM aqui obrigatoriamente, 
-		// mas geralmente queremos sincronizar com o que foi pedido.
 		SelectionVM.Clear();
 
 		OnStatusChanged("Analisando estrutura do código...");
@@ -145,7 +134,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	// --- LÓGICA DE POPULAÇÃO (ROSLYN) ---
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
@@ -181,7 +169,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		node.IsExpanded = true;
 	}
 
-	// --- GIT ---
 	[RelayCommand]
 	public async Task RefreshGitChangesAsync(string rootPath)
 	{
@@ -211,13 +198,11 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	// --- GERENCIAMENTO DE EVENTOS ---
 	private void RegisterItemEventsRecursively(FileSystemItem item)
 	{
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
 
-		// Se já vier marcado, adiciona na lista de seleção
 		if (item.IsChecked) SelectionVM.AddItem(item);
 
 		foreach (var child in item.Children) RegisterItemEventsRecursively(child);
@@ -227,18 +212,14 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	{
 		if (sender is FileSystemItem item && e.PropertyName == nameof(FileSystemItem.IsChecked))
 		{
-			// Sincroniza check visual da árvore com a lista de seleção
 			if (item.IsChecked) SelectionVM.AddItem(item);
 			else SelectionVM.RemoveItem(item);
 		}
 	}
 
-	// --- NAVEGAÇÃO E UTILS ---
-
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
-		// Lógica de aprofundamento (Drill-down)
 		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
 		IsLoading = true;
 		try
@@ -254,7 +235,11 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	[RelayCommand] private void ExpandAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true); }
 	[RelayCommand] private void CollapseAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(false); }
-	[RelayCommand] private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query);
+
+	// --- CORREÇÃO: Passando Token None ---
+	[RelayCommand]
+	private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query, CancellationToken.None);
+	// -------------------------------------
 
 	[RelayCommand]
 	private void GoBack()
@@ -288,14 +273,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		SelectedItem = null;
 	}
 
-	// --- COPIAR (Lê do SelectionVM) ---
 	[RelayCommand]
 	private async Task CopyContextToClipboardAsync()
 	{
 		IsLoading = true;
 		try
 		{
-			// Agora lê da lista do sub-viewModel
 			var itemsToCopy = SelectionVM.SelectedItemsList;
 
 			if (!itemsToCopy.Any()) return;
@@ -309,7 +292,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 				if (string.IsNullOrEmpty(item.FullPath)) continue;
 				try
 				{
-					// Lógica básica de cópia (ou use CodeCleanupHelper se desejar)
 					var content = await _fileSystemService.ReadFileContentAsync(item.FullPath);
 					sb.AppendLine($"// Arquivo: {Path.GetFileName(item.FullPath)}");
 					sb.AppendLine(content);
@@ -325,7 +307,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	[RelayCommand] // Comando vazio para binding do botão de fluxo (métodos)
+	[RelayCommand]
 	private void AnalyzeMethodFlow(FileSystemItem item) { /* TODO: Implementar */ }
 
 	[RelayCommand]

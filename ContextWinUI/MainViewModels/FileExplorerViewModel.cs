@@ -3,152 +3,169 @@ using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
+using Microsoft.UI.Dispatching; // Necessário para capturar o Dispatcher
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject
 {
-	// Dependência do Manager (Dados)
 	private readonly IProjectSessionManager _sessionManager;
 
-	// Dependência do Serviço de UI (Tags) - Exposto para a View usar
+	// Serviço exposto para a View (MenuFlyout)
 	public ITagManagementUiService TagService { get; }
 
-	// Item com foco visual (azul)
-	private FileSystemItem? _selectedItem;
+	// Captura o Dispatcher da Thread de UI na criação do ViewModel
+	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> rootItems = new();
 
 	[ObservableProperty]
-	private string currentPath = string.Empty;
-
-	[ObservableProperty]
 	private bool isLoading;
 
-	public event EventHandler<FileSystemItem>? FileSelected;
-	public event EventHandler<string>? StatusChanged;
+	[ObservableProperty]
+	private string currentPath = "Nenhum projeto carregado";
 
-	// CONSTRUTOR ATUALIZADO
-	public FileExplorerViewModel(
-		IProjectSessionManager sessionManager,
-		ITagManagementUiService tagService)
+	// Eventos
+	public event EventHandler<string>? StatusChanged;
+	public event EventHandler<FileSystemItem>? FileSelected;
+
+	// Controle de Cancelamento (Debounce)
+	private CancellationTokenSource? _searchCts;
+
+	public FileExplorerViewModel(IProjectSessionManager sessionManager, ITagManagementUiService tagService)
 	{
 		_sessionManager = sessionManager;
 		TagService = tagService;
 
-		// INSCRIÇÃO: Quando o Manager terminar de carregar tudo
 		_sessionManager.ProjectLoaded += OnProjectLoaded;
+		_sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
 	}
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
-		// Atualiza a UI com a árvore já montada e enriquecida
 		RootItems = e.RootItems;
 		CurrentPath = e.RootPath;
+		IsLoading = false;
+		OnStatusChanged("Projeto carregado com sucesso.");
 	}
 
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
 	{
+		if (IsLoading) return;
+
 		try
 		{
-			var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+			IsLoading = true;
+			OnStatusChanged("Selecionando pasta...");
 
-			// Configuração para WinUI 3 (Handle da Janela)
-			if (App.MainWindow != null)
-			{
-				var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-			}
-
-			folderPicker.FileTypeFilter.Add("*");
-
-			var folder = await folderPicker.PickSingleFolderAsync();
-
-			if (folder != null)
-			{
-				await _sessionManager.OpenProjectAsync(folder.Path);
-			}
+			await _sessionManager.LoadProjectAsync();
 		}
 		catch (Exception ex)
 		{
-			OnStatusChanged($"Erro ao selecionar pasta: {ex.Message}");
+			OnStatusChanged($"Erro ao abrir projeto: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
 		}
 	}
 
-	// --- COMANDOS VISUAIS (Busca, Expansão, Foco) ---
-
-	[RelayCommand]
-	private void Search(string query)
+	public void SelectFile(FileSystemItem item)
 	{
-		TreeSearchHelper.Search(RootItems, query);
+		FileSelected?.Invoke(this, item);
 	}
+
+	// --- PESQUISA OTIMIZADA (DEBOUNCE + ASYNC RESET) ---
+	[RelayCommand]
+	private async Task SearchAsync(string query)
+	{
+		// 1. Cancela busca anterior (se o usuário digitar rápido)
+		if (_searchCts != null)
+		{
+			_searchCts.Cancel();
+			_searchCts.Dispose();
+		}
+
+		// 2. Cria novo token
+		_searchCts = new CancellationTokenSource();
+		var token = _searchCts.Token;
+
+		try
+		{
+			// 3. Debounce de 300ms (espera o usuário parar de digitar)
+			await Task.Delay(300, token);
+
+			// 4. Executa a busca (ou limpeza) se não tiver sido cancelado
+			if (!token.IsCancellationRequested && RootItems != null)
+			{
+				// Passamos o DispatcherQueue para permitir manipulação otimizada da UI
+				await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
+			}
+		}
+		catch (TaskCanceledException)
+		{
+			// Comportamento esperado do debounce, ignora
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro na pesquisa: {ex.Message}");
+		}
+	}
+
+	// --- COMANDOS DE VISUALIZAÇÃO ---
 
 	[RelayCommand]
 	private void ExpandAll()
 	{
 		if (RootItems == null) return;
-		foreach (var item in RootItems) item.SetExpansionRecursively(true);
+		SetExpansionRecursive(RootItems, true);
 	}
 
 	[RelayCommand]
 	private void CollapseAll()
 	{
 		if (RootItems == null) return;
-		foreach (var item in RootItems) item.SetExpansionRecursively(false);
-	}
-
-	[RelayCommand]
-	private void SyncFocus()
-	{
-		if (_selectedItem == null || RootItems == null) return;
-
-		foreach (var item in RootItems)
-		{
-			SyncFocusRecursive(item, _selectedItem);
-		}
-	}
-
-	private bool SyncFocusRecursive(FileSystemItem currentItem, FileSystemItem targetItem)
-	{
-		if (currentItem.FullPath == targetItem.FullPath)
-		{
-			if (currentItem.IsDirectory) currentItem.IsExpanded = true;
-			return true;
-		}
-
-		bool keepExpanded = false;
-		foreach (var child in currentItem.Children)
-		{
-			if (SyncFocusRecursive(child, targetItem))
-			{
-				keepExpanded = true;
-			}
-		}
-
-		currentItem.IsExpanded = keepExpanded;
-		return keepExpanded;
+		SetExpansionRecursive(RootItems, false);
 	}
 
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
 	{
-		item.IsExpanded = true;
+		if (item != null) item.IsExpanded = true;
 	}
 
-	public void SelectFile(FileSystemItem item)
+	[RelayCommand]
+	private void SyncFocus()
 	{
-		_selectedItem = item;
+		// Recolhe tudo para "focar" (pode ser aprimorado para manter selecionado aberto)
+		CollapseAll();
+	}
 
-		if (item.IsCodeFile)
+	private void SetExpansionRecursive(IEnumerable<FileSystemItem> items, bool isExpanded)
+	{
+		foreach (var item in items)
 		{
-			FileSelected?.Invoke(this, item);
+			if (item.IsDirectory)
+			{
+				item.IsExpanded = isExpanded;
+				if (item.Children != null && item.Children.Any())
+				{
+					SetExpansionRecursive(item.Children, isExpanded);
+				}
+			}
 		}
 	}
 
-	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+	private void OnStatusChanged(string message)
+	{
+		StatusChanged?.Invoke(this, message);
+	}
 }

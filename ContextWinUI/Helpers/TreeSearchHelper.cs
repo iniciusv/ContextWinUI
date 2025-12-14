@@ -1,108 +1,162 @@
 ﻿using ContextWinUI.Models;
+using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ContextWinUI.Helpers;
 
 public static class TreeSearchHelper
 {
-	public static void Search(IEnumerable<FileSystemItem> items, string searchText)
+	/// <summary>
+	/// VERSÃO ASSÍNCRONA (Otimizada para grandes árvores com Dispatcher)
+	/// </summary>
+	public static async Task SearchAsync(
+		IEnumerable<FileSystemItem> items,
+		string searchText,
+		CancellationToken token,
+		DispatcherQueue dispatcher)
 	{
 		if (items == null) return;
+		if (token.IsCancellationRequested) return;
 
-		// Se a busca estiver vazia, limpa o filtro (mostra tudo)
+		// Reset Otimizado (Async)
 		if (string.IsNullOrWhiteSpace(searchText))
 		{
-			ResetVisibility(items);
+			await ResetVisibilityAsync(items, token, dispatcher);
 			return;
 		}
 
-		// Executa a busca recursiva
+		PerformSearch(items, searchText, token);
+	}
+
+	/// <summary>
+	/// VERSÃO SÍNCRONA (Compatibilidade para ContextAnalysisViewModel e listas pequenas)
+	/// </summary>
+	public static void Search(
+		IEnumerable<FileSystemItem> items,
+		string searchText,
+		CancellationToken token = default)
+	{
+		if (items == null) return;
+		if (token.IsCancellationRequested) return;
+
+		if (string.IsNullOrWhiteSpace(searchText))
+		{
+			ResetVisibilitySync(items, token);
+			return;
+		}
+
+		PerformSearch(items, searchText, token);
+	}
+
+	// --- LÓGICA DE BUSCA COMPARTILHADA ---
+	private static void PerformSearch(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token)
+	{
+		string trimmedSearch = searchText.Trim();
+		bool isTagSearch = trimmedSearch.StartsWith("#");
+		string query = isTagSearch ? trimmedSearch.Substring(1).Trim() : trimmedSearch;
+
 		foreach (var item in items)
 		{
-			SearchRecursive(item, searchText.Trim());
+			if (token.IsCancellationRequested) return;
+			SearchRecursive(item, query, isTagSearch, token);
 		}
 	}
 
-	private static bool SearchRecursive(FileSystemItem item, string searchText)
+	// --- LOGICA RECURSIVA DE BUSCA ---
+	private static bool SearchRecursive(FileSystemItem item, string query, bool isTagSearch, CancellationToken token)
 	{
+		if (token.IsCancellationRequested) return false;
+
 		bool isSelfMatch = false;
 
-		// --- LÓGICA NOVA: DETECÇÃO DE TAGS (#) ---
-		if (searchText.StartsWith("#"))
-		{
-			// Remove o # e espaços extras (ex: "# importante " vira "importante")
-			var tagQuery = searchText.Substring(1).Trim();
-
-			// Se o usuário digitou apenas "#", podemos optar por mostrar:
-			// a) Nada (espera digitar)
-			// b) Tudo que tem alguma tag (útil para descoberta)
-			// Vamos na opção B: Mostra itens que possuem qualquer tag
-			if (string.IsNullOrEmpty(tagQuery))
-			{
-				isSelfMatch = item.SharedState.Tags.Any();
-			}
-			else
-			{
-				// Verifica se ALGUMA tag contém o texto digitado
-				isSelfMatch = item.SharedState.Tags.Any(tag =>
-					tag.Contains(tagQuery, StringComparison.OrdinalIgnoreCase));
-			}
-		}
+		if (isTagSearch)
+			isSelfMatch = string.IsNullOrEmpty(query) ? item.SharedState.Tags.Any() : item.SharedState.Tags.Any(t => t.Contains(query, StringComparison.OrdinalIgnoreCase));
 		else
-		{
-			// --- LÓGICA PADRÃO: BUSCA POR NOME ---
-			isSelfMatch = item.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase);
-		}
-		// ------------------------------------------
+			isSelfMatch = item.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
 
-		// 2. Verifica recursivamente os filhos (Bottom-Up)
 		bool hasMatchingChildren = false;
 
 		if (item.Children != null && item.Children.Any())
 		{
 			foreach (var child in item.Children)
 			{
-				// Chama recursivamente para cada filho passando a mesma query
-				bool childMatch = SearchRecursive(child, searchText);
-
-				if (childMatch)
-				{
-					hasMatchingChildren = true;
-				}
+				if (token.IsCancellationRequested) return false;
+				if (SearchRecursive(child, query, isTagSearch, token)) hasMatchingChildren = true;
 			}
 		}
 
-		// 3. Determina a visibilidade deste item
-		// Ele aparece se: Deu match nele mesmo OU tem filhos que deram match (para manter o caminho aberto)
 		item.IsVisibleInSearch = isSelfMatch || hasMatchingChildren;
 
-		// 4. Expande a pasta se houver filhos encontrados
-		if (hasMatchingChildren)
-		{
-			item.IsExpanded = true;
-		}
-		// Opcional: Se for match direto e for diretório, expande também?
-		// if (isSelfMatch && item.IsDirectory) item.IsExpanded = true;
+		if (hasMatchingChildren) item.IsExpanded = true;
+		else if (item.IsDirectory) item.IsExpanded = false; // Contrai se não for resultado
 
 		return item.IsVisibleInSearch;
 	}
 
-	private static void ResetVisibility(IEnumerable<FileSystemItem> items)
+	// --- RESET OTIMIZADO (ASYNC/DISPATCHER) ---
+	private static async Task ResetVisibilityAsync(IEnumerable<FileSystemItem> items, CancellationToken token, DispatcherQueue dispatcher)
 	{
-		if (items == null) return;
-
+		// 1. Imediato: Fecha Raiz
 		foreach (var item in items)
 		{
+			if (token.IsCancellationRequested) return;
+			item.IsVisibleInSearch = true;
+			if (item.IsDirectory) item.IsExpanded = false;
+		}
+
+		// 2. Background: Reseta filhos
+		await Task.Run(() =>
+		{
+			foreach (var item in items)
+			{
+				if (token.IsCancellationRequested) return;
+				if (item.Children != null && item.Children.Any())
+				{
+					dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+					{
+						if (!token.IsCancellationRequested)
+							ResetVisibilitySyncRecursive(item.Children, token);
+					});
+				}
+			}
+		});
+	}
+
+	// --- RESET SIMPLES (SYNC) ---
+	private static void ResetVisibilitySync(IEnumerable<FileSystemItem> items, CancellationToken token)
+	{
+		foreach (var item in items)
+		{
+			if (token.IsCancellationRequested) return;
 			item.IsVisibleInSearch = true;
 
-			// Opcional: Recolher pastas ao limpar busca deixa a árvore mais limpa
-			// item.IsExpanded = false; 
+			// Em listas pequenas (ContextAnalysis), expandir ou recolher é opcional.
+			// Aqui mantemos recolhido por padrão para limpeza.
+			// if (item.IsDirectory) item.IsExpanded = false; 
 
 			if (item.Children != null && item.Children.Any())
 			{
-				ResetVisibility(item.Children);
+				ResetVisibilitySync(item.Children, token);
+			}
+		}
+	}
+
+	// Auxiliar recursivo para o Reset Async e Sync
+	private static void ResetVisibilitySyncRecursive(IEnumerable<FileSystemItem> items, CancellationToken token)
+	{
+		foreach (var item in items)
+		{
+			if (token.IsCancellationRequested) return;
+			item.IsVisibleInSearch = true;
+			if (item.IsDirectory) item.IsExpanded = false;
+
+			if (item.Children != null && item.Children.Any())
+			{
+				ResetVisibilitySyncRecursive(item.Children, token);
 			}
 		}
 	}

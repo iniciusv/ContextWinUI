@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Windows.Storage.Pickers; // Necessário para FolderPicker
 
 namespace ContextWinUI.Services;
 
@@ -34,6 +35,36 @@ public class ProjectSessionManager : IProjectSessionManager
 		_itemFactory = itemFactory;
 	}
 
+	// --- CORREÇÃO: Implementação do Picker ---
+	public async Task LoadProjectAsync()
+	{
+		try
+		{
+			var folderPicker = new FolderPicker();
+			folderPicker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
+			folderPicker.FileTypeFilter.Add("*");
+
+			// Workaround para obter HWND da janela principal em WinUI 3
+			var window = App.MainWindow;
+			if (window != null)
+			{
+				var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+				WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hWnd);
+			}
+
+			var folder = await folderPicker.PickSingleFolderAsync();
+			if (folder != null)
+			{
+				await OpenProjectAsync(folder.Path);
+			}
+		}
+		catch (Exception ex)
+		{
+			NotifyStatus($"Erro ao selecionar pasta: {ex.Message}");
+		}
+	}
+	// ----------------------------------------
+
 	public async Task OpenProjectAsync(string path)
 	{
 		if (string.IsNullOrWhiteSpace(path)) return;
@@ -55,6 +86,7 @@ public class ProjectSessionManager : IProjectSessionManager
 			}
 			else
 			{
+				// Defaults
 				PrePrompt = string.Empty;
 				OmitUsings = false;
 				OmitComments = false;
