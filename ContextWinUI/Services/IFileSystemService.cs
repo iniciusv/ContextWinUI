@@ -8,4 +8,5 @@ public interface IFileSystemService
 {
 	Task<ObservableCollection<FileSystemItem>> LoadProjectRecursivelyAsync(string rootPath);
 	Task<string> ReadFileContentAsync(string filePath);
+	Task SaveFileContentAsync(string filePath, string content);
 }

@@ -1,19 +1,16 @@
 ﻿using ColorCode.Common;
 using ColorCode.Styling;
 using Microsoft.UI.Xaml;
+using Microsoft.UI;
+using System;
+using Windows.UI;
 
-// ALIAS: Resolve o conflito entre 'Microsoft.UI.Xaml.Style' e 'ColorCode.Styling.Style'
 using Style = ColorCode.Styling.Style;
 
 namespace ContextWinUI.Helpers;
 
-/// <summary>
-/// Helper responsável por definir as cores do Syntax Highlight baseado no tema do Windows.
-/// Suporta tanto o ColorCode padrão quanto a análise semântica do Roslyn.
-/// </summary>
 public static class ThemeHelper
 {
-	// --- ESCOPOS SEMÂNTICOS (Usados pelo Roslyn) ---
 	public const string FieldScope = "Field";
 	public const string PropertyScope = "Property";
 	public const string ParameterScope = "Parameter";
@@ -23,11 +20,10 @@ public static class ThemeHelper
 	public const string InterfaceScope = "Interface Name";
 	public const string MethodScope = "Method Name";
 	public const string NamespaceScope = "Namespace";
-	public const string ClassScope = ScopeName.ClassName; // Reutiliza o nome padrão
+	public const string ClassScope = ScopeName.ClassName;
+	public const string ControlKeywordScope = "Control Keyword";
+	public const string PunctuationScope = "Punctuation";
 
-	/// <summary>
-	/// Detecta se o aplicativo está rodando em tema escuro.
-	/// </summary>
 	public static bool IsDarkTheme()
 	{
 		if (App.MainWindow?.Content is FrameworkElement rootElement)
@@ -37,147 +33,81 @@ public static class ThemeHelper
 		return Application.Current.RequestedTheme == ApplicationTheme.Dark;
 	}
 
-	/// <summary>
-	/// Retorna o dicionário de estilos apropriado para o tema atual.
-	/// </summary>
 	public static StyleDictionary GetCurrentThemeStyle()
 	{
 		return IsDarkTheme() ? GetDarkThemeStyle() : GetLightThemeStyle();
 	}
 
-	/// <summary>
-	/// Tema Escuro (Baseado no VS Code Dark+)
-	/// </summary>
+	// MÉTODO NOVO: Utilitário público para converter cores
+	public static Color GetColorFromHex(string hex)
+	{
+		if (string.IsNullOrEmpty(hex)) return Colors.Transparent;
+
+		hex = hex.Replace("#", "");
+		byte a = 255;
+		byte r = 0;
+		byte g = 0;
+		byte b = 0;
+
+		if (hex.Length == 6)
+		{
+			r = Convert.ToByte(hex.Substring(0, 2), 16);
+			g = Convert.ToByte(hex.Substring(2, 2), 16);
+			b = Convert.ToByte(hex.Substring(4, 2), 16);
+		}
+		else if (hex.Length == 8)
+		{
+			a = Convert.ToByte(hex.Substring(0, 2), 16);
+			r = Convert.ToByte(hex.Substring(2, 2), 16);
+			g = Convert.ToByte(hex.Substring(4, 2), 16);
+			b = Convert.ToByte(hex.Substring(6, 2), 16);
+		}
+
+		return Color.FromArgb(a, r, g, b);
+	}
+
 	private static StyleDictionary GetDarkThemeStyle()
 	{
 		return new StyleDictionary
 		{
-            // --- BÁSICOS (ColorCode & Roslyn) ---
-            new Style(ScopeName.PlainText)
-			{
-				Foreground = "#D4D4D4",
-				Background = "#1E1E1E"
-			},
-			new Style(ScopeName.Keyword)
-			{
-				Foreground = "#569CD6" // Azul
-            },
-			new Style(ScopeName.String)
-			{
-				Foreground = "#CE9178" // Laranja/Marrom
-            },
-			new Style(ScopeName.StringCSharpVerbatim)
-			{
-				Foreground = "#CE9178"
-			},
-			new Style(ScopeName.Comment)
-			{
-				Foreground = "#6A9955" // Verde
-            },
-			new Style(ScopeName.XmlDocTag)
-			{
-				Foreground = "#6A9955"
-			},
-			new Style(ScopeName.XmlDocComment)
-			{
-				Foreground = "#6A9955"
-			},
-			new Style(ScopeName.Number)
-			{
-				Foreground = "#B5CEA8" // Verde Claro
-            },
-			new Style(ScopeName.PreprocessorKeyword)
-			{
-				Foreground = "#9B9B9B" // Cinza
-            },
+            // O Background definido aqui (#1E1E1E) será usado pela View agora
+            new Style(ScopeName.PlainText) { Foreground = "#D4D4D4", Background = "#1E1E1E" },
+			new Style(ScopeName.Keyword) { Foreground = "#569CD6" },
+			new Style(ControlKeywordScope) { Foreground = "#C586C0" },
+			new Style(ScopeName.String) { Foreground = "#CE9178" },
+			new Style(ScopeName.StringCSharpVerbatim) { Foreground = "#CE9178" },
+			new Style(ScopeName.Comment) { Foreground = "#6A9955" },
+			new Style(ScopeName.XmlDocTag) { Foreground = "#6A9955" },
+			new Style(ScopeName.Number) { Foreground = "#B5CEA8" },
 
-            // --- SEMÂNTICOS (Específicos do Roslyn) ---
-            
-            // Tipos
-            new Style(ClassScope)     { Foreground = "#4EC9B0" }, // Verde Água
-            new Style(StructScope)    { Foreground = "#86C691" }, // Verde diferente
-            new Style(InterfaceScope) { Foreground = "#B8D7A3" }, // Verde Pálido
-            new Style(EnumScope)      { Foreground = "#B8D7A3" }, 
+			new Style(ClassScope)     { Foreground = "#4EC9B0" },
+			new Style(InterfaceScope) { Foreground = "#B8D7A3" },
+			new Style(MethodScope)    { Foreground = "#DCDCAA" },
 
-            // Membros
-            new Style(MethodScope)    { Foreground = "#DCDCAA" }, // Amarelo
-            new Style(PropertyScope)  { Foreground = "#9CDCFE" }, // Azul Claro
-            new Style(FieldScope)     { Foreground = "#9CDCFE" }, 
-            
-            // Variáveis
-            new Style(ParameterScope)     { Foreground = "#9CDCFE" },
+			new Style(ParameterScope)     { Foreground = "#9CDCFE" },
 			new Style(LocalVariableScope) { Foreground = "#9CDCFE" },
-            
-            // Outros
-            new Style(NamespaceScope) { Foreground = "#FFFFFF" }
+
+			new Style(PunctuationScope) { Foreground = "#FFD700" },
+
+			new Style(NamespaceScope) { Foreground = "#FFFFFF" }
 		};
 	}
 
-	/// <summary>
-	/// Tema Claro (Baseado no Visual Studio Light)
-	/// </summary>
 	private static StyleDictionary GetLightThemeStyle()
 	{
 		return new StyleDictionary
 		{
-            // --- BÁSICOS ---
-            new Style(ScopeName.PlainText)
-			{
-				Foreground = "#000000",
-				Background = "#FFFFFF"
-			},
-			new Style(ScopeName.Keyword)
-			{
-				Foreground = "#0000FF" // Azul Escuro
-            },
-			new Style(ScopeName.String)
-			{
-				Foreground = "#A31515" // Vermelho Escuro
-            },
-			new Style(ScopeName.StringCSharpVerbatim)
-			{
-				Foreground = "#A31515"
-			},
-			new Style(ScopeName.Comment)
-			{
-				Foreground = "#008000" // Verde Escuro
-            },
-			new Style(ScopeName.XmlDocTag)
-			{
-				Foreground = "#808080"
-			},
-			new Style(ScopeName.XmlDocComment)
-			{
-				Foreground = "#008000"
-			},
-			new Style(ScopeName.Number)
-			{
-				Foreground = "#09885A"
-			},
-			new Style(ScopeName.PreprocessorKeyword)
-			{
-				Foreground = "#808080"
-			},
+			new Style(ScopeName.PlainText) { Foreground = "#000000", Background = "#FFFFFF" },
+			new Style(ScopeName.Keyword) { Foreground = "#0000FF" },
+			new Style(ControlKeywordScope) { Foreground = "#AF00DB" },
+			new Style(ScopeName.String) { Foreground = "#A31515" },
+			new Style(ScopeName.Comment) { Foreground = "#008000" },
+			new Style(ScopeName.Number) { Foreground = "#09885A" },
 
-            // --- SEMÂNTICOS ---
-
-            // Tipos
-            new Style(ClassScope)     { Foreground = "#2B91AF" }, // Azul Petróleo
-            new Style(StructScope)    { Foreground = "#2B91AF" },
-			new Style(InterfaceScope) { Foreground = "#2B91AF" },
-			new Style(EnumScope)      { Foreground = "#2B91AF" },
-
-            // Membros
-            new Style(MethodScope)    { Foreground = "#74531F" }, // Dourado/Marrom
-            new Style(PropertyScope)  { Foreground = "#000000" }, // Preto
-            new Style(FieldScope)     { Foreground = "#000000" },
-            
-            // Variáveis
-            new Style(ParameterScope)     { Foreground = "#1F377F" }, // Azul acinzentado
-            new Style(LocalVariableScope) { Foreground = "#1F377F" },
-            
-            // Outros
-            new Style(NamespaceScope) { Foreground = "#000000" }
+			new Style(ClassScope)     { Foreground = "#2B91AF" },
+			new Style(MethodScope)    { Foreground = "#74531F" },
+			new Style(ParameterScope) { Foreground = "#1F377F" },
+			new Style(PunctuationScope) { Foreground = "#000000" },
 		};
 	}
 }

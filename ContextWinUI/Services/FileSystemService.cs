@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
 
-public class FileSystemService: IFileSystemService
+public class FileSystemService : IFileSystemService
 {
 	private readonly IFileSystemItemFactory _itemFactory;
 
@@ -18,7 +18,6 @@ public class FileSystemService: IFileSystemService
 		"packages", ".idea", "Debug", "Release", ".vscode"
 	};
 
-	// Construtor atualizado
 	public FileSystemService(IFileSystemItemFactory itemFactory)
 	{
 		_itemFactory = itemFactory;
@@ -51,7 +50,6 @@ public class FileSystemService: IFileSystemService
 
 			foreach (var subDir in subDirs)
 			{
-				// USA A FACTORY
 				var folderItem = _itemFactory.CreateWrapper(subDir);
 				var children = LoadDirectoryInternal(subDir);
 
@@ -62,7 +60,6 @@ public class FileSystemService: IFileSystemService
 			var files = dir.GetFiles().OrderBy(f => f.Name);
 			foreach (var file in files)
 			{
-				// USA A FACTORY
 				items.Add(_itemFactory.CreateWrapper(file));
 			}
 		}
@@ -75,12 +72,22 @@ public class FileSystemService: IFileSystemService
 	{
 		try
 		{
-			// Opcional: Implementar cache no Flyweight aqui se desejar
 			return await File.ReadAllTextAsync(filePath);
 		}
 		catch (Exception ex)
 		{
 			return $"Erro ao ler arquivo: {ex.Message}";
+		}
+	}
+	public async Task SaveFileContentAsync(string filePath, string content)
+	{
+		try
+		{
+			await File.WriteAllTextAsync(filePath, content);
+		}
+		catch (Exception ex)
+		{
+			throw new Exception($"Erro ao salvar arquivo: {ex.Message}");
 		}
 	}
 }

@@ -16,7 +16,7 @@ public partial class FileSharedState : ObservableObject
 	private bool isChecked;
 
 	[ObservableProperty]
-	private bool isIgnored; // <--- CORRIGIDO: Removido o atributo problemático. O ObservableProperty já cuida da notificação.
+	private bool isIgnored;
 
 	[ObservableProperty]
 	private long? fileSize;

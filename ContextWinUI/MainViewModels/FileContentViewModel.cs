@@ -14,6 +14,7 @@ public partial class FileContentViewModel : ObservableObject
 	private readonly IFileSystemService _fileSystemService;
 
 	[ObservableProperty]
+	[NotifyCanExecuteChangedFor(nameof(SaveContentCommand))]
 	private FileSystemItem? selectedItem;
 
 	[ObservableProperty]
@@ -55,6 +56,29 @@ public partial class FileContentViewModel : ObservableObject
 			IsLoading = false;
 		}
 	}
+
+	[RelayCommand(CanExecute = nameof(CanSave))]
+	private async Task SaveContentAsync()
+	{
+		if (SelectedItem == null) return;
+
+		IsLoading = true;
+		try
+		{
+			await _fileSystemService.SaveFileContentAsync(SelectedItem.FullPath, FileContent);
+			OnStatusChanged($"Salvo: {SelectedItem.Name}");
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao salvar: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
+
+	private bool CanSave() => SelectedItem != null && !IsLoading;
 
 	[RelayCommand(CanExecute = nameof(CanCopyToClipboard))]
 	private void CopyToClipboard()
