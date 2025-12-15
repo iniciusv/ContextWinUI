@@ -34,7 +34,7 @@ public partial class MainViewModel : ObservableObject
 		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
 		ITagManagementUiService tagService = new TagManagementUiService();
 		IGitService gitService = new GitService();
-		ISelectionIOService selectionIOService = new SelectionIOService(); // Novo serviço de IO
+		ISelectionIOService selectionIOService = new SelectionIOService();
 
 		// Manager de Sessão
 		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
@@ -50,13 +50,15 @@ public partial class MainViewModel : ObservableObject
 		// Sub-ViewModel para a lista de Seleção da Análise (Composição)
 		var contextSelectionVM = new ContextSelectionViewModel(itemFactory, selectionIOService);
 
-		// ViewModel de Análise (Recebe o Sub-ViewModel injetado)
+		// ViewModel de Análise
+		// --- ALTERAÇÃO: Passando _sessionManager para o ContextAnalysisViewModel ---
 		ContextAnalysis = new ContextAnalysisViewModel(
 			roslynAnalyzer,
 			fileSystemService,
 			itemFactory,
 			tagService,
 			gitService,
+			_sessionManager, // <--- Injeção necessária para o botão Refresh funcionar sozinho
 			contextSelectionVM
 		);
 
@@ -130,7 +132,8 @@ public partial class MainViewModel : ObservableObject
 		if (_sessionManager.CurrentProjectPath != null)
 		{
 			// 1. Atualiza Git
-			await ContextAnalysis.RefreshGitChangesAsync(_sessionManager.CurrentProjectPath);
+			// --- ALTERAÇÃO: Chama o comando sem parâmetros (ele pega do sessionManager interno) ---
+			await ContextAnalysis.RefreshGitChangesCommand.ExecuteAsync(null);
 
 			// 2. Roda Análise Roslyn (Isso vai popular a árvore e atualizar a lista de seleção)
 			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
