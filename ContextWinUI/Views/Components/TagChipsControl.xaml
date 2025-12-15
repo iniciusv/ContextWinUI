@@ -4,21 +4,23 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:ContextWinUI.Views.Components"
     mc:Ignorable="d">
 
-	<ItemsControl ItemsSource="{x:Bind TagsSource, Mode=OneWay}">
+	<ItemsControl ItemsSource="{x:Bind DisplayTags, Mode=OneWay}">
 		<ItemsControl.ItemsPanel>
 			<ItemsPanelTemplate>
 				<StackPanel Orientation="Horizontal" Spacing="4"/>
 			</ItemsPanelTemplate>
 		</ItemsControl.ItemsPanel>
+
 		<ItemsControl.ItemTemplate>
-			<DataTemplate>
-				<Border Background="{ThemeResource SystemAccentColor}" 
+			<DataTemplate x:DataType="local:TagUiWrapper">
+				<Border Background="{x:Bind BackgroundBrush, Mode=OneWay}" 
                         CornerRadius="4" 
                         Padding="6,2" 
                         Opacity="0.9">
-					<TextBlock Text="{Binding}" 
+					<TextBlock Text="{x:Bind Name}" 
                                FontSize="10" 
                                Foreground="White" 
                                FontWeight="SemiBold"/>

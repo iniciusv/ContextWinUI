@@ -77,7 +77,9 @@
                                   HasUnrealizedChildren="{x:Bind IsDirectory}">
 
 						<TreeViewItem.ContextFlyout>
-							<MenuFlyout Opening="OnTagMenuOpening" />
+							<Flyout Opening="OnTagMenuOpening">
+								<Grid x:Name="FlyoutContentGrid" />
+							</Flyout>
 						</TreeViewItem.ContextFlyout>
 
 						<Grid>
