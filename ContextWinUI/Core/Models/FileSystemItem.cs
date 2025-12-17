@@ -1,4 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿// ==================== ContextWinUI\Core\Models\FileSystemItem.cs ====================
+
+using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;
@@ -8,25 +10,16 @@ using System.IO;
 
 namespace ContextWinUI.Models;
 
-/// <summary>
-/// WRAPPER / PROXY: Representa um nó na árvore visual (estado extrínseco).
-/// Contém dados de posição (Pai, Filhos, Expandido) e aponta para o SharedState.
-/// </summary>
 public partial class FileSystemItem : ObservableObject, IDisposable
 {
-	// Referência ao Flyweight
+
 	public FileSharedState SharedState { get; }
 
-	// Construtor forçado para exigir o estado
 	public FileSystemItem(FileSharedState sharedState)
 	{
 		SharedState = sharedState;
-
-		// Inscreve-se para notificar a UI quando o estado compartilhado mudar
 		SharedState.PropertyChanged += OnSharedStateChanged;
 	}
-
-	// --- PROPRIEDADES PROXY (Apontam para o SharedState) ---
 
 	public string Name => SharedState.Name;
 
@@ -34,7 +27,6 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 
 	public string FileSizeFormatted => SharedState.FileSize.HasValue ? FormatBytes(SharedState.FileSize.Value) : string.Empty;
 
-	// O "IsChecked" é lido e escrito diretamente no objeto compartilhado
 	public bool IsChecked
 	{
 		get => SharedState.IsChecked;
@@ -43,13 +35,9 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 			if (SharedState.IsChecked != value)
 			{
 				SharedState.IsChecked = value;
-				// Não precisamos chamar OnPropertyChanged aqui manualmente 
-				// porque o evento do SharedState vai disparar o listener abaixo
 			}
 		}
 	}
-
-	// --- PROPRIEDADES VISUAIS (Específicas deste nó/instância) ---
 
 	[ObservableProperty]
 	private FileSystemItemType type;
@@ -58,7 +46,7 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 	private bool isExpanded;
 
 	[ObservableProperty]
-	private bool isSelected; // Foco visual (azulzinho), diferente de Checkbox
+	private bool isSelected;
 
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(Icon))]
@@ -68,13 +56,10 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 	[NotifyPropertyChangedFor(nameof(Visibility))]
 	private bool isVisibleInSearch = true;
 
-	// Assinatura de método é específica deste nó (ex: um nó de método dentro de um arquivo)
 	public string? MethodSignature { get; set; }
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> children = new();
-
-	// --- Lógica Visual ---
 
 	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
 	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
@@ -97,12 +82,8 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 		}
 	}
 
-	// --- Helpers e Eventos ---
-
 	private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		// Se o estado compartilhado mudou "IsChecked", avisamos a UI deste Wrapper
-		// que a propriedade "IsChecked" DESTE wrapper mudou.
 		if (e.PropertyName == nameof(FileSharedState.IsChecked))
 		{
 			OnPropertyChanged(nameof(IsChecked));
@@ -115,7 +96,7 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 
 	private static readonly HashSet<string> _codeExtensions = new(StringComparer.OrdinalIgnoreCase)
 	{
-		".cs", ".xaml", ".csproj", ".json", ".xml", ".js", ".ts", ".tsx", ".jsx",
+		".cs", ".xaml", ".csproj", ".json", ".xml", ".js", ".ts", ".tsx", ".jsx", ".vue",
 		".html", ".css", ".scss", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
 		".go", ".rs", ".swift", ".kt", ".php", ".sql", ".sh", ".bat", ".ps1", ".md", ".txt", ".razor"
 	};
@@ -130,6 +111,9 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 			".xml" => "\uE8A5",
 			".txt" => "\uE8A5",
 			".md" => "\uE8A5",
+			".js" or ".jsx" => "\uE943", // Code Icon
+			".ts" or ".tsx" => "\uE943",
+			".vue" => "\uE8A5",
 			_ => "\uE8A5"
 		};
 	}
@@ -152,7 +136,6 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 		IsExpanded = expanded;
 		foreach (var child in Children)
 		{
-			// Otimização: Só propaga se fizer sentido (Pastas ou Grupos)
 			if (child.IsDirectory || child.Type == FileSystemItemType.LogicalGroup)
 			{
 				child.SetExpansionRecursively(expanded);
@@ -160,7 +143,6 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 		}
 	}
 
-	// Importante para evitar vazamento de memória dos eventos
 	public void Dispose()
 	{
 		SharedState.PropertyChanged -= OnSharedStateChanged;

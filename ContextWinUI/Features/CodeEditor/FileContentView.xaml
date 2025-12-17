@@ -13,14 +13,31 @@
 		</Grid.RowDefinitions>
 
 		<CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent">
-			<AppBarButton Icon="Save" Label="Salvar" Command="{x:Bind ContentViewModel.SaveContentCommand, Mode=OneWay}" ToolTipService.ToolTip="Salvar alterações (Ctrl+S)"/>
+			<AppBarButton x:Name="BtnEdit" Icon="Edit" Label="Editar" Click="BtnEdit_Click" />
+
+			<AppBarButton x:Name="BtnSave" Icon="Save" Label="Salvar" Command="{x:Bind ContentViewModel.SaveContentCommand, Mode=OneWay}" Visibility="Collapsed" />
+
+			<AppBarButton x:Name="BtnCancel" Icon="Cancel" Label="Cancelar" Click="BtnCancel_Click" Visibility="Collapsed"/>
+
 			<AppBarSeparator/>
-			<AppBarButton Icon="Copy" Label="Copiar Arquivo" Command="{x:Bind CopySelectedCommand, Mode=OneWay}" ToolTipService.ToolTip="Copia todo o conteúdo do arquivo" />
+			<AppBarButton Icon="Copy" Label="Copiar Arquivo" Command="{x:Bind CopySelectedCommand, Mode=OneWay}" />
 			<AppBarButton Icon="Refresh" Label="Analisar" Command="{x:Bind AnalyzeCommand, Mode=OneWay}" />
 		</CommandBar>
 
+		<ScrollViewer x:Name="ViewScrollViewer" 
+                      Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto" 
+                      VerticalScrollBarVisibility="Auto">
+			<RichTextBlock x:Name="CodeViewer"
+                           FontFamily="Consolas, Courier New, Monospace"
+                           FontSize="14"
+                           IsTextSelectionEnabled="True"
+                           Padding="12"/>
+		</ScrollViewer>
+
 		<RichEditBox x:Name="CodeEditor"
                      Grid.Row="1"
+                     Visibility="Collapsed"
                      IsSpellCheckEnabled="False"
                      IsTextPredictionEnabled="False"
                      FontFamily="Consolas, Courier New, Monospace"

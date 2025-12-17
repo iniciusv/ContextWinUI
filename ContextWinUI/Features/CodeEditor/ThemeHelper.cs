@@ -1,4 +1,6 @@
-﻿using ColorCode.Common;
+﻿// ==================== ContextWinUI\Features\CodeEditor\ThemeHelper.cs ====================
+
+using ColorCode.Common;
 using ColorCode.Styling;
 using Microsoft.UI.Xaml;
 using Microsoft.UI;
@@ -23,6 +25,7 @@ public static class ThemeHelper
 	public const string ClassScope = ScopeName.ClassName;
 	public const string ControlKeywordScope = "Control Keyword";
 	public const string PunctuationScope = "Punctuation";
+	public const string AttributeScope = "Attribute"; // Novo
 
 	public static bool IsDarkTheme()
 	{
@@ -38,7 +41,6 @@ public static class ThemeHelper
 		return IsDarkTheme() ? GetDarkThemeStyle() : GetLightThemeStyle();
 	}
 
-	// MÉTODO NOVO: Utilitário público para converter cores
 	public static Color GetColorFromHex(string hex)
 	{
 		if (string.IsNullOrEmpty(hex)) return Colors.Transparent;
@@ -70,8 +72,7 @@ public static class ThemeHelper
 	{
 		return new StyleDictionary
 		{
-            // O Background definido aqui (#1E1E1E) será usado pela View agora
-            new Style(ScopeName.PlainText) { Foreground = "#D4D4D4", Background = "#1E1E1E" },
+			new Style(ScopeName.PlainText) { Foreground = "#D4D4D4", Background = "#1E1E1E" },
 			new Style(ScopeName.Keyword) { Foreground = "#569CD6" },
 			new Style(ControlKeywordScope) { Foreground = "#C586C0" },
 			new Style(ScopeName.String) { Foreground = "#CE9178" },
@@ -83,6 +84,7 @@ public static class ThemeHelper
 			new Style(ClassScope)     { Foreground = "#4EC9B0" },
 			new Style(InterfaceScope) { Foreground = "#B8D7A3" },
 			new Style(MethodScope)    { Foreground = "#DCDCAA" },
+			new Style(AttributeScope) { Foreground = "#DCDCAA" }, 
 
 			new Style(ParameterScope)     { Foreground = "#9CDCFE" },
 			new Style(LocalVariableScope) { Foreground = "#9CDCFE" },
@@ -106,6 +108,7 @@ public static class ThemeHelper
 
 			new Style(ClassScope)     { Foreground = "#2B91AF" },
 			new Style(MethodScope)    { Foreground = "#74531F" },
+			new Style(AttributeScope) { Foreground = "#74531F" },
 			new Style(ParameterScope) { Foreground = "#1F377F" },
 			new Style(PunctuationScope) { Foreground = "#000000" },
 		};

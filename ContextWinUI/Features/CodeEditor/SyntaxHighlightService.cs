@@ -1,4 +1,6 @@
-﻿using ColorCode;
+﻿// ==================== ContextWinUI\Features\CodeEditor\SyntaxHighlightService.cs ====================
+
+using ColorCode;
 using ColorCode.Common;
 using ColorCode.Styling;
 using ContextWinUI.Helpers;
@@ -28,8 +30,6 @@ public class SyntaxHighlightService
 
 			var styleDictionary = ThemeHelper.GetCurrentThemeStyle();
 
-			// O ColorCode usa as strings do LanguageRule para buscar no styleDictionary.
-			// Como usamos ThemeHelper.MethodScope em ambos os lugares, o match vai acontecer.
 			var formatter = new RichTextBlockFormatter(styleDictionary);
 			formatter.FormatRichTextBlock(content, language, richTextBlock);
 		}
@@ -43,13 +43,14 @@ public class SyntaxHighlightService
 	{
 		return fileExtension.ToLowerInvariant() switch
 		{
-			".cs" => BetterCSharp.Language, // Nossa versão customizada
+			".cs" => BetterCSharp.Language,
+			// Agrupamos todas as variações de JS/TS/Vue na nova classe
+			".js" or ".jsx" or ".ts" or ".tsx" or ".vue" => BetterJavascript.Language,
+
 			".vb" => Languages.VbDotNet,
 			".java" => Languages.Java,
-			".js" => Languages.JavaScript,
-			".ts" or ".tsx" => Languages.Typescript,
 			".cpp" or ".c" or ".h" or ".hpp" => Languages.Cpp,
-			".css" => Languages.Css,
+			".css" or ".scss" => Languages.Css,
 			".html" or ".htm" => Languages.Html,
 			".xml" or ".xaml" or ".csproj" or ".config" => Languages.Xml,
 			".sql" => Languages.Sql,
