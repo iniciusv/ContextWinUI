@@ -139,6 +139,8 @@ public class ProjectSessionManager : IProjectSessionManager
 		_itemFactory.ClearCache();
 	}
 
+	// Em ContextWinUI.Services.ProjectSessionManager
+
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
 		PrePrompt = cache.PrePrompt ?? string.Empty;
@@ -151,12 +153,24 @@ public class ProjectSessionManager : IProjectSessionManager
 		{
 			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
 
-			var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
 
-			wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
+			bool exists = File.Exists(fullPath) || Directory.Exists(fullPath);
 
-			wrapper.SharedState.Tags.Clear();
-			foreach (var tag in fileDto.Tags) wrapper.SharedState.Tags.Add(tag);
+			if (exists)
+			{
+				var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
+
+				wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
+
+				wrapper.SharedState.Tags.Clear();
+				foreach (var tag in fileDto.Tags)
+				{
+					wrapper.SharedState.Tags.Add(tag);
+				}
+			}
+			else
+			{
+			}
 		}
 	}
 
