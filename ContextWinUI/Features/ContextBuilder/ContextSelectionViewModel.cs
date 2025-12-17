@@ -44,9 +44,6 @@ public partial class ContextSelectionViewModel : ObservableObject
 		if (target != null) SelectedItemsList.Remove(target);
 	}
 
-	// --- CORREÇÃO AQUI ---
-	// O atributo [RelayCommand] gera a propriedade "ClearCommand" necessária para o XAML.
-	// O método continua sendo público para ser chamado pelo ContextAnalysisViewModel via código.
 	[RelayCommand]
 	public void Clear()
 	{

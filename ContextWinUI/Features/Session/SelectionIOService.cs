@@ -49,7 +49,6 @@ public class SelectionIOService : ISelectionIOService
 		return new List<string>();
 	}
 
-	// Helper para WinUI 3 (Necessário para Pickers funcionarem)
 	private void InitializePicker(object picker)
 	{
 		if (App.MainWindow != null)

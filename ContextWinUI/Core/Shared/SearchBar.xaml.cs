@@ -6,7 +6,6 @@ namespace ContextWinUI.Views.Components;
 
 public sealed partial class SearchBar : UserControl
 {
-	// Comando que será executado ao digitar (Binding para o ViewModel)
 	public static readonly DependencyProperty SearchCommandProperty =
 		DependencyProperty.Register(nameof(SearchCommand), typeof(ICommand), typeof(SearchBar), new PropertyMetadata(null));
 
