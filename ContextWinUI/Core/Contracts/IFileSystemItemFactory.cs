@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Core.Contracts;
 
 public interface IFileSystemItemFactory
 {

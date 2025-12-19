@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using Microsoft.UI.Xaml.Controls.Primitives;

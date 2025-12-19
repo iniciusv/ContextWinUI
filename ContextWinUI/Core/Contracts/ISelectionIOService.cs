@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Core.Contracts;
 
 public interface ISelectionIOService
 {

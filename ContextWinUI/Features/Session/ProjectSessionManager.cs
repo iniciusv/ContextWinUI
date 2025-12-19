@@ -1,4 +1,5 @@
-﻿using ContextWinUI.Models;
+﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Models;
 using System;
 using System.IO;
 using System.Threading.Tasks;

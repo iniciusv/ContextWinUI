@@ -2,7 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Core.Contracts;
 
 public interface IFileSystemService
 {

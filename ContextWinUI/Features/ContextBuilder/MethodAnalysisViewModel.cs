@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;

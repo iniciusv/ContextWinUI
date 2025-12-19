@@ -1,4 +1,5 @@
-﻿using ContextWinUI.Services;
+﻿using ContextWinUI.Features.CodeAnalyses;
+using ContextWinUI.Services;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Core.Contracts;

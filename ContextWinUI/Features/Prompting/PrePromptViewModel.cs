@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Services;
 
 namespace ContextWinUI.ViewModels;

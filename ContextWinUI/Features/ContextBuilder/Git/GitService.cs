@@ -1,4 +1,5 @@
-﻿using LibGit2Sharp;
+﻿using ContextWinUI.Core.Contracts;
+using LibGit2Sharp;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;

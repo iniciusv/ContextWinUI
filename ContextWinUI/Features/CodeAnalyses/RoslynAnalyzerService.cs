@@ -1,5 +1,8 @@
-﻿using ContextWinUI.Core.Contracts;
+﻿// ==================== ContextWinUI\Features\CodeAnalyses\RoslynAnalyzerService.cs ====================
+
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
+using ContextWinUI.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,7 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Features.CodeAnalyses;
 
 public class RoslynAnalyzerService : IRoslynAnalyzerService
 {
@@ -36,39 +39,41 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 		_projectTypeMap.Clear();
 
 		// 1. Indexar C# (Mapeia Nome da Classe -> Arquivo)
-		var csFiles = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
-			.Where(f => !IsIgnoredFolder(f));
-
-		foreach (var file in csFiles)
+		if (Directory.Exists(rootPath))
 		{
-			try
-			{
-				// Indexação leve para C# precisa ler o arquivo para saber o nome da classe
-				var code = await File.ReadAllTextAsync(file);
-				var tree = CSharpSyntaxTree.ParseText(code);
-				var root = await tree.GetRootAsync();
-				var typeDeclarations = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>();
-				foreach (var t in typeDeclarations)
-				{
-					_projectTypeMap[t.Identifier.Text] = file;
-				}
-			}
-			catch { }
-		}
-
-		// 2. Indexar JS/TS/Vue (Mapeia Nome do Arquivo -> Arquivo)
-		var jsExtensions = new[] { "*.js", "*.jsx", "*.ts", "*.tsx", "*.vue" };
-		foreach (var ext in jsExtensions)
-		{
-			var jsFiles = Directory.GetFiles(rootPath, ext, SearchOption.AllDirectories)
+			var csFiles = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
 				.Where(f => !IsIgnoredFolder(f));
 
-			foreach (var file in jsFiles)
+			foreach (var file in csFiles)
 			{
-				var fileNameNoExt = Path.GetFileNameWithoutExtension(file);
-				if (!_projectTypeMap.ContainsKey(fileNameNoExt))
+				try
 				{
-					_projectTypeMap[fileNameNoExt] = file;
+					var code = await File.ReadAllTextAsync(file);
+					var tree = CSharpSyntaxTree.ParseText(code);
+					var root = await tree.GetRootAsync();
+					var typeDeclarations = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>();
+					foreach (var t in typeDeclarations)
+					{
+						_projectTypeMap[t.Identifier.Text] = file;
+					}
+				}
+				catch { }
+			}
+
+			// 2. Indexar JS/TS/Vue (Mapeia Nome do Arquivo -> Arquivo)
+			var jsExtensions = new[] { "*.js", "*.jsx", "*.ts", "*.tsx", "*.vue" };
+			foreach (var ext in jsExtensions)
+			{
+				var jsFiles = Directory.GetFiles(rootPath, ext, SearchOption.AllDirectories)
+					.Where(f => !IsIgnoredFolder(f));
+
+				foreach (var file in jsFiles)
+				{
+					var fileNameNoExt = Path.GetFileNameWithoutExtension(file);
+					if (!_projectTypeMap.ContainsKey(fileNameNoExt))
+					{
+						_projectTypeMap[fileNameNoExt] = file;
+					}
 				}
 			}
 		}
@@ -86,8 +91,6 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 	public async Task<FileAnalysisResult> AnalyzeFileStructureAsync(string filePath)
 	{
 		var ext = Path.GetExtension(filePath).ToLower();
-
-		// Encontra a estratégia correta na lista
 		var strategy = _strategies.FirstOrDefault(s => s.CanHandle(ext));
 
 		if (strategy != null)
@@ -98,10 +101,40 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 		return new FileAnalysisResult();
 	}
 
-	// Método legado para Deep Analysis (apenas C# suporta isso de forma robusta por enquanto)
+	// Em RoslynAnalyzerService.cs
+
+	public async Task<string> FilterClassContentAsync(
+		string filePath,
+		IEnumerable<string>? keptMethodSignatures, // Aceita null agora
+		bool removeUsings,
+		bool removeComments)
+	{
+		if (!File.Exists(filePath)) return string.Empty;
+
+		try
+		{
+			var code = await File.ReadAllTextAsync(filePath);
+			var tree = CSharpSyntaxTree.ParseText(code);
+			var root = await tree.GetRootAsync();
+
+			// Se keptMethodSignatures for null, o Rewriter sabe que deve manter todos os métodos
+			var rewriter = new MethodFilterRewriter(keptMethodSignatures, removeUsings, removeComments);
+
+			var newRoot = rewriter.Visit(root);
+
+			if (newRoot != null)
+			{
+				return newRoot.ToFullString();
+			}
+		}
+		catch { }
+
+		return string.Empty;
+	}
+
+	// Método legado para Deep Analysis
 	public async Task<List<string>> GetMethodCallsAsync(string filePath, string methodSignature)
 	{
-		// Se não for C#, retorna vazio (estratégia atual de JS não suporta fluxo profundo)
 		if (!filePath.EndsWith(".cs")) return new List<string>();
 
 		var calls = new List<string>();
@@ -115,8 +148,8 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 			var methodName = methodSignature.Split('(')[0].Trim();
 
 			var methodNode = root.DescendantNodes()
-								 .OfType<MethodDeclarationSyntax>()
-								 .FirstOrDefault(m => m.Identifier.Text == methodName);
+									 .OfType<MethodDeclarationSyntax>()
+									 .FirstOrDefault(m => m.Identifier.Text == methodName);
 
 			if (methodNode != null && methodNode.Body != null)
 			{
