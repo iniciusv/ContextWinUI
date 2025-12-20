@@ -131,13 +131,20 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
+	// ==================== ContextAnalysisViewModel.cs ====================
+
+	// Este método é chamado pelo AnalyzeItemDepthAsync
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
+		// Chama a estratégia aprimorada acima
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
+
+		// 1. Adiciona Métodos
 		if (analysis.Methods.Any())
 		{
-			var methodsGroup = _itemFactory.CreateWrapper($"{filePath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
+			var methodsGroup = _itemFactory.CreateWrapper($"{filePath}::methods", FileSystemItemType.LogicalGroup, "\uEA86"); // Icone 'Method'
 			methodsGroup.SharedState.Name = "Métodos";
+
 			foreach (var method in analysis.Methods)
 			{
 				var methodItem = _itemFactory.CreateWrapper($"{filePath}::{method}", FileSystemItemType.Method, "\uF158");
@@ -147,19 +154,26 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			}
 			node.Children.Add(methodsGroup);
 		}
+
+		// 2. Adiciona Dependências (Classes identificadas)
 		if (analysis.Dependencies.Any())
 		{
-			var contextGroup = _itemFactory.CreateWrapper($"{filePath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
-			contextGroup.SharedState.Name = "Dependências";
+			var depsGroup = _itemFactory.CreateWrapper($"{filePath}::deps", FileSystemItemType.LogicalGroup, "\uE71D"); // Icone 'Link/Connections'
+			depsGroup.SharedState.Name = "Dependências (Classes Usadas)";
+
 			foreach (var depPath in analysis.Dependencies)
 			{
-				var depItem = _itemFactory.CreateWrapper(depPath, FileSystemItemType.Dependency, "\uE943");
-				depItem.IsChecked = true;
-				contextGroup.Children.Add(depItem);
+				// Cria um item visual apontando para o arquivo da dependência
+				// Usamos um ícone diferente (ex: seta ou link) para indicar que é uma referência
+				var depItem = _itemFactory.CreateWrapper(depPath, FileSystemItemType.Dependency, "\uE972"); // Icone 'Link'
+
+				// Opcional: Já marcar as dependências como checadas se quiser copiar tudo junto
+				// depItem.IsChecked = true; 
+
+				depsGroup.Children.Add(depItem);
 			}
-			node.Children.Add(contextGroup);
+			node.Children.Add(depsGroup);
 		}
-		node.IsExpanded = true;
 	}
 
 	[RelayCommand]
@@ -217,27 +231,43 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
+		// Validações básicas
 		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
-
-		// Evita processar pastas, foca em arquivos de código
 		if (!item.IsCodeFile) return;
 
 		IsLoading = true;
 		try
 		{
-			// 1. Limpa os filhos atuais (caso já existissem)
+			// 1. OBTÉM O CAMINHO RAIZ DO PROJETO
+			// Sem isso, não sabemos onde escanear as classes para criar o mapa de dependências.
+			var projectPath = _sessionManager.CurrentProjectPath;
+
+			if (string.IsNullOrEmpty(projectPath))
+			{
+				OnStatusChanged("Erro: Nenhum projeto carregado para indexar dependências.");
+				return;
+			}
+
+			OnStatusChanged($"Indexando projeto para identificar dependências de {item.Name}...");
+
+			// 2. CORREÇÃO CRUCIAL: INDEXAR O PROJETO
+			// Isso preenche o _projectTypeMap no RoslynAnalyzerService.
+			// Sem isso, ele acha o nome da classe usada, mas não sabe o caminho do arquivo (FullPath).
+			await _roslynAnalyzer.IndexProjectAsync(projectPath);
+
+			// 3. Limpa e Recarrega
 			item.Children.Clear();
 
-			// 2. Busca e cria os novos filhos (Métodos e Dependências)
+			OnStatusChanged($"Analisando estrutura de {item.Name}...");
+
+			// Agora o PopulateNodeAsync vai encontrar dados no mapa de tipos e criar as dependências
 			await PopulateNodeAsync(item, item.FullPath);
 
-			// 3. CORREÇÃO ESSENCIAL: 
-			// Registra os eventos nos novos filhos criados. 
-			// Sem isso, marcar o checkbox deles não dispara a notificação para a SelectionVM.
+			// 4. Registra eventos e expande
 			RegisterItemEventsRecursively(item);
-
-			// 4. Expande para mostrar
 			item.IsExpanded = true;
+
+			OnStatusChanged("Análise detalhada concluída.");
 		}
 		catch (Exception ex)
 		{

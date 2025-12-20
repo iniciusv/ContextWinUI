@@ -1,5 +1,5 @@
 ﻿using ContextWinUI.Core.Contracts;
-using ContextWinUI.Services;
+using ContextWinUI.Features.CodeAnalyses;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,11 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.CodeAnalyses;
+namespace ContextWinUI.Core.Services;
 
 public class RoslynCsharpStrategy : ILanguageStrategy
 {
-	// Referência ao mapa de tipos compartilhado pelo serviço principal
 	private readonly Dictionary<string, string> _projectTypeMap;
 
 	public RoslynCsharpStrategy(Dictionary<string, string> projectTypeMap)
@@ -31,7 +30,7 @@ public class RoslynCsharpStrategy : ILanguageStrategy
 			var tree = CSharpSyntaxTree.ParseText(code);
 			var root = await tree.GetRootAsync();
 
-			// 1. Extrair Métodos
+			// 1. Extração de Métodos (Mantido)
 			var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
 			foreach (var method in methods)
 			{
@@ -40,43 +39,68 @@ public class RoslynCsharpStrategy : ILanguageStrategy
 				result.Methods.Add(signature);
 			}
 
-			// 2. Extrair Identificadores para Dependências
-			var identifiers = root.DescendantNodes()
-				.OfType<IdentifierNameSyntax>()
-				.Where(id => IsValidDependency(id))
-				.Select(id => id.Identifier.Text)
-				.Distinct();
+			// 2. Extração de Dependências (Aprimorado)
+			var potentialTypes = new HashSet<string>();
 
-			// 3. Extrair Tipos Base (Herança)
-			var baseTypesList = new List<string>();
-			var baseDecls = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>();
-
-			foreach (var baseDecl in baseDecls)
+			// A) Herança (Classes base e Interfaces)
+			var baseLists = root.DescendantNodes().OfType<BaseListSyntax>();
+			foreach (var baseList in baseLists)
 			{
-				if (baseDecl.BaseList != null)
+				foreach (var type in baseList.Types)
 				{
-					foreach (var baseType in baseDecl.BaseList.Types)
+					potentialTypes.Add(type.Type.ToString());
+				}
+			}
+
+			// B) Injeção de Dependência (Parâmetros de Construtor)
+			var constructors = root.DescendantNodes().OfType<ConstructorDeclarationSyntax>();
+			foreach (var ctor in constructors)
+			{
+				foreach (var param in ctor.ParameterList.Parameters)
+				{
+					if (param.Type != null)
+						potentialTypes.Add(param.Type.ToString());
+				}
+			}
+
+			// C) Campos e Propriedades (Composição)
+			var properties = root.DescendantNodes().OfType<PropertyDeclarationSyntax>();
+			foreach (var prop in properties)
+			{
+				if (prop.Type != null)
+					potentialTypes.Add(prop.Type.ToString());
+			}
+
+			var fields = root.DescendantNodes().OfType<FieldDeclarationSyntax>();
+			foreach (var field in fields)
+			{
+				if (field.Declaration.Type != null)
+					potentialTypes.Add(field.Declaration.Type.ToString());
+			}
+
+			// 3. Validação Cruzada com o Mapa do Projeto
+			// Verifica se os tipos encontrados realmente pertencem ao projeto
+			foreach (var typeName in potentialTypes)
+			{
+				// Remove genéricos (ex: List<MainViewModel> -> MainViewModel)
+				var cleanName = CleanTypeName(typeName);
+
+				// Tenta encontrar no mapa global do projeto
+				if (_projectTypeMap.TryGetValue(cleanName, out var depPath))
+				{
+					// Evita auto-referência
+					if (depPath != filePath)
 					{
-						var typesInBase = baseType.DescendantNodesAndSelf()
-												  .OfType<IdentifierNameSyntax>()
-												  .Select(id => id.Identifier.Text);
-						baseTypesList.AddRange(typesInBase);
+						result.Dependencies.Add(depPath);
 					}
 				}
-			}
-
-			// 4. Cruzar dados com o Mapa do Projeto
-			var allPotentialDeps = identifiers.Concat(baseTypesList).Distinct();
-
-			foreach (var id in allPotentialDeps)
-			{
-				if (_projectTypeMap.TryGetValue(id, out var depPath) && depPath != filePath)
+				// Tenta encontrar interfaces (ex: IFileSystemService)
+				else if (_projectTypeMap.TryGetValue("I" + cleanName, out var interfacePath))
 				{
-					result.Dependencies.Add(depPath);
+					if (interfacePath != filePath) result.Dependencies.Add(interfacePath);
 				}
 			}
 
-			// Remove duplicatas finais
 			result.Dependencies = result.Dependencies.Distinct().ToList();
 		}
 		catch { }
@@ -84,15 +108,14 @@ public class RoslynCsharpStrategy : ILanguageStrategy
 		return result;
 	}
 
-	private bool IsValidDependency(IdentifierNameSyntax id)
+	private string CleanTypeName(string typeName)
 	{
-		if (id.FirstAncestorOrSelf<UsingDirectiveSyntax>() != null)
-			return false;
+		// Limpa List<T>, IEnumerable<T>, nullable?, arrays[]
+		var name = typeName.Trim();
 
-		var namespaceDecl = id.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>();
-		if (namespaceDecl != null && namespaceDecl.Name.ToString().Contains(id.Identifier.Text))
-			return false;
+		if (name.Contains("<"))
+			name = name.Split('<')[1].Split('>')[0]; // Pega o T de List<T>
 
-		return true;
+		return name.Replace("?", "").Replace("[]", "").Trim();
 	}
 }
