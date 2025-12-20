@@ -1,8 +1,4 @@
-﻿// ==================== ContextWinUI\Features\CodeAnalyses\RoslynAnalyzerService.cs ====================
-
-using ContextWinUI.Core.Contracts;
-using ContextWinUI.Features.CodeAnalyses;
-using ContextWinUI.Services;
+﻿using ContextWinUI.Core.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -26,7 +22,6 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 
 	public RoslynAnalyzerService()
 	{
-		// Injeta o mapa compartilhado nas estratégias
 		_strategies = new List<ILanguageStrategy>
 		{
 			new RoslynCsharpStrategy(_projectTypeMap),
@@ -38,7 +33,6 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 	{
 		_projectTypeMap.Clear();
 
-		// 1. Indexar C# (Mapeia Nome da Classe -> Arquivo)
 		if (Directory.Exists(rootPath))
 		{
 			var csFiles = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
@@ -60,7 +54,6 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 				catch { }
 			}
 
-			// 2. Indexar JS/TS/Vue (Mapeia Nome do Arquivo -> Arquivo)
 			var jsExtensions = new[] { "*.js", "*.jsx", "*.ts", "*.tsx", "*.vue" };
 			foreach (var ext in jsExtensions)
 			{
@@ -101,13 +94,13 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 		return new FileAnalysisResult();
 	}
 
-	// Em RoslynAnalyzerService.cs
-
 	public async Task<string> FilterClassContentAsync(
 		string filePath,
-		IEnumerable<string>? keptMethodSignatures, // Aceita null agora
+		IEnumerable<string>? keptMethodSignatures,
 		bool removeUsings,
-		bool removeComments)
+		bool removeNamespaces,
+		bool removeComments,
+		bool removeEmptyLines)
 	{
 		if (!File.Exists(filePath)) return string.Empty;
 
@@ -117,14 +110,16 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 			var tree = CSharpSyntaxTree.ParseText(code);
 			var root = await tree.GetRootAsync();
 
-			// Se keptMethodSignatures for null, o Rewriter sabe que deve manter todos os métodos
+			// O Rewriter trata da estrutura sintática (remover métodos não selecionados, usings, comentários triviais)
 			var rewriter = new MethodFilterRewriter(keptMethodSignatures, removeUsings, removeComments);
 
 			var newRoot = rewriter.Visit(root);
 
 			if (newRoot != null)
 			{
-				return newRoot.ToFullString();
+				var processedCode = newRoot.ToFullString();
+				// O Helper trata das limpezas textuais finais (Namespaces e Linhas vazias)
+				return Helpers.CodeCleanupHelper.ProcessCode(processedCode, ".cs", false, removeNamespaces, false, removeEmptyLines);
 			}
 		}
 		catch { }
@@ -132,7 +127,6 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 		return string.Empty;
 	}
 
-	// Método legado para Deep Analysis
 	public async Task<List<string>> GetMethodCallsAsync(string filePath, string methodSignature)
 	{
 		if (!filePath.EndsWith(".cs")) return new List<string>();

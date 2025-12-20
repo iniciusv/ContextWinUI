@@ -1,13 +1,14 @@
 ﻿using ContextWinUI.Core.Contracts;
 using ContextWinUI.Models;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
+using System.Security.Cryptography; // [CORREÇÃO] Necessário para MD5
 using System.Text;
 using System.Text.Json;
+using System.Linq; // [CORREÇÃO] Necessário para .Select()
+using ContextWinUI.Models;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.IO;
+using System;
 
 namespace ContextWinUI.Services;
 
@@ -20,7 +21,9 @@ public class PersistenceService : IPersistenceService
 		IEnumerable<FileSharedState> states,
 		string prePrompt,
 		bool omitUsings,
+		bool omitNamespaces,
 		bool omitComments,
+		bool omitEmptyLines,
 		bool includeStructure,
 		bool structureOnlyFolders)
 	{
@@ -39,13 +42,16 @@ public class PersistenceService : IPersistenceService
 				RootPath = projectRootPath,
 				PrePrompt = prePrompt,
 				OmitUsings = omitUsings,
+				OmitNamespaces = omitNamespaces,
 				OmitComments = omitComments,
+				OmitEmptyLines = omitEmptyLines,
 				IncludeStructure = includeStructure,
 				StructureOnlyFolders = structureOnlyFolders,
+				// [CORREÇÃO] Agora o .Select funcionará com o using System.Linq
 				Files = states.Select(s => new FileMetadataDto
 				{
 					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
-					IsIgnored = s.IsIgnored, // Persistindo status
+					IsIgnored = s.IsIgnored,
 					Tags = s.Tags.ToList()
 				}).ToList()
 			};
@@ -80,6 +86,7 @@ public class PersistenceService : IPersistenceService
 
 	private string CreateMd5(string input)
 	{
+		// [CORREÇÃO] Instancia o MD5 corretamente
 		using var md5 = MD5.Create();
 		var inputBytes = Encoding.ASCII.GetBytes(input.ToLowerInvariant());
 		var hashBytes = md5.ComputeHash(inputBytes);

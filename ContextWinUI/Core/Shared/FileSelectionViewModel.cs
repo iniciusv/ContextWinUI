@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
-using ContextWinUI.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -67,9 +66,11 @@ public partial class FileSelectionViewModel : ObservableObject
 
 		IsLoading = true;
 
-		// Lê configs
+		// [CORREÇÃO] Lê todas as configs, incluindo as novas
 		bool omitUsings = _sessionManager.OmitUsings;
+		bool omitNamespaces = _sessionManager.OmitNamespaces; // Novo
 		bool omitComments = _sessionManager.OmitComments;
+		bool omitEmptyLines = _sessionManager.OmitEmptyLines; // Novo
 		bool includeStructure = _sessionManager.IncludeStructure;
 		bool structureOnlyFolders = _sessionManager.StructureOnlyFolders;
 		string prePrompt = _sessionManager.PrePrompt;
@@ -88,11 +89,10 @@ public partial class FileSelectionViewModel : ObservableObject
 				sb.AppendLine();
 			}
 
-			// 2. Estrutura de Pastas (NOVO)
+			// 2. Estrutura de Pastas
 			if (includeStructure)
 			{
 				sb.AppendLine("/* --- ESTRUTURA DO PROJETO --- */");
-				// Gera a árvore baseada na raiz completa do projeto carregado
 				var treeStr = StructureGeneratorHelper.GenerateTree(_rootItems, structureOnlyFolders);
 				sb.AppendLine(treeStr);
 				sb.AppendLine();
@@ -110,7 +110,14 @@ public partial class FileSelectionViewModel : ObservableObject
 				var rawContent = await _fileSystemService.ReadFileContentAsync(file.FullPath);
 				var extension = System.IO.Path.GetExtension(file.FullPath);
 
-				var cleanContent = CodeCleanupHelper.ProcessCode(rawContent, extension, omitUsings, omitComments);
+				// [CORREÇÃO] Passa os 6 argumentos corretos
+				var cleanContent = CodeCleanupHelper.ProcessCode(
+					rawContent,
+					extension,
+					omitUsings,
+					omitNamespaces,
+					omitComments,
+					omitEmptyLines);
 
 				sb.AppendLine(cleanContent);
 				sb.AppendLine();

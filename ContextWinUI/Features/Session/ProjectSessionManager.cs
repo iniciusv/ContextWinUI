@@ -3,7 +3,7 @@ using ContextWinUI.Models;
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Windows.Storage.Pickers; // Necessário para FolderPicker
+using Windows.Storage.Pickers;
 
 namespace ContextWinUI.Services;
 
@@ -13,10 +13,13 @@ public class ProjectSessionManager : IProjectSessionManager
 	private readonly IPersistenceService _persistenceService;
 	private readonly IFileSystemItemFactory _itemFactory;
 
-	// Estado Global
 	public string PrePrompt { get; set; } = string.Empty;
+
 	public bool OmitUsings { get; set; }
+	public bool OmitNamespaces { get; set; }
 	public bool OmitComments { get; set; }
+	public bool OmitEmptyLines { get; set; }
+
 	public bool IncludeStructure { get; set; }
 	public bool StructureOnlyFolders { get; set; }
 
@@ -36,7 +39,6 @@ public class ProjectSessionManager : IProjectSessionManager
 		_itemFactory = itemFactory;
 	}
 
-	// --- CORREÇÃO: Implementação do Picker ---
 	public async Task LoadProjectAsync()
 	{
 		try
@@ -45,7 +47,6 @@ public class ProjectSessionManager : IProjectSessionManager
 			folderPicker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
 			folderPicker.FileTypeFilter.Add("*");
 
-			// Workaround para obter HWND da janela principal em WinUI 3
 			var window = App.MainWindow;
 			if (window != null)
 			{
@@ -86,10 +87,11 @@ public class ProjectSessionManager : IProjectSessionManager
 			}
 			else
 			{
-				// Defaults
 				PrePrompt = string.Empty;
 				OmitUsings = false;
+				OmitNamespaces = false;
 				OmitComments = false;
+				OmitEmptyLines = false;
 				IncludeStructure = false;
 				StructureOnlyFolders = false;
 			}
@@ -117,7 +119,9 @@ public class ProjectSessionManager : IProjectSessionManager
 				allStates,
 				PrePrompt,
 				OmitUsings,
+				OmitNamespaces,
 				OmitComments,
+				OmitEmptyLines,
 				IncludeStructure,
 				StructureOnlyFolders);
 
@@ -134,26 +138,27 @@ public class ProjectSessionManager : IProjectSessionManager
 		CurrentProjectPath = null;
 		PrePrompt = string.Empty;
 		OmitUsings = false;
+		OmitNamespaces = false;
 		OmitComments = false;
+		OmitEmptyLines = false;
 		IncludeStructure = false;
 		StructureOnlyFolders = false;
 		_itemFactory.ClearCache();
 	}
 
-	// Em ContextWinUI.Services.ProjectSessionManager
-
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
 		PrePrompt = cache.PrePrompt ?? string.Empty;
 		OmitUsings = cache.OmitUsings;
+		OmitNamespaces = cache.OmitNamespaces;
 		OmitComments = cache.OmitComments;
+		OmitEmptyLines = cache.OmitEmptyLines;
 		IncludeStructure = cache.IncludeStructure;
 		StructureOnlyFolders = cache.StructureOnlyFolders;
 
 		foreach (var fileDto in cache.Files)
 		{
 			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
-
 
 			bool exists = File.Exists(fullPath) || Directory.Exists(fullPath);
 
@@ -168,9 +173,6 @@ public class ProjectSessionManager : IProjectSessionManager
 				{
 					wrapper.SharedState.Tags.Add(tag);
 				}
-			}
-			else
-			{
 			}
 		}
 	}

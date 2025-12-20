@@ -4,9 +4,15 @@ namespace ContextWinUI.Helpers;
 
 public static class CodeCleanupHelper
 {
-	public static string ProcessCode(string content, string fileExtension, bool removeUsings, bool removeComments)
+	public static string ProcessCode(
+		string content,
+		string fileExtension,
+		bool removeUsings,
+		bool removeNamespaces,
+		bool removeComments,
+		bool removeEmptyLines)
 	{
-		// 1. Verificação de segurança (Caminho de retorno 1)
+
 		if (string.IsNullOrEmpty(content))
 		{
 			return string.Empty;
@@ -14,35 +20,48 @@ public static class CodeCleanupHelper
 
 		string processed = content;
 
-		// 2. Remover Comentários
 		if (removeComments)
 		{
-			// Remove comentários de bloco /* ... */
+			// Blocos de comentário
 			processed = Regex.Replace(processed, @"/\*[\s\S]*?\*/", "", RegexOptions.Multiline);
 
-			// Remove comentários de linha // ...
-			// Regex para linhas inteiras de comentário
-			processed = Regex.Replace(processed, @"^\s*//.*$", "", RegexOptions.Multiline);
-			// Regex para comentários no final da linha de código
+			// Comentários de linha única (iniciando no começo da linha ou após código)
+			// Nota: Esta regex simples pode remover URLs em strings, cuidado em prod.
+			// Para simplificação atual:
 			processed = Regex.Replace(processed, @"//.*$", "", RegexOptions.Multiline);
 		}
 
-		// 3. Remover Usings/Imports
 		if (removeUsings)
 		{
-			// C# (using System;)
 			processed = Regex.Replace(processed, @"^\s*using\s+[\w\.]+.*;\r?\n", "", RegexOptions.Multiline);
-
-			// TypeScript/JS/Java/Python (import ..., package ...)
 			processed = Regex.Replace(processed, @"^\s*import\s+.*;\r?\n", "", RegexOptions.Multiline);
 			processed = Regex.Replace(processed, @"^\s*package\s+.*;\r?\n", "", RegexOptions.Multiline);
 		}
 
-		// 4. Limpeza de linhas em branco excessivas (resultado das remoções)
-		// Substitui 3 ou mais quebras de linha consecutivas por apenas 2
-		processed = Regex.Replace(processed, @"(\r?\n){3,}", "\n\n");
+		if (removeNamespaces)
+		{
+			// Remove namespaces "File Scoped" (C# 10+)
+			processed = Regex.Replace(processed, @"^\s*namespace\s+[\w\.]+\s*;\r?\n", "", RegexOptions.Multiline);
 
-		// 5. Retorno Final (Caminho de retorno 2 - OBRIGATÓRIO)
-		return processed;
+			// Remove declaração de namespace com bloco (ex: "namespace ContextWinUI {")
+			// Remove apenas a linha de declaração, mantendo o conteúdo indentado.
+			processed = Regex.Replace(processed, @"^\s*namespace\s+[\w\.]+(\s*\{)?\r?\n", "", RegexOptions.Multiline);
+		}
+
+		if (removeEmptyLines)
+		{
+			// Remove linhas totalmente vazias ou com espaços
+			processed = Regex.Replace(processed, @"^\s*$(\r?\n)+", "", RegexOptions.Multiline);
+
+			// Garante que não haja múltiplos newlines sobrando
+			processed = Regex.Replace(processed, @"(\r?\n){2,}", "\n");
+		}
+		else
+		{
+			// Comportamento padrão: normaliza para no máximo 2 quebras de linha (parágrafos visuais)
+			processed = Regex.Replace(processed, @"(\r?\n){3,}", "\n\n");
+		}
+
+		return processed.Trim();
 	}
 }

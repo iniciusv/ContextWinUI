@@ -23,8 +23,10 @@
 
 		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="16,0,16,8">
 			<TextBlock Text="Limpeza:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" Width="70"/>
-			<CheckBox Content="Omitir 'using/imports'" IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}"/>
+			<CheckBox Content="Omitir 'using'" IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}" ToolTipService.ToolTip="Remove diretivas using/import"/>
+			<CheckBox Content="Omitir Namespaces" IsChecked="{x:Bind ViewModel.OmitNamespaces, Mode=TwoWay}" ToolTipService.ToolTip="Remove a declaração de namespace"/>
 			<CheckBox Content="Omitir Comentários" IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
+			<CheckBox Content="Compactar Linhas" IsChecked="{x:Bind ViewModel.OmitEmptyLines, Mode=TwoWay}" ToolTipService.ToolTip="Remove linhas em branco excessivas"/>
 		</StackPanel>
 
 		<StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="24" Margin="16,0,16,16">

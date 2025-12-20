@@ -1,16 +1,18 @@
 ﻿// ==================== ContextWinUI\Core\Models\FileSystemItem.cs ====================
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using ContextWinUI.Core.Contracts;
 using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 
 namespace ContextWinUI.Models;
 
-public partial class FileSystemItem : ObservableObject, IDisposable
+public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystemItem
 {
 
 	public FileSharedState SharedState { get; }
@@ -82,7 +84,10 @@ public partial class FileSystemItem : ObservableObject, IDisposable
 		}
 	}
 
-	private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
+	IFileSharedState IFileSystemItem.SharedStateInfo => SharedState;
+	IEnumerable<IFileSystemItem> IFileSystemItem.ChildrenItems => Children.Cast<IFileSystemItem>();
+
+    private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
 	{
 		if (e.PropertyName == nameof(FileSharedState.IsChecked))
 		{

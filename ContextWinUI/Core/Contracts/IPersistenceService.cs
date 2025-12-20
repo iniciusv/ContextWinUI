@@ -1,8 +1,6 @@
 ﻿using ContextWinUI.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace ContextWinUI.Core.Contracts;
 
@@ -13,8 +11,10 @@ public interface IPersistenceService
 		IEnumerable<FileSharedState> states,
 		string prePrompt,
 		bool omitUsings,
+		bool omitNamespaces,
 		bool omitComments,
-		bool includeStructure,     
+		bool omitEmptyLines,
+		bool includeStructure,
 		bool structureOnlyFolders);
 
 	Task<ProjectCacheDto?> LoadProjectCacheAsync(string projectRootPath);

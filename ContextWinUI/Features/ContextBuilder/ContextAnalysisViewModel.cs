@@ -1,6 +1,28 @@
 // ==================== ContextWinUI\Features\ContextBuilder\ContextAnalysisViewModel.cs ====================
 
-using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;using ContextWinUI.Core.Contracts;using ContextWinUI.Helpers;using ContextWinUI.Models;using ContextWinUI.Services;using ContextWinUI.ViewModels;using System;using System.Collections.Generic;using System.Collections.ObjectModel;using System.ComponentModel;using System.IO;using System.Linq;using System.Text;using System.Threading;using System.Threading.Tasks;using Windows.ApplicationModel.DataTransfer;namespace ContextWinUI.Core.Contracts;public partial class ContextAnalysisViewModel : ObservableObject{
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Core.Contracts;
+using ContextWinUI.Helpers;
+using ContextWinUI.Models;
+using ContextWinUI.Services;
+using ContextWinUI.ViewModels;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
+
+namespace ContextWinUI.ViewModels; // Namespace ajustado para padrão
+
+public partial class ContextAnalysisViewModel : ObservableObject
+{
 	private readonly IRoslynAnalyzerService _roslynAnalyzer;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IFileSystemItemFactory _itemFactory;
@@ -227,12 +249,10 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 	public void SelectFileForPreview(FileSystemItem item)
 	{
 		SelectedItem = item;
-		// Lógica de "GetPhysicalPath" inline para o preview
 		var realPath = GetPhysicalPath(item);
 
 		if (!string.IsNullOrEmpty(realPath) && File.Exists(realPath))
 		{
-			// Cria um item temporário apontando para o arquivo físico se for um método
 			if (item.Type == FileSystemItemType.Method)
 			{
 				var tempItem = _itemFactory.CreateWrapper(realPath, FileSystemItemType.File);
@@ -257,8 +277,6 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 		SelectedItem = null;
 	}
 
-	// Em ContextAnalysisViewModel.cs
-
 	[RelayCommand]
 	private async Task CopyContextToClipboardAsync()
 	{
@@ -267,15 +285,14 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 		{
 			// 1. Pega Configurações da Sessão
 			bool removeUsings = _sessionManager.OmitUsings;
+			bool removeNamespaces = _sessionManager.OmitNamespaces; // [NOVO]
 			bool removeComments = _sessionManager.OmitComments;
+			bool removeEmptyLines = _sessionManager.OmitEmptyLines; // [NOVO]
 
 			var selectedItems = SelectionVM.SelectedItemsList.ToList();
 			if (!selectedItems.Any()) return;
 
 			var sb = new StringBuilder();
-
-			// Se houver pré-prompt, adicione aqui (opcional)
-			// if (!string.IsNullOrEmpty(_sessionManager.PrePrompt)) ...
 
 			sb.AppendLine("/* CONTEXTO SELECIONADO */");
 			sb.AppendLine();
@@ -289,7 +306,6 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 
 				sb.AppendLine($"// ==================== {Path.GetFileName(filePath)} ====================");
 
-				// Identifica métodos marcados explicitamente
 				var selectedMethodSignatures = group
 					.Where(item => item.Type == FileSystemItemType.Method)
 					.Select(item => item.MethodSignature)
@@ -297,41 +313,39 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 					.Cast<string>()
 					.ToList();
 
-				// LÓGICA CORRIGIDA:
-
 				if (selectedMethodSignatures.Any())
 				{
-					// CASO 1: Filtragem Granular (Remove métodos não selecionados + Limpeza)
 					sb.AppendLine("// (Conteúdo filtrado: Métodos selecionados)");
 
+					// [CORREÇÃO]: Chamada atualizada com novos parâmetros
 					var content = await _roslynAnalyzer.FilterClassContentAsync(
 						filePath,
-						selectedMethodSignatures, // Lista de métodos para manter
+						selectedMethodSignatures,
 						removeUsings,
-						removeComments
+						removeNamespaces,
+						removeComments,
+						removeEmptyLines
 					);
 					sb.AppendLine(content);
 				}
 				else
 				{
-					// CASO 2: Arquivo Inteiro (Mantém todos os métodos + Limpeza)
-					// Se removeUsings ou removeComments for true, usamos o Roslyn para limpar.
-					// Se ambos forem false, lemos direto do disco (mais rápido).
-
-					if (removeUsings || removeComments)
+					// Se precisar de alguma limpeza
+					if (removeUsings || removeComments || removeNamespaces || removeEmptyLines)
 					{
-						// Passamos NULL para dizer "Mantenha todos os métodos, só limpe o resto"
+						// [CORREÇÃO]: Chamada atualizada (métodos = null significa arquivo inteiro)
 						var content = await _roslynAnalyzer.FilterClassContentAsync(
 							filePath,
 							null,
 							removeUsings,
-							removeComments
+							removeNamespaces,
+							removeComments,
+							removeEmptyLines
 						);
 						sb.AppendLine(content);
 					}
 					else
 					{
-						// Leitura direta (sem processamento)
 						var content = await _fileSystemService.ReadFileContentAsync(filePath);
 						sb.AppendLine(content);
 					}
@@ -353,12 +367,10 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 		finally { IsLoading = false; }
 	}
 
-	// Método auxiliar para limpar o caminho virtual "::" e retornar o arquivo real
 	private string GetPhysicalPath(FileSystemItem item)
 	{
 		if (item.Type == FileSystemItemType.Method || item.Type == FileSystemItemType.LogicalGroup)
 		{
-			// Se o path for "C:\Repo\File.cs::MetodoA", retorna "C:\Repo\File.cs"
 			var parts = item.FullPath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
 			return parts.Length > 0 ? parts[0] : item.FullPath;
 		}
@@ -367,4 +379,5 @@ using CommunityToolkit.Mvvm.ComponentModel;using CommunityToolkit.Mvvm.Input;u
 
 	[RelayCommand] private void AnalyzeMethodFlow(FileSystemItem item) { }
 	[RelayCommand] private void SyncFocus() { }
-	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);}
+	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+}

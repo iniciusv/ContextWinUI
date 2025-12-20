@@ -3,10 +3,11 @@ using System.Threading.Tasks;
 using static ContextWinUI.Features.CodeAnalyses.RoslynAnalyzerService;
 
 namespace ContextWinUI.Core.Contracts;
+
 public interface IRoslynAnalyzerService
 {
 	Task IndexProjectAsync(string rootPath);
 	Task<FileAnalysisResult> AnalyzeFileStructureAsync(string filePath);
 	Task<List<string>> GetMethodCallsAsync(string filePath, string methodSignature);
-	Task<string> FilterClassContentAsync(string filePath,IEnumerable<string> keptMethodSignatures,bool removeUsings,bool removeComments	);
+	Task<string> FilterClassContentAsync(string filePath,IEnumerable<string> keptMethodSignatures,bool removeUsings,bool removeNamespaces,bool removeComments,bool removeEmptyLines);
 }
