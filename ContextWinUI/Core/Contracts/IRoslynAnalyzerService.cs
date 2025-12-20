@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using ContextWinUI.Core.Models;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using static ContextWinUI.Features.CodeAnalyses.RoslynAnalyzerService;
 
@@ -10,4 +11,5 @@ public interface IRoslynAnalyzerService
 	Task<FileAnalysisResult> AnalyzeFileStructureAsync(string filePath);
 	Task<List<string>> GetMethodCallsAsync(string filePath, string methodSignature);
 	Task<string> FilterClassContentAsync(string filePath,IEnumerable<string> keptMethodSignatures,bool removeUsings,bool removeNamespaces,bool removeComments,bool removeEmptyLines);
+	Task<MethodBodyResult> AnalyzeMethodBodyAsync(string filePath, string methodSignature);
 }

@@ -102,4 +102,14 @@ public sealed partial class ContextAnalysisView : UserControl
 			}
 		}
 	}
+	private void OnMethodFlowClick(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button button && button.DataContext is FileSystemItem item)
+		{
+			if (ContextViewModel != null && ContextViewModel.AnalyzeMethodFlowCommand.CanExecute(item))
+			{
+				ContextViewModel.AnalyzeMethodFlowCommand.Execute(item);
+			}
+		}
+	}
 }

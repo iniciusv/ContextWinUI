@@ -461,7 +461,103 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	}
 
 
-	[RelayCommand] private void AnalyzeMethodFlow(FileSystemItem item) { }
+
+	[RelayCommand]
+	private async Task AnalyzeMethodFlow(FileSystemItem item)
+	{
+		// Validações
+		if (item == null || item.Type != FileSystemItemType.Method) return;
+
+		// Precisamos do caminho do arquivo pai. 
+		// Como o método é um item virtual (File.cs::Metodo), extraímos o caminho real.
+		string realPath = GetPhysicalPath(item);
+		string signature = item.MethodSignature;
+
+		if (string.IsNullOrEmpty(realPath) || string.IsNullOrEmpty(signature)) return;
+
+		IsLoading = true;
+		OnStatusChanged($"Analisando fluxo de: {signature}...");
+
+		try
+		{
+			// 1. Garante que temos o mapa de tipos carregado para achar dependências
+			if (string.IsNullOrEmpty(_sessionManager.CurrentProjectPath)) return;
+
+			// Opcional: Re-indexar se necessário, mas se já rodou o AnalisarItemDepth, já deve ter.
+			// await _roslynAnalyzer.IndexProjectAsync(_sessionManager.CurrentProjectPath); 
+
+			// 2. Chama a análise do corpo do método
+			var analysisResult = await _roslynAnalyzer.AnalyzeMethodBodyAsync(realPath, signature);
+
+			// 3. Limpa filhos anteriores (se houver) para mostrar o resultado fresco
+			item.Children.Clear();
+
+			// 4. Adiciona Chamadas Internas (Outros métodos da mesma classe)
+			if (analysisResult.InternalMethodCalls.Any())
+			{
+				var callsGroup = _itemFactory.CreateWrapper($"{realPath}::flow_calls", FileSystemItemType.LogicalGroup, "\uE80D"); // Icone 'Message/Call'
+				callsGroup.SharedState.Name = "Chamadas (Internas)";
+
+				foreach (var call in analysisResult.InternalMethodCalls)
+				{
+					// Tenta recriar a assinatura visual ou usa apenas o nome
+					// Nota: Sem análise semântica completa, não sabemos os parâmetros exatos da chamada, só o nome.
+					var callItem = _itemFactory.CreateWrapper($"{realPath}::{call}", FileSystemItemType.Method, "\uF158");
+					callItem.SharedState.Name = call + "(...)";
+					callItem.MethodSignature = call; // Pode ser inexato sem overload resolution, mas serve para busca
+
+					// AUTO-SELEÇÃO
+					callItem.IsChecked = true;
+
+					callsGroup.Children.Add(callItem);
+				}
+				item.Children.Add(callsGroup);
+			}
+
+			// 5. Adiciona Dependências Externas (Classes usadas dentro do método)
+			if (analysisResult.ExternalDependencies.Any())
+			{
+				var depsGroup = _itemFactory.CreateWrapper($"{realPath}::flow_deps", FileSystemItemType.LogicalGroup, "\uE71D");
+				depsGroup.SharedState.Name = "Usa (Classes/Tipos)";
+
+				foreach (var kvp in analysisResult.ExternalDependencies)
+				{
+					string className = kvp.Key;
+					string classPath = kvp.Value;
+
+					var depItem = _itemFactory.CreateWrapper(classPath, FileSystemItemType.Dependency, "\uE972");
+					// depItem.SharedState.Name já será o nome do arquivo, mas podemos enriquecer se quiser
+
+					// AUTO-SELEÇÃO
+					depItem.IsChecked = true;
+
+					depsGroup.Children.Add(depItem);
+				}
+				item.Children.Add(depsGroup);
+			}
+
+			// 6. Finalização
+			if (item.Children.Any())
+			{
+				RegisterItemEventsRecursively(item); // Importante para o checkbox funcionar
+				item.IsExpanded = true;
+				OnStatusChanged($"Fluxo analisado. {analysisResult.InternalMethodCalls.Count} chamadas, {analysisResult.ExternalDependencies.Count} dependências.");
+			}
+			else
+			{
+				OnStatusChanged("Nenhuma chamada ou dependência encontrada neste método.");
+			}
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro no fluxo: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
+
 	[RelayCommand] private void SyncFocus() { }
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 }

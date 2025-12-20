@@ -1,4 +1,5 @@
 ﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Core.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -212,5 +213,89 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 			return typeName.Substring(0, typeName.IndexOf("<"));
 		}
 		return typeName;
+	}
+
+	public async Task<MethodBodyResult> AnalyzeMethodBodyAsync(string filePath, string methodSignature)
+	{
+		var result = new MethodBodyResult();
+
+		if (!File.Exists(filePath)) return result;
+
+		try
+		{
+			var code = await File.ReadAllTextAsync(filePath);
+			var tree = CSharpSyntaxTree.ParseText(code);
+			var root = await tree.GetRootAsync();
+
+			// 1. Encontrar o nó do método específico usando a assinatura
+			// Simplificação: Compara o nome e tenta bater a assinatura gerada
+			var methodNode = root.DescendantNodes()
+				.OfType<MethodDeclarationSyntax>()
+				.FirstOrDefault(m =>
+				{
+					var paramsList = m.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
+					var sig = $"{m.Identifier.Text}({string.Join(", ", paramsList)})";
+					return sig == methodSignature;
+				});
+
+			if (methodNode?.Body == null) return result;
+
+			// 2. Analisar o corpo do método
+			var nodesInBody = methodNode.Body.DescendantNodes();
+
+			// A) Encontrar chamadas de métodos (InvocationExpression)
+			var invocations = nodesInBody.OfType<InvocationExpressionSyntax>();
+			foreach (var invocation in invocations)
+			{
+				// Pega o nome do método chamado (ex: "Calcular()" ou "servico.Salvar()")
+				string callName = "";
+
+				if (invocation.Expression is IdentifierNameSyntax idSyntax)
+				{
+					// Chamada interna direta: Calcular()
+					callName = idSyntax.Identifier.Text;
+					// Adiciona como chamada interna (potencialmente outro método nesta classe)
+					result.InternalMethodCalls.Add(callName);
+				}
+				else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+				{
+					// Chamada em objeto: _servico.Salvar()
+					// Aqui o interesse maior é identificar o "_servico" para achar a dependência de tipo
+					callName = memberAccess.Name.Identifier.Text;
+				}
+			}
+
+			// B) Encontrar Tipos usados (Classes, Interfaces) para Dependências Externas
+			// Varre todos os identificadores no corpo
+			var identifiers = nodesInBody.OfType<IdentifierNameSyntax>();
+
+			foreach (var id in identifiers)
+			{
+				string name = id.Identifier.Text;
+
+				// Verifica se esse nome é uma classe mapeada no projeto
+				if (_projectTypeMap.TryGetValue(name, out var depPath))
+				{
+					// Evita auto-referência
+					if (depPath != filePath)
+					{
+						result.ExternalDependencies[name] = depPath;
+					}
+				}
+				// Verifica se é uma interface mapeada (ex: IService -> Service.cs)
+				// Lógica simples: Se encontrou IService, tenta achar onde ele é definido
+				else if (name.StartsWith("I") && name.Length > 1 && _projectTypeMap.TryGetValue(name, out var interfacePath))
+				{
+					if (interfacePath != filePath)
+						result.ExternalDependencies[name] = interfacePath;
+				}
+			}
+
+			// Limpeza de duplicatas
+			result.InternalMethodCalls = result.InternalMethodCalls.Distinct().ToList();
+		}
+		catch { }
+
+		return result;
 	}
 }
