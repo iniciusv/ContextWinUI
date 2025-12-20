@@ -2,6 +2,7 @@
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;

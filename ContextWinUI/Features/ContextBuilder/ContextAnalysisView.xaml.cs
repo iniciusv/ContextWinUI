@@ -1,18 +1,15 @@
-﻿using ContextWinUI.Models;
+﻿using ContextWinUI.Features.Tagging; // Importante
+using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Collections.Generic;
 using System.Linq;
-using System;
-using ContextWinUI.Core.Contracts;
 
 namespace ContextWinUI.Views;
 
 public sealed partial class ContextAnalysisView : UserControl
 {
-	private readonly List<string> _standardTags = new() { "Importante", "Revisar", "Documentação", "Bug", "Refatorar" };
-
 	public static readonly DependencyProperty ContextViewModelProperty =
 		DependencyProperty.Register(nameof(ContextViewModel), typeof(ContextAnalysisViewModel), typeof(ContextAnalysisView), new PropertyMetadata(null));
 
@@ -28,7 +25,6 @@ public sealed partial class ContextAnalysisView : UserControl
 		this.Name = "RootAnalysisView";
 	}
 
-	// Clique na Árvore (já existia)
 	private void TreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
 	{
 		if (args.InvokedItem is FileSystemItem item)
@@ -37,24 +33,22 @@ public sealed partial class ContextAnalysisView : UserControl
 		}
 	}
 
-	// --- NOVO: Clique nas Listas (Seleção e Git) ---
 	private void OnListViewItemClick(object sender, ItemClickEventArgs e)
 	{
 		if (e.ClickedItem is FileSystemItem item)
 		{
-			// Dispara o evento que o MainViewModel está ouvindo para carregar o arquivo
 			ContextViewModel?.SelectFileForPreview(item);
 		}
 	}
 
-	// --- MENU DINÂMICO UNIFICADO ---
 	private void OnTagMenuOpening(object sender, object e)
 	{
+		// View totalmente limpa. Lógica movida para Features.Tagging.TagMenuBuilder
 		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem rightClickedItem)
 		{
-			flyout.Items.Clear();
-			List<FileSystemItem> targetItems = new();
+			var targetItems = new List<FileSystemItem>();
 
+			// Determina se aplica a múltiplos itens selecionados ou apenas ao clicado
 			var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
 			var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
 			var gitSelection = GitListView.SelectedItems.Cast<FileSystemItem>().ToList();
@@ -64,29 +58,8 @@ public sealed partial class ContextAnalysisView : UserControl
 			else if (gitSelection.Contains(rightClickedItem)) targetItems = gitSelection;
 			else targetItems.Add(rightClickedItem);
 
-			string headerText = targetItems.Count > 1 ? $"Nova Tag ({targetItems.Count} itens)..." : "Nova Tag...";
-			var newTagItem = new MenuFlyoutItem { Text = headerText, Icon = new FontIcon { Glyph = "\uE710" } };
-			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagToBatchAsync(targetItems, this.XamlRoot);
-			flyout.Items.Add(newTagItem);
-			flyout.Items.Add(new MenuFlyoutSeparator());
-
-			var allTagsDisplay = _standardTags.Union(targetItems.SelectMany(x => x.SharedState.Tags)).Distinct().OrderBy(x => x).ToList();
-
-			foreach (var tag in allTagsDisplay)
-			{
-				var isChecked = targetItems.All(i => i.SharedState.Tags.Contains(tag));
-				var toggleItem = new ToggleMenuFlyoutItem { Text = tag, IsChecked = isChecked };
-				toggleItem.Click += (s, args) => ContextViewModel.TagService.BatchToggleTag(targetItems, tag);
-				flyout.Items.Add(toggleItem);
-			}
-
-			if (targetItems.Any(i => i.SharedState.Tags.Any()))
-			{
-				flyout.Items.Add(new MenuFlyoutSeparator());
-				var clearItem = new MenuFlyoutItem { Text = "Limpar Tags", Icon = new FontIcon { Glyph = "\uE74D" } };
-				clearItem.Click += (s, args) => { foreach (var item in targetItems) ContextViewModel.TagService.ClearTags(item.SharedState.Tags); };
-				flyout.Items.Add(clearItem);
-			}
+			// Delega construção
+			TagMenuBuilder.BuildMenu(flyout, targetItems, ContextViewModel.TagService, this.XamlRoot);
 		}
 	}
 }

@@ -1,25 +1,19 @@
-// ==================== ContextWinUI\Features\ContextBuilder\ContextAnalysisViewModel.cs ====================
-
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
-using ContextWinUI.Services;
-using ContextWinUI.ViewModels;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
-namespace ContextWinUI.ViewModels; // Namespace ajustado para padrão
+namespace ContextWinUI.ViewModels;
 
 public partial class ContextAnalysisViewModel : ObservableObject
 {
@@ -28,29 +22,19 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IGitService _gitService;
 	private readonly IProjectSessionManager _sessionManager;
+	private readonly IContentGenerationService _contentGenService; // Nova dependência
 
 	public ITagManagementUiService TagService { get; }
 	public ContextSelectionViewModel SelectionVM { get; }
 
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> contextTreeItems = new();
-
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> gitModifiedItems = new();
-
-	[ObservableProperty]
-	private FileSystemItem? selectedItem;
-
-	[ObservableProperty]
-	private bool isVisible;
-
-	[ObservableProperty]
-	private bool isLoading;
-
-	[ObservableProperty]
-	private bool canGoBack;
+	[ObservableProperty] private ObservableCollection<FileSystemItem> contextTreeItems = new();
+	[ObservableProperty] private ObservableCollection<FileSystemItem> gitModifiedItems = new();
+	[ObservableProperty] private FileSystemItem? selectedItem;
+	[ObservableProperty] private bool isVisible;
+	[ObservableProperty] private bool isLoading;
+	[ObservableProperty] private bool canGoBack;
 
 	public int SelectedCount => SelectionVM.SelectedItemsList.Count;
 
@@ -64,7 +48,8 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			ITagManagementUiService tagService,
 			IGitService gitService,
 			IProjectSessionManager sessionManager,
-			ContextSelectionViewModel selectionVM)
+			ContextSelectionViewModel selectionVM,
+			IContentGenerationService contentGenService)
 	{
 		_roslynAnalyzer = roslynAnalyzer;
 		_fileSystemService = fileSystemService;
@@ -73,6 +58,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		_gitService = gitService;
 		_sessionManager = sessionManager;
 		SelectionVM = selectionVM;
+		_contentGenService = contentGenService;
 
 		SelectionVM.SelectedItemsList.CollectionChanged += (s, e) =>
 		{
@@ -85,6 +71,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		if (IsLoading) return;
 		ContextTreeItems.Clear();
 		SelectionVM.Clear();
+
 		foreach (var item in items)
 		{
 			var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
@@ -114,6 +101,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		try
 		{
 			await _roslynAnalyzer.IndexProjectAsync(rootPath);
+
 			foreach (var item in selectedItems)
 			{
 				var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
@@ -134,10 +122,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private async Task PopulateNodeAsync(FileSystemItem node, string filePath)
 	{
 		var analysis = await _roslynAnalyzer.AnalyzeFileStructureAsync(filePath);
+
 		if (analysis.Methods.Any())
 		{
 			var methodsGroup = _itemFactory.CreateWrapper($"{filePath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
 			methodsGroup.SharedState.Name = "Métodos";
+
 			foreach (var method in analysis.Methods)
 			{
 				var methodItem = _itemFactory.CreateWrapper($"{filePath}::{method}", FileSystemItemType.Method, "\uF158");
@@ -147,10 +137,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			}
 			node.Children.Add(methodsGroup);
 		}
+
 		if (analysis.Dependencies.Any())
 		{
 			var contextGroup = _itemFactory.CreateWrapper($"{filePath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
 			contextGroup.SharedState.Name = "Dependências";
+
 			foreach (var depPath in analysis.Dependencies)
 			{
 				var depItem = _itemFactory.CreateWrapper(depPath, FileSystemItemType.Dependency, "\uE943");
@@ -166,7 +158,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	public async Task RefreshGitChangesAsync()
 	{
 		var rootPath = _sessionManager.CurrentProjectPath;
-
 		if (string.IsNullOrEmpty(rootPath) || !_gitService.IsGitRepository(rootPath))
 		{
 			GitModifiedItems.Clear();
@@ -179,7 +170,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		{
 			var changedFiles = await _gitService.GetModifiedFilesAsync(rootPath);
 			GitModifiedItems.Clear();
-
 			foreach (var path in changedFiles)
 			{
 				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, "\uE70F");
@@ -199,6 +189,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	{
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
+
 		if (item.IsChecked) SelectionVM.AddItem(item);
 		foreach (var child in item.Children) RegisterItemEventsRecursively(child);
 	}
@@ -230,7 +221,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 
 	[RelayCommand] private void ExpandAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true); }
 	[RelayCommand] private void CollapseAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(false); }
-
 	[RelayCommand] private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query, CancellationToken.None);
 
 	[RelayCommand]
@@ -244,12 +234,19 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			UpdateCanGoBack();
 		}
 	}
+
 	private void UpdateCanGoBack() => CanGoBack = _historyStack.Count > 0;
 
 	public void SelectFileForPreview(FileSystemItem item)
 	{
 		SelectedItem = item;
-		var realPath = GetPhysicalPath(item);
+		// Lógica simples de resolução de caminho para preview
+		var realPath = item.FullPath;
+		if (item.Type == FileSystemItemType.Method || item.Type == FileSystemItemType.LogicalGroup)
+		{
+			var parts = item.FullPath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+			if (parts.Length > 0) realPath = parts[0];
+		}
 
 		if (!string.IsNullOrEmpty(realPath) && File.Exists(realPath))
 		{
@@ -283,81 +280,16 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsLoading = true;
 		try
 		{
-			// 1. Pega Configurações da Sessão
-			bool removeUsings = _sessionManager.OmitUsings;
-			bool removeNamespaces = _sessionManager.OmitNamespaces; // [NOVO]
-			bool removeComments = _sessionManager.OmitComments;
-			bool removeEmptyLines = _sessionManager.OmitEmptyLines; // [NOVO]
-
 			var selectedItems = SelectionVM.SelectedItemsList.ToList();
 			if (!selectedItems.Any()) return;
 
-			var sb = new StringBuilder();
-
-			sb.AppendLine("/* CONTEXTO SELECIONADO */");
-			sb.AppendLine();
-
-			var fileGroups = selectedItems.GroupBy(item => GetPhysicalPath(item)).ToList();
-
-			foreach (var group in fileGroups)
-			{
-				string filePath = group.Key;
-				if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) continue;
-
-				sb.AppendLine($"// ==================== {Path.GetFileName(filePath)} ====================");
-
-				var selectedMethodSignatures = group
-					.Where(item => item.Type == FileSystemItemType.Method)
-					.Select(item => item.MethodSignature)
-					.Where(s => !string.IsNullOrEmpty(s))
-					.Cast<string>()
-					.ToList();
-
-				if (selectedMethodSignatures.Any())
-				{
-					sb.AppendLine("// (Conteúdo filtrado: Métodos selecionados)");
-
-					// [CORREÇÃO]: Chamada atualizada com novos parâmetros
-					var content = await _roslynAnalyzer.FilterClassContentAsync(
-						filePath,
-						selectedMethodSignatures,
-						removeUsings,
-						removeNamespaces,
-						removeComments,
-						removeEmptyLines
-					);
-					sb.AppendLine(content);
-				}
-				else
-				{
-					// Se precisar de alguma limpeza
-					if (removeUsings || removeComments || removeNamespaces || removeEmptyLines)
-					{
-						// [CORREÇÃO]: Chamada atualizada (métodos = null significa arquivo inteiro)
-						var content = await _roslynAnalyzer.FilterClassContentAsync(
-							filePath,
-							null,
-							removeUsings,
-							removeNamespaces,
-							removeComments,
-							removeEmptyLines
-						);
-						sb.AppendLine(content);
-					}
-					else
-					{
-						var content = await _fileSystemService.ReadFileContentAsync(filePath);
-						sb.AppendLine(content);
-					}
-				}
-
-				sb.AppendLine();
-				sb.AppendLine();
-			}
+			// Lógica delegada para o serviço
+			var content = await _contentGenService.GenerateContentAsync(selectedItems, _sessionManager);
 
 			var dp = new DataPackage();
-			dp.SetText(sb.ToString());
+			dp.SetText(content);
 			Clipboard.SetContent(dp);
+
 			OnStatusChanged("Copiado com sucesso!");
 		}
 		catch (Exception ex)
@@ -365,16 +297,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			OnStatusChanged($"Erro ao copiar: {ex.Message}");
 		}
 		finally { IsLoading = false; }
-	}
-
-	private string GetPhysicalPath(FileSystemItem item)
-	{
-		if (item.Type == FileSystemItemType.Method || item.Type == FileSystemItemType.LogicalGroup)
-		{
-			var parts = item.FullPath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-			return parts.Length > 0 ? parts[0] : item.FullPath;
-		}
-		return item.FullPath;
 	}
 
 	[RelayCommand] private void AnalyzeMethodFlow(FileSystemItem item) { }

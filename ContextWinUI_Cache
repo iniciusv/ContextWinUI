@@ -1,0 +1,19 @@
+{
+  "RootPath": "C:\\Users\\vinic\\source\\repos\\ContextWinUI",
+  "PrePrompt": "",
+  "OmitUsings": false,
+  "OmitNamespaces": false,
+  "OmitComments": false,
+  "OmitEmptyLines": false,
+  "IncludeStructure": false,
+  "StructureOnlyFolders": false,
+  "Files": [
+    {
+      "RelativePath": "ContextWinUI\\MainWindow.xaml.cs",
+      "IsIgnored": false,
+      "Tags": [
+        "Bug"
+      ]
+    }
+  ]
+}

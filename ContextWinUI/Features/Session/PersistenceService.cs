@@ -1,16 +1,15 @@
 ﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Models;
-using System.Security.Cryptography; // [CORREÇÃO] Necessário para MD5
-using System.Text;
-using System.Text.Json;
-using System.Linq; // [CORREÇÃO] Necessário para .Select()
-using ContextWinUI.Models;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.IO;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics; // Adicionado para Debug
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Features.Session;
 
 public class PersistenceService : IPersistenceService
 {
@@ -29,13 +28,18 @@ public class PersistenceService : IPersistenceService
 	{
 		try
 		{
-			var cacheFilePath = GetCacheFilePath(projectRootPath);
-			var cacheDir = Path.GetDirectoryName(cacheFilePath);
+			var cacheFilePath = Path.Combine(projectRootPath, AppCacheFolderName);
 
-			if (cacheDir != null && !Directory.Exists(cacheDir))
+			// Filtra apenas arquivos que tem alguma alteração relevante (tags ou ignorado)
+			// Isso diminui o tamanho do JSON
+			var modifiedStates = states.Where(s => s.IsIgnored || s.Tags.Any());
+
+			var fileDtos = modifiedStates.Select(s => new FileMetadataDto
 			{
-				Directory.CreateDirectory(cacheDir);
-			}
+				RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
+				IsIgnored = s.IsIgnored,
+				Tags = s.Tags.ToList()
+			}).ToList();
 
 			var dto = new ProjectCacheDto
 			{
@@ -47,49 +51,40 @@ public class PersistenceService : IPersistenceService
 				OmitEmptyLines = omitEmptyLines,
 				IncludeStructure = includeStructure,
 				StructureOnlyFolders = structureOnlyFolders,
-				// [CORREÇÃO] Agora o .Select funcionará com o using System.Linq
-				Files = states.Select(s => new FileMetadataDto
-				{
-					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
-					IsIgnored = s.IsIgnored,
-					Tags = s.Tags.ToList()
-				}).ToList()
+				Files = fileDtos
 			};
 
 			var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
 			await File.WriteAllTextAsync(cacheFilePath, json);
 		}
-		catch (Exception) { throw; }
+		catch (Exception ex)
+		{
+			Debug.WriteLine($"[PersistenceService] Erro ao salvar: {ex.Message}");
+			// Não lançamos erro aqui para não travar a aplicação, mas logamos
+		}
 	}
 
 	public async Task<ProjectCacheDto?> LoadProjectCacheAsync(string projectRootPath)
 	{
+		var cacheFilePath = Path.Combine(projectRootPath, AppCacheFolderName);
+
+		if (!File.Exists(cacheFilePath))
+		{
+			Debug.WriteLine($"[PersistenceService] Cache não encontrado em: {cacheFilePath}");
+			return null;
+		}
+
 		try
 		{
-			var cacheFilePath = GetCacheFilePath(projectRootPath);
-			if (!File.Exists(cacheFilePath)) return null;
-
 			var json = await File.ReadAllTextAsync(cacheFilePath);
-			return JsonSerializer.Deserialize<ProjectCacheDto>(json);
+			var result = JsonSerializer.Deserialize<ProjectCacheDto>(json);
+			Debug.WriteLine($"[PersistenceService] Cache carregado com {result?.Files.Count ?? 0} arquivos configurados.");
+			return result;
 		}
-		catch { return null; }
-	}
-
-	private string GetCacheFilePath(string projectPath)
-	{
-		var appDir = AppDomain.CurrentDomain.BaseDirectory;
-		var cacheDir = Path.Combine(appDir, AppCacheFolderName);
-		var name = Path.GetFileName(projectPath.TrimEnd(Path.DirectorySeparatorChar));
-		var hash = CreateMd5(projectPath);
-		return Path.Combine(cacheDir, $"{name}_{hash}.json");
-	}
-
-	private string CreateMd5(string input)
-	{
-		// [CORREÇÃO] Instancia o MD5 corretamente
-		using var md5 = MD5.Create();
-		var inputBytes = Encoding.ASCII.GetBytes(input.ToLowerInvariant());
-		var hashBytes = md5.ComputeHash(inputBytes);
-		return Convert.ToHexString(hashBytes);
+		catch (Exception ex)
+		{
+			Debug.WriteLine($"[PersistenceService] Erro ao ler JSON: {ex.Message}");
+			return null; // Retorna null se o JSON estiver corrompido
+		}
 	}
 }

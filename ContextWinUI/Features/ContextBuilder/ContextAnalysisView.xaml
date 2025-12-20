@@ -55,6 +55,7 @@
 						<RowDefinition Height="*"/>
 					</Grid.RowDefinitions>
 					<components:SearchBar Grid.Row="0" SearchCommand="{x:Bind ContextViewModel.SearchCommand}" Margin="16,8,16,8"/>
+
 					<TreeView Grid.Row="1"
                               x:Name="AnalysisTreeView"
                               ItemsSource="{x:Bind ContextViewModel.ContextTreeItems, Mode=OneWay}" 
@@ -64,7 +65,9 @@
 							<DataTemplate x:DataType="models:FileSystemItem">
 								<TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}" IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}" Visibility="{x:Bind Visibility, Mode=OneWay}">
 									<TreeViewItem.ContextFlyout>
-										<MenuFlyout Opening="OnTagMenuOpening" />
+										<Flyout Opening="OnTagMenuOpening">
+											<Grid x:Name="FlyoutContentGrid" />
+										</Flyout>
 									</TreeViewItem.ContextFlyout>
 									<Grid>
 										<Grid.ColumnDefinitions>
@@ -99,14 +102,12 @@
 						<RowDefinition Height="Auto"/>
 						<RowDefinition Height="*"/>
 					</Grid.RowDefinitions>
-
 					<CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent" IsOpen="True">
 						<AppBarButton Icon="Save" Label="Salvar" Command="{x:Bind ContextViewModel.SelectionVM.SaveSelectionListCommand}"/>
 						<AppBarButton Icon="OpenFile" Label="Carregar" Command="{x:Bind ContextViewModel.SelectionVM.LoadSelectionListCommand}"/>
 						<AppBarButton Icon="Paste" Label="Importar" Command="{x:Bind ContextViewModel.SelectionVM.ImportFromTextCommand}" CommandParameter="{x:Bind RootAnalysisView.XamlRoot}"/>
 						<AppBarButton Icon="Clear" Label="Limpar" Command="{x:Bind ContextViewModel.SelectionVM.ClearCommand}"/>
 					</CommandBar>
-
 					<TextBlock Grid.Row="1" Text="Itens marcados:" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Margin="16,4,16,8"/>
 
 					<ListView Grid.Row="2" 
@@ -115,7 +116,6 @@
                               SelectionMode="Extended"
                               IsItemClickEnabled="True"
                               ItemClick="OnListViewItemClick">
-
 						<ListView.ItemTemplate>
 							<DataTemplate x:DataType="models:FileSystemItem">
 								<Grid Padding="0,4">
@@ -185,6 +185,7 @@
 							</DataTemplate>
 						</ListView.ItemTemplate>
 					</ListView>
+
 					<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
 						<Button HorizontalAlignment="Stretch" Command="{x:Bind ContextViewModel.RefreshGitChangesCommand}">
 							<StackPanel Orientation="Horizontal" Spacing="8">
@@ -195,7 +196,6 @@
 					</Grid>
 				</Grid>
 			</PivotItem>
-
 		</Pivot>
 
 		<Grid Grid.Row="2" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">

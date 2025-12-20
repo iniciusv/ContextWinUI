@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using ContextWinUI.Models;
+using System.Collections.Generic;
 
-namespace ContextWinUI.Models;
+namespace ContextWinUI.Core.Models;
 
 public class ProjectCacheDto
 {
@@ -8,10 +9,9 @@ public class ProjectCacheDto
 	public string PrePrompt { get; set; } = string.Empty;
 
 	public bool OmitUsings { get; set; }
-	public bool OmitNamespaces { get; set; } // [NOVO]
+	public bool OmitNamespaces { get; set; }
 	public bool OmitComments { get; set; }
-	public bool OmitEmptyLines { get; set; } // [NOVO]
-
+	public bool OmitEmptyLines { get; set; }
 	public bool IncludeStructure { get; set; }
 	public bool StructureOnlyFolders { get; set; }
 

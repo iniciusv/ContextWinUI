@@ -1,4 +1,5 @@
 ﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Models;
 using System;
 using System.IO;
@@ -148,6 +149,7 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
+		// 1. Aplica configurações globais
 		PrePrompt = cache.PrePrompt ?? string.Empty;
 		OmitUsings = cache.OmitUsings;
 		OmitNamespaces = cache.OmitNamespaces;
@@ -156,23 +158,37 @@ public class ProjectSessionManager : IProjectSessionManager
 		IncludeStructure = cache.IncludeStructure;
 		StructureOnlyFolders = cache.StructureOnlyFolders;
 
+		// 2. Aplica Tags e Ignorados aos Arquivos
 		foreach (var fileDto in cache.Files)
 		{
-			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
-
-			bool exists = File.Exists(fullPath) || Directory.Exists(fullPath);
-
-			if (exists)
+			try
 			{
-				var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
+				// Normalização robusta de caminho
+				var fullPath = Path.GetFullPath(Path.Combine(rootPath, fileDto.RelativePath));
 
-				wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
-
-				wrapper.SharedState.Tags.Clear();
-				foreach (var tag in fileDto.Tags)
+				// Verifica se o arquivo ainda existe no disco
+				if (File.Exists(fullPath) || Directory.Exists(fullPath))
 				{
-					wrapper.SharedState.Tags.Add(tag);
+					// O Factory usa cache interno. Ao chamar CreateWrapper com o mesmo caminho,
+					// ele retorna a MESMA instância que está sendo exibida no TreeView.
+					// Isso é vital para que as tags apareçam na UI.
+					var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
+
+					// Atualiza o estado compartilhado (SharedState)
+					wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
+
+					// Atualiza a coleção de tags (ObservableCollection notifica a UI automaticamente)
+					wrapper.SharedState.Tags.Clear();
+					foreach (var tag in fileDto.Tags)
+					{
+						wrapper.SharedState.Tags.Add(tag);
+					}
 				}
+			}
+			catch
+			{
+				// Ignora falhas em arquivos individuais (ex: caracteres inválidos no cache antigo)
+				continue;
 			}
 		}
 	}
