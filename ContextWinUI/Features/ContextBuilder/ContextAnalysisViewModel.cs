@@ -198,8 +198,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			// Delega para o Orchestrator a lógica de parsear o corpo do método
 			await _analysisOrchestrator.EnrichMethodFlowAsync(item, _sessionManager.CurrentProjectPath);
 
-			// Re-conecta eventos (Importante: O Orchestrator já marca IsChecked=true, 
-			// mas precisamos registrar o evento para o SelectionVM saber disso)
 			RegisterItemEventsRecursively(item);
 
 			item.IsExpanded = true;
@@ -228,10 +226,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsLoading = true;
 		try
 		{
-			// O Orchestrator cuida de toda a lógica de:
-			// 1. Agrupar por arquivo (evitar duplicatas)
-			// 2. Aplicar filtros (Métodos vs Arquivo Completo)
-			// 3. Limpar código (Regex)
 			string finalText = await _analysisOrchestrator.BuildContextStringAsync(selectedItems, _sessionManager);
 
 			var dp = new DataPackage();

@@ -1,11 +1,12 @@
-﻿using ContextWinUI.Models;
+﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Helpers;
+using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
-using ContextWinUI.Core.Contracts;
 
 namespace ContextWinUI.Views;
 
@@ -47,49 +48,41 @@ public sealed partial class ContextAnalysisView : UserControl
 		}
 	}
 
-	// --- MENU DINÂMICO UNIFICADO ---
-	private void OnTagMenuOpening(object sender, object e)
+
+private void OnTagMenuOpening(object sender, object e)
+{
+	// O sender aqui originalmente era MenuFlyout.
+	// Se você não mudou o XAML, ele ainda espera popular um MenuFlyout.
+	// O MenuFlyout NÃO aceita StackPanel complexo facilmente.
+
+	// SOLUÇÃO: Vamos fechar esse MenuFlyout imediatamente e abrir o nosso Flyout customizado,
+	// OU (melhor) alterar o XAML para usar <Flyout> em vez de <MenuFlyout>.
+
+	// Assumindo que você alterou o XAML para <Flyout Opening="OnTagMenuOpening">...
+
+	if (sender is Flyout flyout && flyout.Target.DataContext is FileSystemItem rightClickedItem)
 	{
-		if (sender is MenuFlyout flyout && flyout.Target.DataContext is FileSystemItem rightClickedItem)
-		{
-			flyout.Items.Clear();
-			List<FileSystemItem> targetItems = new();
+		// Lógica de seleção múltipla (mantida do seu código original)
+		List<FileSystemItem> targetItems = new();
+		var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
+		var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
+		var gitSelection = GitListView.SelectedItems.Cast<FileSystemItem>().ToList();
 
-			var treeSelection = AnalysisTreeView.SelectedItems.Cast<FileSystemItem>().ToList();
-			var listSelection = AnalysisListView.SelectedItems.Cast<FileSystemItem>().ToList();
-			var gitSelection = GitListView.SelectedItems.Cast<FileSystemItem>().ToList();
+		if (treeSelection.Contains(rightClickedItem)) targetItems = treeSelection;
+		else if (listSelection.Contains(rightClickedItem)) targetItems = listSelection;
+		else if (gitSelection.Contains(rightClickedItem)) targetItems = gitSelection;
+		else targetItems.Add(rightClickedItem);
 
-			if (treeSelection.Contains(rightClickedItem)) targetItems = treeSelection;
-			else if (listSelection.Contains(rightClickedItem)) targetItems = listSelection;
-			else if (gitSelection.Contains(rightClickedItem)) targetItems = gitSelection;
-			else targetItems.Add(rightClickedItem);
-
-			string headerText = targetItems.Count > 1 ? $"Nova Tag ({targetItems.Count} itens)..." : "Nova Tag...";
-			var newTagItem = new MenuFlyoutItem { Text = headerText, Icon = new FontIcon { Glyph = "\uE710" } };
-			newTagItem.Click += (s, args) => _ = ContextViewModel.TagService.PromptAndAddTagToBatchAsync(targetItems, this.XamlRoot);
-			flyout.Items.Add(newTagItem);
-			flyout.Items.Add(new MenuFlyoutSeparator());
-
-			var allTagsDisplay = _standardTags.Union(targetItems.SelectMany(x => x.SharedState.Tags)).Distinct().OrderBy(x => x).ToList();
-
-			foreach (var tag in allTagsDisplay)
-			{
-				var isChecked = targetItems.All(i => i.SharedState.Tags.Contains(tag));
-				var toggleItem = new ToggleMenuFlyoutItem { Text = tag, IsChecked = isChecked };
-				toggleItem.Click += (s, args) => ContextViewModel.TagService.BatchToggleTag(targetItems, tag);
-				flyout.Items.Add(toggleItem);
-			}
-
-			if (targetItems.Any(i => i.SharedState.Tags.Any()))
-			{
-				flyout.Items.Add(new MenuFlyoutSeparator());
-				var clearItem = new MenuFlyoutItem { Text = "Limpar Tags", Icon = new FontIcon { Glyph = "\uE74D" } };
-				clearItem.Click += (s, args) => { foreach (var item in targetItems) ContextViewModel.TagService.ClearTags(item.SharedState.Tags); };
-				flyout.Items.Add(clearItem);
-			}
-		}
+		// Usa o Builder
+		flyout.Content = TagMenuBuilder.BuildContent(
+			targetItems,
+			ContextViewModel.TagService,
+			this.XamlRoot,
+			() => flyout.Hide()
+		);
 	}
-	private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
+}
+private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
 	{
 		// 1. O sender é o botão que foi clicado
 		if (sender is Button button && button.DataContext is FileSystemItem item)

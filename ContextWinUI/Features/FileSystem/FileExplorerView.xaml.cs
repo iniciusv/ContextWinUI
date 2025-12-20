@@ -1,4 +1,5 @@
-﻿using ContextWinUI.Models;
+﻿using ContextWinUI.Core.Helpers;
+using ContextWinUI.Models;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using Microsoft.UI;
@@ -83,158 +84,29 @@ public sealed partial class FileExplorerView : UserControl
 		}
 	}
 
-	// --- CONSTRUÇÃO DO MENU DE CONTEXTO ---
 	private void OnTagMenuOpening(object sender, object e)
 	{
-		// O sender é um Flyout genérico, não MenuFlyout, permitindo conteúdo customizado
+		// O evento Opening do Flyout padrão não nos dá acesso fácil ao elemento clicado no TreeView se usarmos ContextFlyout.
+		// Mas notei no XAML que você usa:
+		// <TreeViewItem.ContextFlyout>
+		//     <Flyout Opening="OnTagMenuOpening"> ...
+
+		// O Sender é o Flyout. O Target é o elemento da UI (TreeViewItem ou Grid interna).
+		// O DataContext deve ser o FileSystemItem.
+
 		if (sender is Flyout flyout && flyout.Target.DataContext is FileSystemItem item)
 		{
-			// Container Principal
-			var rootPanel = new StackPanel { Spacing = 4, MinWidth = 180, Padding = new Thickness(4) };
 
-			// 1. Opção: Ignorar Pasta
-			if (item.IsDirectory)
-			{
-				var chkIgnore = CreateMenuCheckBox("Ignorar Pasta", item.SharedState.IsIgnored);
-				chkIgnore.Click += (s, args) => item.SharedState.IsIgnored = (chkIgnore.IsChecked == true);
 
-				rootPanel.Children.Add(chkIgnore);
-				rootPanel.Children.Add(new MenuFlyoutSeparator());
-			}
-
-			// 2. Opção: Nova Tag
-			var btnNewTag = new Button
-			{
-				Content = "Nova Tag...",
-				HorizontalAlignment = HorizontalAlignment.Stretch,
-				HorizontalContentAlignment = HorizontalAlignment.Left,
-				Background = new SolidColorBrush(Colors.Transparent),
-				BorderThickness = new Thickness(0)
-			};
-			btnNewTag.Click += (s, args) =>
-			{
-				flyout.Hide();
-				_ = ExplorerViewModel.TagService.PromptAndAddTagAsync(item.SharedState.Tags, this.XamlRoot);
-			};
-			rootPanel.Children.Add(btnNewTag);
-			rootPanel.Children.Add(new MenuFlyoutSeparator());
-
-			// 3. Lista de Tags com Paleta de Cores
-			var allTagsDisplay = _standardTags.Union(item.SharedState.Tags).OrderBy(x => x).ToList();
-
-			foreach (var tag in allTagsDisplay)
-			{
-				// Grid da Linha: [Checkbox (Tag)] --------- [Botão (Cor)]
-				var rowGrid = new Grid
-				{
-					ColumnDefinitions =
-					{
-						new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, // Expande texto
-                        new ColumnDefinition { Width = GridLength.Auto } // Botão cor fixo
-                    },
-					Margin = new Thickness(4, 2, 4, 2)
-				};
-
-				// Coluna 0: Checkbox da Tag
-				var isChecked = item.SharedState.Tags.Contains(tag);
-				var chkTag = new CheckBox
-				{
-					Content = tag,
-					IsChecked = isChecked,
-					MinWidth = 120
-				};
-				chkTag.Click += (s, args) => ExplorerViewModel.TagService.ToggleTag(item.SharedState.Tags, tag);
-				Grid.SetColumn(chkTag, 0);
-
-				// Coluna 1: Botão de Cor (Quadradinho)
-				var currentColor = TagColorService.Instance.GetColorForTag(tag);
-				var colorBtn = new Button
-				{
-					Width = 22,
-					Height = 22,
-					Padding = new Thickness(0),
-					Background = new SolidColorBrush(currentColor),
-					BorderThickness = new Thickness(1),
-					BorderBrush = new SolidColorBrush(Colors.Gray),
-					CornerRadius = new CornerRadius(4),
-				};
-				Grid.SetColumn(colorBtn, 1);
-
-				// --- CRIAÇÃO DA PALETA (Grid 4x4) ---
-				var paletteFlyout = new Flyout { Placement = FlyoutPlacementMode.RightEdgeAlignedTop };
-
-				var paletteGrid = new VariableSizedWrapGrid
-				{
-					MaximumRowsOrColumns = 4,
-					Orientation = Orientation.Horizontal,
-					ItemHeight = 28, // Tamanho total do slot
-					ItemWidth = 28,
-					Margin = new Thickness(4)
-				};
-
-				foreach (var color in _paletteColors)
-				{
-					var swatchBtn = new Button
-					{
-						Width = 24,
-						Height = 24,
-						Padding = new Thickness(0),
-						Margin = new Thickness(0), // Margin controlada pelo Grid
-						Background = new SolidColorBrush(color),
-						CornerRadius = new CornerRadius(12), // Redondo
-						BorderThickness = new Thickness(1),
-						BorderBrush = new SolidColorBrush(Colors.LightGray)
-					};
-
-					// Ação: Selecionar Cor
-					swatchBtn.Click += (s, args) =>
-					{
-						TagColorService.Instance.SetColorForTag(tag, color);
-						colorBtn.Background = new SolidColorBrush(color); // Atualiza visual imediato
-						paletteFlyout.Hide();
-					};
-
-					paletteGrid.Children.Add(swatchBtn);
-				}
-
-				paletteFlyout.Content = paletteGrid;
-				colorBtn.Flyout = paletteFlyout;
-				// -------------------------------------
-
-				// Monta a linha
-				rowGrid.Children.Add(chkTag);
-				rowGrid.Children.Add(colorBtn);
-
-				// Adiciona ao menu principal
-				rootPanel.Children.Add(rowGrid);
-			}
-
-			// 4. Opção de Limpar
-			if (item.SharedState.Tags.Any())
-			{
-				rootPanel.Children.Add(new MenuFlyoutSeparator());
-				var btnClear = new Button
-				{
-					Content = "Limpar Tags",
-					HorizontalAlignment = HorizontalAlignment.Stretch,
-					HorizontalContentAlignment = HorizontalAlignment.Left,
-					Background = new SolidColorBrush(Colors.Transparent),
-					BorderThickness = new Thickness(0),
-					Foreground = new SolidColorBrush(Colors.Red)
-				};
-				btnClear.Click += (s, args) =>
-				{
-					ExplorerViewModel.TagService.ClearTags(item.SharedState.Tags);
-					flyout.Hide();
-				};
-				rootPanel.Children.Add(btnClear);
-			}
-
-			// Define o conteúdo final do Flyout
-			flyout.Content = rootPanel;
+			// ==> A melhor abordagem para o seu código atual:
+			flyout.Content = TagMenuBuilder.BuildContent(
+				new List<FileSystemItem> { item },
+				ExplorerViewModel.TagService,
+				this.XamlRoot,
+				() => flyout.Hide() // Ação para fechar
+			);
 		}
 	}
-
 	// Helper para criar Checkbox estilizado para o menu
 	private CheckBox CreateMenuCheckBox(string text, bool isChecked)
 	{
