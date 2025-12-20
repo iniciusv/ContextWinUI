@@ -95,13 +95,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		};
 	}
 
-	// =========================================================================
-	// COMANDOS PRINCIPAIS DE ANÁLISE
-	// =========================================================================
-
-	/// <summary>
-	/// Entrada Principal: Chamado pela MainViewModel quando clica em "Analisar Contexto"
-	/// </summary>
 	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 	{
 		if (!selectedItems.Any()) return;
@@ -148,9 +141,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	/// <summary>
-	/// Botão "+" : Aprofundar análise na classe (Drill Down)
-	/// </summary>
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
@@ -181,9 +171,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	/// <summary>
-	/// Botão "Play" (Quadrado): Analisar fluxo do método
-	/// </summary>
 	[RelayCommand]
 	private async Task AnalyzeMethodFlow(FileSystemItem item)
 	{
@@ -210,9 +197,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	/// <summary>
-	/// Botão Copiar: Gera o texto final para o Clipboard
-	/// </summary>
 	[RelayCommand]
 	public async Task CopyContextToClipboardAsync()
 	{
@@ -240,10 +224,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 		finally { IsLoading = false; }
 	}
-
-	// =========================================================================
-	// GIT
-	// =========================================================================
 
 	[RelayCommand]
 	public async Task RefreshGitChangesAsync()
@@ -278,10 +258,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		finally { IsLoading = false; }
 	}
 
-	// =========================================================================
-	// GESTÃO DE UI E EVENTOS (A "Cola" entre View e ViewModel)
-	// =========================================================================
-
 	public void UpdateSelectionPreview(IEnumerable<FileSystemItem> items)
 	{
 		if (IsLoading) return;
@@ -295,18 +271,11 @@ public partial class ContextAnalysisViewModel : ObservableObject
 			SelectionVM.AddItem(fileNode);
 		}
 	}
-
-	/// <summary>
-	/// Método CRUCIAL. Conecta o evento PropertyChanged de cada item (CheckBox)
-	/// ao SelectionVM. Sem isso, marcar um checkbox na árvore não atualiza a lista de cópia.
-	/// </summary>
 	private void RegisterItemEventsRecursively(FileSystemItem item)
 	{
-		// Remove antes de adicionar para evitar duplicidade de inscrição
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
 
-		// Se o item nasceu marcado (ex: via Orchestrator), avisa o SelectionVM agora
 		if (item.IsChecked)
 		{
 			SelectionVM.AddItem(item);
