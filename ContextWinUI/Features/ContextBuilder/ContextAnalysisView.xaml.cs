@@ -89,4 +89,17 @@ public sealed partial class ContextAnalysisView : UserControl
 			}
 		}
 	}
+	private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
+	{
+		// 1. O sender é o botão que foi clicado
+		if (sender is Button button && button.DataContext is FileSystemItem item)
+		{
+			// 2. Verificamos se o ViewModel e o Comando existem
+			if (ContextViewModel != null && ContextViewModel.AnalyzeItemDepthCommand.CanExecute(item))
+			{
+				// 3. Executamos o comando manualmente passando o item
+				ContextViewModel.AnalyzeItemDepthCommand.Execute(item);
+			}
+		}
+	}
 }

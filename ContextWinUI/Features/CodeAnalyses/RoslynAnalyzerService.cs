@@ -1,4 +1,5 @@
 ﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

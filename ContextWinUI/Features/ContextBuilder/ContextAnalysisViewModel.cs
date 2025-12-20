@@ -212,20 +212,41 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
+	// ==================== ContextAnalysisViewModel.cs ====================
+
 	[RelayCommand]
 	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 	{
 		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
+
+		// Evita processar pastas, foca em arquivos de código
+		if (!item.IsCodeFile) return;
+
 		IsLoading = true;
 		try
 		{
-			_historyStack.Push(ContextTreeItems.ToList());
-			UpdateCanGoBack();
+			// 1. Limpa os filhos atuais (caso já existissem)
 			item.Children.Clear();
+
+			// 2. Busca e cria os novos filhos (Métodos e Dependências)
 			await PopulateNodeAsync(item, item.FullPath);
+
+			// 3. CORREÇÃO ESSENCIAL: 
+			// Registra os eventos nos novos filhos criados. 
+			// Sem isso, marcar o checkbox deles não dispara a notificação para a SelectionVM.
 			RegisterItemEventsRecursively(item);
+
+			// 4. Expande para mostrar
+			item.IsExpanded = true;
 		}
-		finally { IsLoading = false; }
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro na análise: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
+		}
 	}
 
 	[RelayCommand] private void ExpandAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true); }
@@ -277,35 +298,46 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		SelectedItem = null;
 	}
 
+	// ==================== ContextAnalysisViewModel.cs ====================
+
 	[RelayCommand]
-	private async Task CopyContextToClipboardAsync()
+	public async Task CopyContextToClipboardAsync()
 	{
 		IsLoading = true;
 		try
 		{
-			// 1. Pega Configurações da Sessão
+			// 1. Configurações de limpeza vindas do SessionManager
 			bool removeUsings = _sessionManager.OmitUsings;
-			bool removeNamespaces = _sessionManager.OmitNamespaces; // [NOVO]
+			bool removeNamespaces = _sessionManager.OmitNamespaces;
 			bool removeComments = _sessionManager.OmitComments;
-			bool removeEmptyLines = _sessionManager.OmitEmptyLines; // [NOVO]
+			bool removeEmptyLines = _sessionManager.OmitEmptyLines;
 
+			// 2. Pega a lista plana de itens selecionados (Arquivos, Métodos, Dependências)
 			var selectedItems = SelectionVM.SelectedItemsList.ToList();
-			if (!selectedItems.Any()) return;
+			if (!selectedItems.Any())
+			{
+				OnStatusChanged("Nenhum item selecionado.");
+				return;
+			}
 
 			var sb = new StringBuilder();
-
 			sb.AppendLine("/* CONTEXTO SELECIONADO */");
 			sb.AppendLine();
 
+			// 3. Agrupa por caminho físico do arquivo.
+			// Isso junta: o nó do arquivo + nós dos métodos + nós de dependências do mesmo arquivo.
 			var fileGroups = selectedItems.GroupBy(item => GetPhysicalPath(item)).ToList();
 
 			foreach (var group in fileGroups)
 			{
 				string filePath = group.Key;
+
+				// Valida se o arquivo existe
 				if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) continue;
 
 				sb.AppendLine($"// ==================== {Path.GetFileName(filePath)} ====================");
 
+				// 4. Coleta assinaturas de métodos selecionados
 				var selectedMethodSignatures = group
 					.Where(item => item.Type == FileSystemItemType.Method)
 					.Select(item => item.MethodSignature)
@@ -313,11 +345,19 @@ public partial class ContextAnalysisViewModel : ObservableObject
 					.Cast<string>()
 					.ToList();
 
+				// 5. Verifica se o nó principal (Arquivo) está selecionado
+				bool isFileNodeSelected = group.Any(item => item.Type == FileSystemItemType.File);
+
+				// LÓGICA CORRIGIDA: Prioridade para os Métodos
+				// Se tivermos QUALQUER método selecionado na lista, assumimos que o usuário
+				// quer uma visão filtrada da classe (Estrutura + Métodos Escolhidos).
+				// Isso acontece mesmo se 'isFileNodeSelected' for true.
 				if (selectedMethodSignatures.Any())
 				{
-					sb.AppendLine("// (Conteúdo filtrado: Métodos selecionados)");
+					sb.AppendLine("// (Conteúdo filtrado: Estrutura da classe + Métodos selecionados)");
 
-					// [CORREÇÃO]: Chamada atualizada com novos parâmetros
+					// O RoslynAnalyzer vai ler o arquivo e usar o MethodFilterRewriter
+					// para manter campos/props e APENAS os métodos desta lista.
 					var content = await _roslynAnalyzer.FilterClassContentAsync(
 						filePath,
 						selectedMethodSignatures,
@@ -328,54 +368,68 @@ public partial class ContextAnalysisViewModel : ObservableObject
 					);
 					sb.AppendLine(content);
 				}
+				// Se NÃO tem métodos selecionados (ex: não expandiu a árvore),
+				// mas o arquivo está marcado, copia tudo.
+				else if (isFileNodeSelected)
+				{
+					var rawContent = await _fileSystemService.ReadFileContentAsync(filePath);
+
+					// Limpeza básica (Regex) sem filtrar AST
+					var cleanContent = CodeCleanupHelper.ProcessCode(
+						rawContent,
+						Path.GetExtension(filePath),
+						removeUsings,
+						removeNamespaces,
+						removeComments,
+						removeEmptyLines);
+
+					sb.AppendLine(cleanContent);
+				}
 				else
 				{
-					// Se precisar de alguma limpeza
-					if (removeUsings || removeComments || removeNamespaces || removeEmptyLines)
-					{
-						// [CORREÇÃO]: Chamada atualizada (métodos = null significa arquivo inteiro)
-						var content = await _roslynAnalyzer.FilterClassContentAsync(
-							filePath,
-							null,
-							removeUsings,
-							removeNamespaces,
-							removeComments,
-							removeEmptyLines
-						);
-						sb.AppendLine(content);
-					}
-					else
-					{
-						var content = await _fileSystemService.ReadFileContentAsync(filePath);
-						sb.AppendLine(content);
-					}
+					// Caso borda: O arquivo não está selecionado, nem métodos, 
+					// mas talvez uma dependência solta foi marcada.
+					// Nesse caso, decidimos não copiar o código do arquivo pai, 
+					// ou copiamos apenas se for estritamente necessário.
+					// Aqui, deixo em branco ou você pode adicionar lógica customizada.
 				}
 
 				sb.AppendLine();
 				sb.AppendLine();
 			}
 
-			var dp = new DataPackage();
-			dp.SetText(sb.ToString());
-			Clipboard.SetContent(dp);
-			OnStatusChanged("Copiado com sucesso!");
+			// 6. Joga para o Clipboard
+			var dataPackage = new DataPackage();
+			dataPackage.SetText(sb.ToString());
+			Clipboard.SetContent(dataPackage);
+
+			OnStatusChanged("Conteúdo copiado com sucesso!");
 		}
 		catch (Exception ex)
 		{
 			OnStatusChanged($"Erro ao copiar: {ex.Message}");
 		}
-		finally { IsLoading = false; }
+		finally
+		{
+			IsLoading = false;
+		}
 	}
 
+	// Método auxiliar essencial para agrupar corretamente
 	private string GetPhysicalPath(FileSystemItem item)
 	{
-		if (item.Type == FileSystemItemType.Method || item.Type == FileSystemItemType.LogicalGroup)
+		if (string.IsNullOrEmpty(item.FullPath)) return string.Empty;
+
+		// Se o path for "C:\Proj\File.cs::MetodoA", retorna "C:\Proj\File.cs"
+		int separatorIndex = item.FullPath.IndexOf("::");
+		if (separatorIndex > 0)
 		{
-			var parts = item.FullPath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-			return parts.Length > 0 ? parts[0] : item.FullPath;
+			return item.FullPath.Substring(0, separatorIndex);
 		}
+
 		return item.FullPath;
 	}
+
 
 	[RelayCommand] private void AnalyzeMethodFlow(FileSystemItem item) { }
 	[RelayCommand] private void SyncFocus() { }
