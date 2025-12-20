@@ -6,6 +6,15 @@ namespace ContextWinUI.Views.Components;
 
 public sealed partial class ExpandCollapseActions : UserControl
 {
+	public ExpandCollapseActions()
+	{
+		this.InitializeComponent();
+	}
+
+	// =========================================================
+	// DEPENDENCY PROPERTIES (A "cola" para o Binding funcionar)
+	// =========================================================
+
 	public static readonly DependencyProperty SyncFocusCommandProperty =
 		DependencyProperty.Register(nameof(SyncFocusCommand), typeof(ICommand), typeof(ExpandCollapseActions), new PropertyMetadata(null));
 
@@ -33,8 +42,4 @@ public sealed partial class ExpandCollapseActions : UserControl
 		set => SetValue(CollapseAllCommandProperty, value);
 	}
 
-	public ExpandCollapseActions()
-	{
-		this.InitializeComponent();
-	}
 }
