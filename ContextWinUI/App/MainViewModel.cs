@@ -1,9 +1,12 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Features.CodeAnalyses;
+using ContextWinUI.Core.Services;
+using ContextWinUI.Features.CodeAnalyses; // Necessário para o Orchestrator
 using ContextWinUI.Models;
-using ContextWinUI.Services;
+using ContextWinUI.Services; // Assumindo que suas implementações de serviço estão aqui
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -11,14 +14,14 @@ namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	// --- VIEW MODELS FILHOS ---
+	// ViewModels Filhos
 	public FileExplorerViewModel FileExplorer { get; }
 	public FileContentViewModel FileContent { get; }
-	public FileSelectionViewModel FileSelection { get; } // Seleção do Explorer (Checkboxes)
-	public ContextAnalysisViewModel ContextAnalysis { get; } // Painel Direito
+	public FileSelectionViewModel FileSelection { get; }
+	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
 
-	// --- SERVIÇOS E GERENCIADORES ---
+	// Gerenciador de Sessão
 	private readonly IProjectSessionManager _sessionManager;
 
 	[ObservableProperty]
@@ -29,7 +32,7 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// 1. BOOTSTRAPPING (Criação dos Serviços)
+		// 1. Instanciação dos Serviços Básicos (Core Services)
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
@@ -38,50 +41,54 @@ public partial class MainViewModel : ObservableObject
 		IGitService gitService = new GitService();
 		ISelectionIOService selectionIOService = new SelectionIOService();
 
-		// Manager de Sessão
+		// 2. Gerenciador de Sessão
 		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 
-		// 2. INJEÇÃO E CRIAÇÃO DOS VIEWMODELS
-
-		// Explorer e Conteúdo
+		// 3. ViewModels Independentes
 		FileExplorer = new FileExplorerViewModel(_sessionManager, tagService);
 		FileContent = new FileContentViewModel(fileSystemService);
 		FileSelection = new FileSelectionViewModel(fileSystemService, _sessionManager);
 		PrePrompt = new PrePromptViewModel(_sessionManager);
 
-		// Sub-ViewModel para a lista de Seleção da Análise (Composição)
+		// 4. Configuração da Análise de Contexto
 		var contextSelectionVM = new ContextSelectionViewModel(itemFactory, selectionIOService);
 
-		// ViewModel de Análise
-		// --- ALTERAÇÃO: Passando _sessionManager para o ContextAnalysisViewModel ---
+		// --- CORREÇÃO AQUI: Criar o Orchestrator ---
+		IDependencyAnalysisOrchestrator analysisOrchestrator = new DependencyAnalysisOrchestrator(
+			roslynAnalyzer,
+			itemFactory,
+			fileSystemService
+		);
+
+		// 5. Instanciação do ContextAnalysisViewModel com a nova dependência
 		ContextAnalysis = new ContextAnalysisViewModel(
 			roslynAnalyzer,
 			fileSystemService,
 			itemFactory,
 			tagService,
 			gitService,
-			_sessionManager, // <--- Injeção necessária para o botão Refresh funcionar sozinho
-			contextSelectionVM
+			_sessionManager,
+			contextSelectionVM,
+			analysisOrchestrator // <--- Injeção da nova dependência
 		);
 
-		// 3. WIRING (Conexão de Eventos)
+		// 6. Conectar Eventos
 		WireUpEvents();
 	}
 
 	private void WireUpEvents()
 	{
-		// Quando seleciona um arquivo na árvore do Explorer -> Carrega no Visualizador
+		// Quando um arquivo é selecionado na árvore principal, carrega o conteúdo
 		FileExplorer.FileSelected += async (s, item) => await FileContent.LoadFileAsync(item);
 
-		// Mantém o FileSelectionViewModel sincronizado com a árvore do Explorer
+		// Sincroniza a árvore principal com a lista de seleção
 		FileExplorer.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileExplorer.RootItems))
 				FileSelection.SetRootItems(FileExplorer.RootItems);
 		};
 
-		// --- SINCRONIZAÇÃO EM TEMPO REAL ---
-		// Quando usuário marca/desmarca checkbox no Explorer -> Atualiza o Preview na Análise
+		// Atualiza o preview da análise quando a seleção muda na aba principal
 		FileSelection.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileSelection.SelectedFilesCount))
@@ -91,7 +98,7 @@ public partial class MainViewModel : ObservableObject
 			}
 		};
 
-		// Consolidação de Loading
+		// Centraliza o estado de Loading
 		void UpdateLoading() => IsLoading = FileExplorer.IsLoading || FileContent.IsLoading || FileSelection.IsLoading || ContextAnalysis.IsLoading;
 
 		FileExplorer.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
@@ -99,7 +106,7 @@ public partial class MainViewModel : ObservableObject
 		FileSelection.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 		ContextAnalysis.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
 
-		// Consolidação de Status
+		// Centraliza Mensagens de Status
 		_sessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
@@ -107,19 +114,19 @@ public partial class MainViewModel : ObservableObject
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 	}
 
-	// Chamado pelo Code-Behind da View
+	// Chamado pela View (Code-behind)
 	public void OnFileSelected(FileSystemItem item)
 	{
 		FileExplorer.SelectFile(item);
 	}
 
-	// Comando Principal: Analisar Contexto
+	// Comando Principal: "Analisar Contexto" (Botão Grande da Toolbar)
 	[RelayCommand]
 	public async Task AnalyzeContextAsync()
 	{
 		var selectedFiles = FileSelection.GetCheckedFiles().ToList();
 
-		// Fallback: Se nada selecionado, usa o arquivo aberto
+		// Se nada selecionado mas tem arquivo aberto no editor, usa ele
 		if (!selectedFiles.Any() && FileContent.SelectedItem?.IsCodeFile == true)
 		{
 			selectedFiles.Add(FileContent.SelectedItem);
@@ -133,11 +140,10 @@ public partial class MainViewModel : ObservableObject
 
 		if (_sessionManager.CurrentProjectPath != null)
 		{
-			// 1. Atualiza Git
-			// --- ALTERAÇÃO: Chama o comando sem parâmetros (ele pega do sessionManager interno) ---
+			// Atualiza Git antes de analisar
 			await ContextAnalysis.RefreshGitChangesCommand.ExecuteAsync(null);
 
-			// 2. Roda Análise Roslyn (Isso vai popular a árvore e atualizar a lista de seleção)
+			// Inicia análise principal
 			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
 		}
 	}
