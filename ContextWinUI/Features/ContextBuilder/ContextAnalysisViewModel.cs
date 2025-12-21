@@ -61,6 +61,8 @@ namespace ContextWinUI.Features.ContextBuilder
 			TreeVM.Items.CollectionChanged += (s, e) => RegisterCollectionEvents(e.NewItems);
 			GitVM.ModifiedItems.CollectionChanged += (s, e) => RegisterCollectionEvents(e.NewItems);
 			SelectionVM.SelectedItemsList.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
+
+			TreeVM.StructureUpdated += (s, parentItem) => RegisterItemRecursively(parentItem);
 		}
 
 		public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)

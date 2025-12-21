@@ -29,7 +29,6 @@ public partial class ContextSelectionViewModel : ObservableObject
 		_ioService = ioService;
 	}
 
-	// --- MÉTODOS PÚBLICOS E COMANDOS ---
 
 	public void AddItem(FileSystemItem item)
 	{
@@ -51,7 +50,6 @@ public partial class ContextSelectionViewModel : ObservableObject
 		SelectedItemsList.Clear();
 	}
 
-	// --- COMANDOS DE IO ---
 
 	[RelayCommand]
 	private async Task SaveSelectionListAsync()

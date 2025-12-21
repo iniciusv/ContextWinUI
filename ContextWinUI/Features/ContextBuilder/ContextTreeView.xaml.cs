@@ -48,5 +48,31 @@ namespace ContextWinUI.Views.Components
 				);
 			}
 		}
+
+		// --- ADICIONE ESTES MÉTODOS ---
+
+		private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
+		{
+			// Pega o botão clicado -> Pega o DataContext dele (que é o FileSystemItem da linha)
+			if (sender is Button btn && btn.DataContext is FileSystemItem item)
+			{
+				// Executa o comando diretamente no ViewModel
+				if (ViewModel.AnalyzeItemDepthCommand.CanExecute(item))
+				{
+					ViewModel.AnalyzeItemDepthCommand.Execute(item);
+				}
+			}
+		}
+
+		private void OnMethodFlowClick(object sender, RoutedEventArgs e)
+		{
+			if (sender is Button btn && btn.DataContext is FileSystemItem item)
+			{
+				if (ViewModel.AnalyzeMethodFlowCommand.CanExecute(item))
+				{
+					ViewModel.AnalyzeMethodFlowCommand.Execute(item);
+				}
+			}
+		}
 	}
 }

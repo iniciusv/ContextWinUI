@@ -4,6 +4,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
@@ -16,6 +17,7 @@ namespace ContextWinUI.Features.ContextBuilder
 		private readonly IFileSystemItemFactory _itemFactory;
 		private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
 		private readonly IProjectSessionManager _sessionManager;
+		public event EventHandler<FileSystemItem>? StructureUpdated;
 
 		[ObservableProperty]
 		private ObservableCollection<FileSystemItem> items = new();
@@ -42,16 +44,24 @@ namespace ContextWinUI.Features.ContextBuilder
 		private async Task AnalyzeItemDepthAsync(FileSystemItem item)
 		{
 			if (item == null || !item.IsCodeFile) return;
+
 			await _analysisOrchestrator.EnrichFileNodeAsync(item, _sessionManager.CurrentProjectPath);
+
 			item.IsExpanded = true;
+
+			StructureUpdated?.Invoke(this, item);
 		}
 
 		[RelayCommand]
 		private async Task AnalyzeMethodFlowAsync(FileSystemItem item)
 		{
 			if (item == null || item.Type != FileSystemItemType.Method) return;
+
 			await _analysisOrchestrator.EnrichMethodFlowAsync(item, _sessionManager.CurrentProjectPath);
+
 			item.IsExpanded = true;
+
+			StructureUpdated?.Invoke(this, item);
 		}
 
 		[RelayCommand] private void ExpandAll() { foreach (var item in Items) item.SetExpansionRecursively(true); }
