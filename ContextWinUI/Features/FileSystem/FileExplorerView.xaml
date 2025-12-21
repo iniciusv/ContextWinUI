@@ -69,20 +69,33 @@
                   Expanding="TreeView_Expanding" 
                   Collapsed="TreeView_Collapsed">
 
+			<TreeView.Resources>
+				<x:Double x:Key="TreeViewItemMinHeight">24</x:Double>
+			</TreeView.Resources>
+
+			<TreeView.ItemContainerStyle>
+				<Style TargetType="TreeViewItem">
+					<Setter Property="MinHeight" Value="24" />
+					<Setter Property="Padding" Value="0" />
+					<Setter Property="Margin" Value="0" />
+				</Style>
+			</TreeView.ItemContainerStyle>
+
 			<TreeView.ItemTemplate>
 				<DataTemplate x:DataType="models:FileSystemItem">
 					<TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}" 
                                   IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}" 
                                   Visibility="{x:Bind Visibility, Mode=OneWay}"
-                                  HasUnrealizedChildren="{x:Bind IsDirectory}">
-
+                                  HasUnrealizedChildren="{x:Bind IsDirectory}"
+                                  MinHeight="24"
+                                  Padding="0">
 						<TreeViewItem.ContextFlyout>
 							<Flyout Opening="OnTagMenuOpening">
 								<Grid x:Name="FlyoutContentGrid" />
 							</Flyout>
 						</TreeViewItem.ContextFlyout>
 
-						<Grid>
+						<Grid Height="24">
 							<Grid.ColumnDefinitions>
 								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="Auto"/>
@@ -96,12 +109,13 @@
                                       IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
                                       Visibility="{x:Bind IsCodeFile}" 
                                       Click="OnCheckBoxClick"
-                                      MinWidth="0" Padding="0" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                      MinWidth="0" Padding="0" VerticalAlignment="Center" 
+                                      Margin="8,0,4,0"/>
 
-							<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="16" Margin="0,0,8,0" 
+							<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" Margin="0,0,8,0" 
                                       Foreground="{x:Bind views:FileExplorerView.GetIconColor(IsDirectory, SharedState.IsIgnored), Mode=OneWay}"/>
 
-							<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center"/>
+							<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13"/>
 
 							<components:TagChipsControl Grid.Column="3" 
                                                         TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" 

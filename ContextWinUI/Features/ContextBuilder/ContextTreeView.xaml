@@ -19,10 +19,6 @@
                   SelectionMode="Single" 
                   ItemInvoked="TreeView_ItemInvoked">
 
-			<TreeView.Resources>
-				<x:Double x:Key="TreeViewItemMinHeight">24</x:Double>
-			</TreeView.Resources>
-
 			<TreeView.ItemContainerStyle>
 				<Style TargetType="TreeViewItem">
 					<Setter Property="MinHeight" Value="24" />
@@ -52,7 +48,9 @@
                                   MinWidth="0" Margin="8,0,4,0" VerticalAlignment="Center"/>
 
 						<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" Foreground="{ThemeResource SystemAccentColor}" Margin="0,0,8,0"/>
+
 						<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13"/>
+
 						<components:TagChipsControl Grid.Column="3" TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" Margin="8,0,0,0"/>
 
 						<Button Grid.Column="4" Content="&#xE768;" 
