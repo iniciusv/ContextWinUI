@@ -1,363 +1,201 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Services;
-using ContextWinUI.Features.CodeAnalyses; // Namespace da nova feature
-using ContextWinUI.Helpers;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Models;
+using ContextWinUI.ViewModels;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
-namespace ContextWinUI.ViewModels;
-
-public partial class ContextAnalysisViewModel : ObservableObject
+namespace ContextWinUI.Features.ContextBuilder
 {
-	// =========================================================================
-	// DEPENDÊNCIAS
-	// =========================================================================
-	private readonly IRoslynAnalyzerService _roslynAnalyzer;
-	private readonly IFileSystemService _fileSystemService;
-	private readonly IFileSystemItemFactory _itemFactory;
-	private readonly IGitService _gitService;
-	private readonly IProjectSessionManager _sessionManager;
+	public partial class ContextAnalysisViewModel : ObservableObject
+	{
+		private readonly IRoslynAnalyzerService _roslynAnalyzer;
+		private readonly IFileSystemItemFactory _itemFactory;
+		private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
+		private readonly IProjectSessionManager _sessionManager;
 
-	// Nova dependência que contém a lógica de negócio extraída
-	private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
+		// Sub-ViewModels
+		public ContextTreeViewModel TreeVM { get; }
+		public ContextGitViewModel GitVM { get; }
+		public ContextSelectionViewModel SelectionVM { get; }
+		public ITagManagementUiService TagService { get; }
 
-	public ITagManagementUiService TagService { get; }
-	public ContextSelectionViewModel SelectionVM { get; }
+		[ObservableProperty] private bool isVisible;
+		[ObservableProperty] private bool isLoading;
+		[ObservableProperty] private bool canGoBack;
+		[ObservableProperty] private FileSystemItem? selectedPreviewItem;
 
-	// =========================================================================
-	// ESTADO DA UI
-	// =========================================================================
+		public int SelectedCount => SelectionVM.SelectedItemsList.Count;
 
-	// Pilha para o botão "Voltar" (Histórico de navegação na árvore)
-	private readonly Stack<List<FileSystemItem>> _historyStack = new();
+		public event EventHandler<FileSystemItem>? FileSelectedForPreview;
+		public event EventHandler<string>? StatusChanged;
 
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> contextTreeItems = new();
+		private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> gitModifiedItems = new();
-
-	[ObservableProperty]
-	private FileSystemItem? selectedItem;
-
-	[ObservableProperty]
-	private bool isVisible;
-
-	[ObservableProperty]
-	private bool isLoading;
-
-	[ObservableProperty]
-	private bool canGoBack;
-
-	// Proxy para notificar a View sobre contagem de itens
-	public int SelectedCount => SelectionVM.SelectedItemsList.Count;
-
-	// Eventos para comunicação com a View (Code-Behind)
-	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
-	public event EventHandler<string>? StatusChanged;
-
-	// =========================================================================
-	// CONSTRUTOR
-	// =========================================================================
-	public ContextAnalysisViewModel(
+		public ContextAnalysisViewModel(
 			IRoslynAnalyzerService roslynAnalyzer,
-			IFileSystemService fileSystemService,
 			IFileSystemItemFactory itemFactory,
-			ITagManagementUiService tagService,
-			IGitService gitService,
+			IDependencyAnalysisOrchestrator analysisOrchestrator,
 			IProjectSessionManager sessionManager,
-			ContextSelectionViewModel selectionVM,
-			IDependencyAnalysisOrchestrator analysisOrchestrator)
-	{
-		_roslynAnalyzer = roslynAnalyzer;
-		_fileSystemService = fileSystemService;
-		_itemFactory = itemFactory;
-		TagService = tagService;
-		_gitService = gitService;
-		_sessionManager = sessionManager;
-		SelectionVM = selectionVM;
-		_analysisOrchestrator = analysisOrchestrator;
-
-		// Atualiza a contagem na UI quando a seleção muda
-		SelectionVM.SelectedItemsList.CollectionChanged += (s, e) =>
+			IGitService gitService,
+			ITagManagementUiService tagService,
+			ContextSelectionViewModel selectionVM)
 		{
-			OnPropertyChanged(nameof(SelectedCount));
-		};
-	}
+			_roslynAnalyzer = roslynAnalyzer;
+			_itemFactory = itemFactory;
+			_analysisOrchestrator = analysisOrchestrator;
+			_sessionManager = sessionManager;
+			TagService = tagService;
+			SelectionVM = selectionVM;
 
-	public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
-	{
-		if (!selectedItems.Any()) return;
+			TreeVM = new ContextTreeViewModel(itemFactory, analysisOrchestrator, sessionManager);
+			GitVM = new ContextGitViewModel(gitService, itemFactory, sessionManager);
 
-		IsLoading = true;
-		IsVisible = true;
-
-		// Salva histórico se já houver algo
-		if (ContextTreeItems.Any())
-		{
-			_historyStack.Push(ContextTreeItems.ToList());
-			UpdateCanGoBack();
+			// Sincronização de eventos
+			TreeVM.Items.CollectionChanged += (s, e) => RegisterCollectionEvents(e.NewItems);
+			GitVM.ModifiedItems.CollectionChanged += (s, e) => RegisterCollectionEvents(e.NewItems);
+			SelectionVM.SelectedItemsList.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
 		}
 
-		ContextTreeItems.Clear();
-		SelectionVM.Clear();
-		OnStatusChanged("Inicializando análise...");
-
-		try
+		public async Task AnalyzeContextAsync(List<FileSystemItem> selectedItems, string rootPath)
 		{
-			// Indexação inicial global
-			await _roslynAnalyzer.IndexProjectAsync(rootPath);
+			IsLoading = true;
+			IsVisible = true;
 
-			foreach (var item in selectedItems)
+			if (TreeVM.Items.Any())
 			{
-				// Cria o nó raiz visual
-				var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
-
-				// Usa o Orchestrator para preencher (Métodos, Dependências iniciais)
-				await _analysisOrchestrator.EnrichFileNodeAsync(fileNode, rootPath);
-
-				// Configura eventos de UI (Checkbox, Seleção)
-				RegisterItemEventsRecursively(fileNode);
-
-				ContextTreeItems.Add(fileNode);
-				SelectionVM.AddItem(fileNode); // Auto-seleciona a raiz
+				_historyStack.Push(TreeVM.Items.ToList());
+				CanGoBack = true;
 			}
-			OnStatusChanged("Análise concluída.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro na análise: {ex.Message}");
-		}
-		finally { IsLoading = false; }
-	}
 
-	[RelayCommand]
-	private async Task AnalyzeItemDepthAsync(FileSystemItem item)
-	{
-		// Validação
-		if (item == null || string.IsNullOrEmpty(item.FullPath)) return;
-		if (!item.IsCodeFile) return;
+			TreeVM.Clear();
+			GitVM.Clear();
+			SelectionVM.Clear();
+			OnStatusChanged("Inicializando análise...");
 
-		IsLoading = true;
-		try
-		{
-			OnStatusChanged($"Analisando estrutura de {item.Name}...");
-
-			// Delega para o Orchestrator a lógica de limpar filhos e buscar novos dados
-			await _analysisOrchestrator.EnrichFileNodeAsync(item, _sessionManager.CurrentProjectPath);
-
-			// Re-conecta os eventos nos novos filhos criados
-			RegisterItemEventsRecursively(item);
-
-			// Expande visualmente
-			item.IsExpanded = true;
-
-			OnStatusChanged("Estrutura atualizada.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro na análise detalhada: {ex.Message}");
-		}
-		finally { IsLoading = false; }
-	}
-
-	[RelayCommand]
-	private async Task AnalyzeMethodFlow(FileSystemItem item)
-	{
-		// Validação
-		if (item == null || item.Type != FileSystemItemType.Method) return;
-
-		IsLoading = true;
-		try
-		{
-			OnStatusChanged($"Analisando fluxo: {item.Name}...");
-
-			// Delega para o Orchestrator a lógica de parsear o corpo do método
-			await _analysisOrchestrator.EnrichMethodFlowAsync(item, _sessionManager.CurrentProjectPath);
-
-			RegisterItemEventsRecursively(item);
-
-			item.IsExpanded = true;
-			OnStatusChanged("Fluxo analisado.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro no fluxo: {ex.Message}");
-		}
-		finally { IsLoading = false; }
-	}
-
-	[RelayCommand]
-	public async Task CopyContextToClipboardAsync()
-	{
-		var selectedItems = SelectionVM.SelectedItemsList.ToList();
-		if (!selectedItems.Any())
-		{
-			OnStatusChanged("Nenhum item selecionado.");
-			return;
-		}
-
-		IsLoading = true;
-		try
-		{
-			string finalText = await _analysisOrchestrator.BuildContextStringAsync(selectedItems, _sessionManager);
-
-			var dp = new DataPackage();
-			dp.SetText(finalText);
-			Clipboard.SetContent(dp);
-
-			OnStatusChanged("Conteúdo copiado com sucesso!");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro ao copiar: {ex.Message}");
-		}
-		finally { IsLoading = false; }
-	}
-
-	[RelayCommand]
-	public async Task RefreshGitChangesAsync()
-	{
-		var rootPath = _sessionManager.CurrentProjectPath;
-
-		if (string.IsNullOrEmpty(rootPath) || !_gitService.IsGitRepository(rootPath))
-		{
-			GitModifiedItems.Clear();
-			OnStatusChanged("Git não disponível.");
-			return;
-		}
-
-		IsLoading = true;
-		try
-		{
-			var changedFiles = await _gitService.GetModifiedFilesAsync(rootPath);
-			GitModifiedItems.Clear();
-
-			foreach (var path in changedFiles)
+			try
 			{
-				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, "\uE70F");
-				RegisterItemEventsRecursively(item);
-				GitModifiedItems.Add(item);
+				await _roslynAnalyzer.IndexProjectAsync(rootPath);
+
+				var treeNodes = new List<FileSystemItem>();
+				foreach (var item in selectedItems)
+				{
+					var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
+					await _analysisOrchestrator.EnrichFileNodeAsync(fileNode, rootPath);
+					treeNodes.Add(fileNode);
+				}
+
+				TreeVM.SetItems(treeNodes);
+
+				foreach (var node in treeNodes) RegisterItemRecursively(node);
+
+				_ = GitVM.RefreshChangesAsync();
+
+				OnStatusChanged("Análise concluída.");
 			}
-			OnStatusChanged("Git atualizado.");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro Git: {ex.Message}");
-		}
-		finally { IsLoading = false; }
-	}
-
-	public void UpdateSelectionPreview(IEnumerable<FileSystemItem> items)
-	{
-		if (IsLoading) return;
-		ContextTreeItems.Clear();
-		SelectionVM.Clear();
-		foreach (var item in items)
-		{
-			var fileNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
-			RegisterItemEventsRecursively(fileNode);
-			ContextTreeItems.Add(fileNode);
-			SelectionVM.AddItem(fileNode);
-		}
-	}
-	private void RegisterItemEventsRecursively(FileSystemItem item)
-	{
-		item.PropertyChanged -= OnItemPropertyChanged;
-		item.PropertyChanged += OnItemPropertyChanged;
-
-		if (item.IsChecked)
-		{
-			SelectionVM.AddItem(item);
+			catch (Exception ex)
+			{
+				OnStatusChanged($"Erro: {ex.Message}");
+			}
+			finally { IsLoading = false; }
 		}
 
-		foreach (var child in item.Children)
+		public void UpdateSelectionPreview(IEnumerable<FileSystemItem> items)
 		{
-			RegisterItemEventsRecursively(child);
+			if (IsLoading) return;
+			TreeVM.SetItems(items);
+			foreach (var item in items) RegisterItemRecursively(item);
 		}
-	}
 
-	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
-	{
-		if (sender is FileSystemItem item && e.PropertyName == nameof(FileSystemItem.IsChecked))
+		private void RegisterCollectionEvents(System.Collections.IList? newItems)
 		{
+			if (newItems == null) return;
+			foreach (FileSystemItem item in newItems) RegisterItemRecursively(item);
+		}
+
+		private void RegisterItemRecursively(FileSystemItem item)
+		{
+			item.PropertyChanged -= OnItemPropertyChanged;
+			item.PropertyChanged += OnItemPropertyChanged;
+
 			if (item.IsChecked) SelectionVM.AddItem(item);
-			else SelectionVM.RemoveItem(item);
+			foreach (var child in item.Children) RegisterItemRecursively(child);
 		}
-	}
 
-	// =========================================================================
-	// NAVEGAÇÃO E UTILITÁRIOS
-	// =========================================================================
-
-	public void SelectFileForPreview(FileSystemItem item)
-	{
-		SelectedItem = item;
-		// Lógica para obter caminho físico real caso seja um método ou dependência
-		string realPath = item.FullPath;
-		if (item.FullPath.Contains("::"))
-			realPath = item.FullPath.Substring(0, item.FullPath.IndexOf("::"));
-
-		if (!string.IsNullOrEmpty(realPath) && File.Exists(realPath))
+		private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
 		{
-			// Cria um wrapper temporário para visualização se necessário
-			if (item.Type != FileSystemItemType.File)
+			if (e.PropertyName == nameof(FileSystemItem.IsChecked) && sender is FileSystemItem item)
 			{
-				var tempItem = _itemFactory.CreateWrapper(realPath, FileSystemItemType.File);
-				FileSelectedForPreview?.Invoke(this, tempItem);
-			}
-			else
-			{
-				FileSelectedForPreview?.Invoke(this, item);
+				if (item.IsChecked) SelectionVM.AddItem(item);
+				else SelectionVM.RemoveItem(item);
 			}
 		}
-	}
 
-	[RelayCommand]
-	private void GoBack()
-	{
-		if (_historyStack.Count > 0)
+		public void SelectFileForPreview(FileSystemItem item)
 		{
-			var prev = _historyStack.Pop();
-			ContextTreeItems.Clear();
-			foreach (var item in prev)
+			SelectedPreviewItem = item;
+			string realPath = item.FullPath;
+			if (item.FullPath.Contains("::"))
+				realPath = item.FullPath.Substring(0, item.FullPath.IndexOf("::"));
+
+			if (!string.IsNullOrEmpty(realPath) && System.IO.File.Exists(realPath))
 			{
-				ContextTreeItems.Add(item);
-				// Importante: Re-registrar eventos ao restaurar do histórico
-				RegisterItemEventsRecursively(item);
+				if (item.Type != FileSystemItemType.File)
+				{
+					var tempItem = _itemFactory.CreateWrapper(realPath, FileSystemItemType.File);
+					FileSelectedForPreview?.Invoke(this, tempItem);
+				}
+				else FileSelectedForPreview?.Invoke(this, item);
 			}
-			UpdateCanGoBack();
 		}
+
+		[RelayCommand]
+		public async Task CopyContextToClipboardAsync()
+		{
+			var items = SelectionVM.SelectedItemsList.ToList();
+			if (!items.Any()) return;
+			IsLoading = true;
+			try
+			{
+				string text = await _analysisOrchestrator.BuildContextStringAsync(items, _sessionManager);
+				var dp = new DataPackage();
+				dp.SetText(text);
+				Clipboard.SetContent(dp);
+				OnStatusChanged("Copiado com sucesso!");
+			}
+			finally { IsLoading = false; }
+		}
+
+		[RelayCommand]
+		private void GoBack()
+		{
+			if (_historyStack.Count > 0)
+			{
+				var prev = _historyStack.Pop();
+				TreeVM.SetItems(prev);
+				foreach (var item in prev) RegisterItemRecursively(item);
+				CanGoBack = _historyStack.Count > 0;
+			}
+		}
+
+		[RelayCommand]
+		private void Close()
+		{
+			IsVisible = false;
+			TreeVM.Clear();
+			GitVM.Clear();
+			SelectionVM.Clear();
+			_historyStack.Clear();
+			CanGoBack = false;
+			SelectedPreviewItem = null;
+		}
+
+		private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 	}
-
-	private void UpdateCanGoBack() => CanGoBack = _historyStack.Count > 0;
-
-	[RelayCommand]
-	private void Close()
-	{
-		IsVisible = false;
-		ContextTreeItems.Clear();
-		SelectionVM.Clear();
-		GitModifiedItems.Clear();
-		_historyStack.Clear();
-		UpdateCanGoBack();
-		SelectedItem = null;
-	}
-
-	[RelayCommand] private void ExpandAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(true); }
-	[RelayCommand] private void CollapseAll() { foreach (var item in ContextTreeItems) item.SetExpansionRecursively(false); }
-	[RelayCommand] private void Search(string query) => TreeSearchHelper.Search(ContextTreeItems, query, CancellationToken.None);
-	[RelayCommand] private void SyncFocus() { /* Lógica de sync focus se necessária nesta view */ }
-
-	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 }
