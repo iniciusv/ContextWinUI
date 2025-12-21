@@ -15,7 +15,8 @@ public class MethodFilterRewriter : CSharpSyntaxRewriter
 	// Construtor: Se allowedSignatures for null, ele não filtra métodos (copia tudo)
 	public MethodFilterRewriter(IEnumerable<string>? allowedSignatures, bool removeUsings, bool removeComments)
 	{
-		_allowedSignatures = allowedSignatures != null ? new HashSet<string>(allowedSignatures) : null;
+		_allowedSignatures = allowedSignatures != null ? new HashSet<string>(allowedSignatures.Select(s => s.Replace(" ", ""))) : null;
+
 		_removeUsings = removeUsings;
 		_removeComments = removeComments;
 	}
@@ -26,26 +27,23 @@ public class MethodFilterRewriter : CSharpSyntaxRewriter
 	// =========================================================================
 	public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
 	{
-		// Se não há lista de permitidos, mantém o método (retorna a visita padrão)
 		if (_allowedSignatures == null)
 		{
 			return base.VisitMethodDeclaration(node);
 		}
 
-		// Reconstrói a assinatura do método para comparar com o que temos salvo no ViewModel.
-		// Deve bater exatamente com a lógica usada no RoslynCsharpStrategy.
 		var paramsList = node.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
-		var signature = $"{node.Identifier.Text}({string.Join(", ", paramsList)})";
+		var signature = $"{node.Identifier.Text}({string.Join(",", paramsList)})"; // Note a vírgula sem espaço aqui propositalmente para normalização
 
-		// VERIFICAÇÃO:
-		// Se a assinatura está na lista de permitidos, mantemos o método (base.Visit).
-		// Se não está, retornamos null (o que remove o nó da árvore de sintaxe).
-		if (_allowedSignatures.Contains(signature))
+		// Normaliza a assinatura gerada removendo espaços
+		var normalizedSignature = signature.Replace(" ", "");
+
+		if (_allowedSignatures.Contains(normalizedSignature))
 		{
 			return base.VisitMethodDeclaration(node);
 		}
 
-		// Retornar null remove este método do código final
+		// Se não estiver na lista de permitidos, remove o método (retorna null)
 		return null;
 	}
 

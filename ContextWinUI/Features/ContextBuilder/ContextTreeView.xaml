@@ -27,47 +27,51 @@
 				</Style>
 			</TreeView.ItemContainerStyle>
 
-			<TreeView.ItemTemplate>
-				<DataTemplate x:DataType="models:FileSystemItem">
+<TreeView.ItemTemplate>
+    <DataTemplate x:DataType="models:FileSystemItem">
+        <TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}" 
+                      IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                      Margin="-26,0,0,0"> 
+            
+            <Grid Height="24" Margin="-18,0,0,0"> 
+                
+                <Grid.ContextFlyout>
+                    <Flyout Opening="OnTagMenuOpening" />
+                </Grid.ContextFlyout>
+                
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-					<Grid Height="24" Margin="-36,0,0,0">
-						<Grid.ContextFlyout>
-							<Flyout Opening="OnTagMenuOpening" />
-						</Grid.ContextFlyout>
-
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="Auto"/>
-							<ColumnDefinition Width="Auto"/>
-							<ColumnDefinition Width="Auto"/>
-							<ColumnDefinition Width="*"/>
-							<ColumnDefinition Width="Auto"/>
-							<ColumnDefinition Width="Auto"/>
-						</Grid.ColumnDefinitions>
-
-						<CheckBox Grid.Column="0" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
-                                  MinWidth="0" Margin="8,0,4,0" VerticalAlignment="Center"/>
-
-						<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" Foreground="{ThemeResource SystemAccentColor}" Margin="0,0,8,0"/>
-
-						<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13"/>
-
-						<components:TagChipsControl Grid.Column="3" TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" Margin="8,0,0,0"/>
-
-						<Button Grid.Column="4" Content="&#xE768;" 
-                            FontSize="10" Width="24" Height="24" Margin="8,0,0,0" Padding="0"
-                            Click="OnMethodFlowClick" 
-                            ToolTipService.ToolTip="Analisar Fluxo (Chamadas)"
-                            Visibility="{x:Bind MethodFlowVisibility, Mode=OneWay}"/>
-
-						<Button Grid.Column="5" 
-                            Content="+" 
-                            FontSize="12" Width="24" Height="24" Margin="4,0,0,0" Padding="0"
-                            Click="OnDeepAnalyzeClick"
-                            ToolTipService.ToolTip="Aprofundar análise (Estrutura)"
-                            Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"/>
-					</Grid>
-				</DataTemplate>
-			</TreeView.ItemTemplate>
+                <CheckBox Grid.Column="0" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
+                          MinWidth="0" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                
+                <FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" 
+                          Foreground="{ThemeResource SystemAccentColor}" Margin="0,0,8,0"/>
+                
+                <TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13"/>
+                
+                <components:TagChipsControl Grid.Column="3" TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" Margin="8,0,0,0"/>
+                
+                <Button Grid.Column="4" Content="&#xE768;" 
+                        FontSize="10" Width="24" Height="24" Margin="8,0,0,0" Padding="0"
+                        Click="OnMethodFlowClick" 
+                        Visibility="{x:Bind MethodFlowVisibility, Mode=OneWay}"/>
+                
+                <Button Grid.Column="5" Content="+" 
+                        FontSize="12" Width="24" Height="24" Margin="4,0,0,0" Padding="0"
+                        Click="OnDeepAnalyzeClick"
+                        Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"/>
+            </Grid>
+            
+        </TreeViewItem>
+    </DataTemplate>
+</TreeView.ItemTemplate>
 		</TreeView>
 	</Grid>
 </UserControl>

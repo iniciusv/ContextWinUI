@@ -111,9 +111,10 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	public async Task<string> BuildContextStringAsync(IEnumerable<FileSystemItem> selectedItems, IProjectSessionManager sessionSettings)
 	{
 		var sb = new StringBuilder();
-		sb.AppendLine("/* CONTEXTO SELECIONADO */");
+		sb.AppendLine("");
 		sb.AppendLine();
 
+		// Agrupa itens pelo caminho físico do arquivo
 		var fileGroups = selectedItems.GroupBy(item => GetPhysicalPath(item)).ToList();
 
 		foreach (var group in fileGroups)
@@ -121,8 +122,10 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			string filePath = group.Key;
 			if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) continue;
 
-			sb.AppendLine($"// ==================== {Path.GetFileName(filePath)} ====================");
+			sb.AppendLine($"// ==================== {filePath} ====================");
+			sb.AppendLine();
 
+			// 1. Coleta assinaturas de métodos selecionados
 			var selectedMethodSignatures = group
 				.Where(item => item.Type == FileSystemItemType.Method)
 				.Select(item => item.MethodSignature)
@@ -134,9 +137,10 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				item.Type == FileSystemItemType.File ||
 				item.Type == FileSystemItemType.Dependency);
 
-			if (selectedMethodSignatures.Any() && !isFullFileRequested)
+	
+			if (selectedMethodSignatures.Any())
 			{
-				sb.AppendLine("// (Conteúdo filtrado: Estrutura + Métodos selecionados)");
+				sb.AppendLine("// [Filtrado: Apenas métodos selecionados e estrutura]");
 				var content = await _roslynAnalyzer.FilterClassContentAsync(
 					filePath,
 					selectedMethodSignatures,
@@ -149,6 +153,7 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 			else
 			{
+				// Caso contrário (nenhum método específico selecionado), copia o arquivo todo
 				var rawContent = await _fileSystemService.ReadFileContentAsync(filePath);
 				var cleanContent = CodeCleanupHelper.ProcessCode(
 					rawContent,
@@ -157,6 +162,7 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 					sessionSettings.OmitNamespaces,
 					sessionSettings.OmitComments,
 					sessionSettings.OmitEmptyLines);
+
 				sb.AppendLine(cleanContent);
 			}
 

@@ -129,7 +129,9 @@ public sealed partial class FileExplorerView : UserControl
 		}
 	}
 
-	private void TreeView_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
+    public static IEnumerable<FileSystemItem> GetExplorerChildren(IEnumerable<FileSystemItem> children, bool isDirectory) => isDirectory ? children : null;
+
+    private void TreeView_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
 	{
 		if (args.Item is FileSystemItem item && ExplorerViewModel.ExpandItemCommand.CanExecute(item))
 			ExplorerViewModel.ExpandItemCommand.Execute(item);
