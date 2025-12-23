@@ -27,39 +27,50 @@ public class SemanticIndexService
 		return await Task.Run(async () => await IndexProjectAsync(rootPath));
 	}
 
+	// ARQUIVO: SemanticIndexService.cs
 	public async Task<DependencyGraph> IndexProjectAsync(string rootPath)
 	{
+		// 1. Leitura rápida dos arquivos (mantém como estava)
 		var filePaths = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
-			 .Where(f => !f.Contains("obj") && !f.Contains("bin")); // Filtro básico
+				.Where(f => !f.Contains("obj") && !f.Contains("bin"));
 
-		// 1. Parse em Paralelo (CPU Bound)
 		var syntaxTrees = new ConcurrentBag<SyntaxTree>();
+
+		// Configuração de parse otimizada
+		var parseOptions = new CSharpParseOptions(LanguageVersion.Latest, DocumentationMode.None);
+
 		await Parallel.ForEachAsync(filePaths, async (path, ct) =>
 		{
 			var text = await File.ReadAllTextAsync(path, ct);
-			var tree = CSharpSyntaxTree.ParseText(text, path: path, cancellationToken: ct);
+			var tree = CSharpSyntaxTree.ParseText(text, parseOptions, path: path, cancellationToken: ct);
 			syntaxTrees.Add(tree);
 		});
 
-		// 2. Compilação Única (Resolve símbolos entre arquivos)
+		// 2. Criação da Compilação (Isso é Single Threaded por natureza do Roslyn, não tem jeito)
 		var compilation = CSharpCompilation.Create("ContextAnalysis_Session")
-			.AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location)) // mscorlib
+			.AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
 			.AddSyntaxTrees(syntaxTrees);
 
-		// 3. Povoar Grafo
 		var graph = new DependencyGraph();
 
-		// Processamento sequencial aqui é mais seguro para o SemanticModel, 
-		// mas pode ser paralelizado se criarmos um SemanticModel por árvore
-		foreach (var tree in syntaxTrees)
+		// 3. OTIMIZAÇÃO CRÍTICA: Processamento Paralelo dos Modelos Semânticos
+		// Em vez de foreach simples, usamos Parallel para visitar as árvores simultaneamente
+		await Task.Run(() =>
 		{
-			var model = compilation.GetSemanticModel(tree);
-			var walker = new GraphBuilderWalker(graph, model, tree.FilePath);
-			var root = await tree.GetRootAsync();
-			walker.Visit(root);
-		}
+			Parallel.ForEach(syntaxTrees, tree =>
+			{
+				// GetSemanticModel pode ser chamado concorrentemente
+				var model = compilation.GetSemanticModel(tree);
+				var walker = new GraphBuilderWalker(graph, model, tree.FilePath);
+
+				// GetRoot é rápido pois a árvore já está em memória
+				var root = tree.GetRoot();
+				walker.Visit(root);
+			});
+		});
 
 		_cachedGraph = graph;
+		_cachedRootPath = rootPath; // Cache o path para evitar re-indexação desnecessária
 		return graph;
 	}
 

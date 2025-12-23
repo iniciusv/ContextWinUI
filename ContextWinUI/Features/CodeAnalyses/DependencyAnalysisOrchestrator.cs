@@ -2,6 +2,9 @@
 using ContextWinUI.Core.Models;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -38,27 +41,99 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	/// </summary>
 	public async Task EnrichFileNodeAsync(FileSystemItem item, string projectPath)
 	{
-		// Cede controle inicial
-		await Task.Yield();
+		// Se já tiver filhos, não faz nada (evita reprocessamento desnecessário)
+		if (item.Children.Any()) return;
 
-		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
+		var dispatcher = DispatcherQueue.GetForCurrentThread();
 
-		// Normalização da chave de busca (deve bater com a do GraphBuilder)
-		var searchKey = Path.GetFullPath(item.FullPath).ToLowerInvariant();
-
-		// [OTIMIZAÇÃO 1] Lookup O(1) Instantâneo
-		if (!graph.FileIndex.TryGetValue(searchKey, out var fileSymbols))
+		// ---------------------------------------------------------
+		// ETAPA 1: FAST TRACK (Análise Sintática Pura)
+		// Objetivo: Dar feedback visual imediato ao usuário enquanto a compilação roda.
+		// ---------------------------------------------------------
+		string fileContent = string.Empty;
+		try
 		{
-			return; // Arquivo não tem símbolos mapeados ou caminho diferente
+			// Lê o conteúdo do disco rapidamente
+			fileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
+
+			// Parse rápido (sem Semantic Model, apenas texto -> árvore)
+			var tree = CSharpSyntaxTree.ParseText(fileContent);
+			var root = await tree.GetRootAsync();
+
+			var methodsSyntax = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
+			var classesSyntax = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
+
+			var tempChildren = new List<FileSystemItem>();
+
+			// Criação visual dos métodos (sem ID de linkagem ainda)
+			if (methodsSyntax.Any())
+			{
+				var methodsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::methods_temp", FileSystemItemType.LogicalGroup, "\uEA86");
+				methodsGroup.SharedState.Name = "Métodos (Carregando...)"; // Feedback visual
+
+				foreach (var m in methodsSyntax)
+				{
+					var methodName = m.Identifier.Text;
+					// Usamos um ID temporário. Nota: O ícone pode ser cinza ou diferente se quiser indicar "loading"
+					var tempItem = _itemFactory.CreateWrapper($"{item.FullPath}::temp::{methodName}", FileSystemItemType.Method, "\uF158");
+					tempItem.SharedState.Name = methodName;
+					methodsGroup.Children.Add(tempItem);
+				}
+				tempChildren.Add(methodsGroup);
+			}
+
+			// Criação visual das classes/tipos
+			if (classesSyntax.Any())
+			{
+				var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types_temp", FileSystemItemType.LogicalGroup, "\uE943");
+				typesGroup.SharedState.Name = "Tipos (Carregando...)";
+
+				foreach (var c in classesSyntax)
+				{
+					var className = c.Identifier.Text;
+					var tempItem = _itemFactory.CreateWrapper($"{item.FullPath}::temp::{className}", FileSystemItemType.Class, "\uE943");
+					tempItem.SharedState.Name = className;
+					typesGroup.Children.Add(tempItem);
+				}
+				tempChildren.Add(typesGroup);
+			}
+
+			// Atualiza a UI imediatamente com os dados preliminares
+			dispatcher.TryEnqueue(() =>
+			{
+				// Verifica se no meio tempo a análise completa não terminou (race condition rara)
+				if (!item.Children.Any())
+				{
+					foreach (var child in tempChildren) item.Children.Add(child);
+					if (tempChildren.Any()) item.IsExpanded = true;
+				}
+			});
+		}
+		catch (Exception)
+		{
+			// Se falhar o parse rápido, ignoramos e deixamos o fluxo seguir para a análise completa
 		}
 
-		// [OTIMIZAÇÃO 2] Preparar dados fora da UI Thread
-		// Cria as listas em memória pura antes de criar os wrappers visuais
+		// ---------------------------------------------------------
+		// ETAPA 2: ANÁLISE PROFUNDA (Semântica)
+		// Objetivo: Obter os IDs corretos do Roslyn para permitir navegação de dependência.
+		// ---------------------------------------------------------
+
+		// Isso pode demorar se for a primeira execução (compilação do projeto)
+		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
+
+		var searchKey = Path.GetFullPath(item.FullPath).ToLowerInvariant();
+		if (!graph.FileIndex.TryGetValue(searchKey, out var fileSymbols))
+		{
+			// Se não encontrou símbolos no grafo, removemos os itens temporários de "Loading" e encerramos
+			dispatcher.TryEnqueue(() => item.Children.Clear());
+			return;
+		}
+
 		var methodNodes = new List<SymbolNode>();
 		var typeNodes = new List<SymbolNode>();
 
-		// Iteração rápida em memória
-		lock (fileSymbols) // Lista pode estar sendo escrita se indexação for paralela
+		lock (fileSymbols)
 		{
 			foreach (var s in fileSymbols)
 			{
@@ -69,30 +144,30 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 		}
 
-		// Ordenação rápida
+		// Ordena pela posição no arquivo para ficar igual à leitura do código
 		methodNodes.Sort((a, b) => a.StartPosition.CompareTo(b.StartPosition));
+		typeNodes.Sort((a, b) => a.StartPosition.CompareTo(b.StartPosition));
 
-		// [OTIMIZAÇÃO 3] Batch Update na UI
-		// Usamos Dispatcher apenas uma vez por grupo se possível, ou construímos os itens antes
+		var finalChildren = new List<FileSystemItem>();
 
-		// Criar os Wrappers (ainda desconectados da UI)
-		var newChildren = new List<FileSystemItem>();
-
+		// Recria o grupo de métodos, agora com dados reais e linkáveis
 		if (methodNodes.Count > 0)
 		{
 			var methodsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
-			methodsGroup.SharedState.Name = "Métodos";
+			methodsGroup.SharedState.Name = "Métodos"; // Nome definitivo
 
 			foreach (var node in methodNodes)
 			{
+				// O ID agora é o node.Id (Assinatura única do Roslyn), permitindo o MethodFlow funcionar
 				var methodItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Method, "\uF158");
 				methodItem.SharedState.Name = node.Name;
 				methodItem.MethodSignature = node.Id;
 				methodsGroup.Children.Add(methodItem);
 			}
-			newChildren.Add(methodsGroup);
+			finalChildren.Add(methodsGroup);
 		}
 
+		// Recria o grupo de tipos
 		if (typeNodes.Count > 0)
 		{
 			var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types", FileSystemItemType.LogicalGroup, "\uE943");
@@ -102,24 +177,29 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			{
 				var typeItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Class, "\uE943");
 				typeItem.SharedState.Name = node.Name;
+				// Tipos também podem ter assinatura se você quiser rastrear uso de tipos futuramente
+				typeItem.MethodSignature = node.Id;
 				typesGroup.Children.Add(typeItem);
 			}
-			newChildren.Add(typesGroup);
+			finalChildren.Add(typesGroup);
 		}
 
-		// Atualização Visual Atômica
-		// Se estivermos rodando via Task.Run (do ViewModel), precisamos do Dispatcher aqui.
-		// Se o ViewModel já chamou dentro do Dispatcher, isso roda direto.
-
-		// Dica: Use o DispatcherQueue do MainThread para garantir
-		Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+		// ---------------------------------------------------------
+		// ETAPA 3: SWAP (Troca)
+		// Objetivo: Substituir os itens temporários pelos itens finais na UI thread.
+		// ---------------------------------------------------------
+		dispatcher.TryEnqueue(() =>
 		{
+			// Limpa os itens de "Carregando..."
 			item.Children.Clear();
-			foreach (var child in newChildren)
+
+			// Adiciona os itens finais enriquecidos
+			foreach (var child in finalChildren)
 			{
 				item.Children.Add(child);
 			}
-			if (newChildren.Any()) item.IsExpanded = true;
+
+			if (finalChildren.Any()) item.IsExpanded = true;
 		});
 	}
 	/// <summary>

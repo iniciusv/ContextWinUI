@@ -15,8 +15,14 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 	private readonly SemanticModel _semanticModel;
 	private readonly string _filePath;
 	private readonly string _normalizedPath;
-
 	private SymbolNode? _contextNode;
+
+	private static readonly SymbolDisplayFormat _idFormat = new SymbolDisplayFormat(
+		typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+		memberOptions: SymbolDisplayMemberOptions.IncludeContainingType | SymbolDisplayMemberOptions.IncludeParameters,
+		parameterOptions: SymbolDisplayParameterOptions.IncludeType,
+		genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+		miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
 
 	public GraphBuilderWalker(DependencyGraph graph, SemanticModel semanticModel, string filePath)
 	{
@@ -162,10 +168,20 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 		};
 	}
 
-	private string GetId(ISymbol symbol) => symbol.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+	private string GetId(ISymbol symbol)
+	{
+		if (symbol == null) return string.Empty;
+		return symbol.OriginalDefinition.ToDisplayString(_idFormat);
+	}
 
-	private bool IsSystemType(ITypeSymbol type) => type.ContainingNamespace?.ToString().StartsWith("System") ?? false;
+	private bool IsSystemType(ITypeSymbol type)
+	{
+		if (type.SpecialType != SpecialType.None) return true;
 
+		// Fallback para namespace
+		return type.ContainingNamespace?.Name == "System" ||
+			   (type.ContainingNamespace?.ToDisplayString().StartsWith("System") ?? false);
+	}
 	private SymbolType MapType(SymbolKind kind) => kind switch
 	{
 		SymbolKind.NamedType => SymbolType.Class,
