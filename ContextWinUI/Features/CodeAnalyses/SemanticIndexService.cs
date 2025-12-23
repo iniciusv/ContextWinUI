@@ -19,14 +19,12 @@ public class SemanticIndexService
 	// Adicione este método que estava faltando
 	public async Task<DependencyGraph> GetOrIndexProjectAsync(string rootPath)
 	{
-		// Se já temos um grafo cacheado para este caminho e ele tem nós, retorna o cache
 		if (_cachedRootPath == rootPath && _cachedGraph.Nodes.Any())
 		{
 			return _cachedGraph;
 		}
 
-		// Caso contrário, indexa do zero
-		return await IndexProjectAsync(rootPath);
+		return await Task.Run(async () => await IndexProjectAsync(rootPath));
 	}
 
 	public async Task<DependencyGraph> IndexProjectAsync(string rootPath)

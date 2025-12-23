@@ -7,21 +7,22 @@ using System.Collections.Generic;
 namespace ContextWinUI.Features.CodeAnalyses;
 
 using ContextWinUI.Core.Models;
-
+using System.IO;
 
 public class GraphBuilderWalker : CSharpSyntaxWalker
 {
 	private readonly DependencyGraph _graph;
 	private readonly SemanticModel _semanticModel;
 	private readonly string _filePath;
+	private readonly string _normalizedPath;
 
-	private SymbolNode? _contextNode; 
+	private SymbolNode? _contextNode;
 
 	public GraphBuilderWalker(DependencyGraph graph, SemanticModel semanticModel, string filePath)
 	{
 		_graph = graph;
 		_semanticModel = semanticModel;
-		_filePath = filePath;
+		_normalizedPath = Path.GetFullPath(filePath);
 	}
 
 	// 1. Captura Declaração de Métodos
@@ -155,7 +156,7 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 			Id = GetId(symbol),
 			Name = symbol.Name,
 			Type = MapType(symbol.Kind),
-			FilePath = _filePath,
+			FilePath = _normalizedPath,
 			StartPosition = span.Start,
 			Length = span.Length
 		};

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -26,12 +25,3 @@ public class SymbolNode
 }
 
 public record SymbolLink(string TargetId, LinkType Type);
-
-public class DependencyGraph
-{
-	public ConcurrentDictionary<string, SymbolNode> Nodes { get; } = new();
-
-	public ConcurrentDictionary<string, List<string>> InterfaceImplementations { get; } = new();
-
-	public void AddNode(SymbolNode node) => Nodes[node.Id] = node;
-}

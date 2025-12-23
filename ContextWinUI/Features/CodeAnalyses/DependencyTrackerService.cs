@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.CodeAnalyses;
-
+//No momento acho que está sem uso
 public class DependencyTrackerService
 {
 	public HashSet<string> GetDeepDependencies(DependencyGraph graph, string startNodeId)
@@ -27,8 +27,6 @@ public class DependencyTrackerService
 				{
 					// Lógica de Filtro: O que conta como "dependência recursiva"?
 					// Geralmente queremos seguir Chamadas e Implementações.
-					// Propriedades e Tipos Complexos (UsesType) geralmente pegamos apenas o nível 1
-					// para não trazer o projeto inteiro.
 
 					if (link.Type == LinkType.Calls || link.Type == LinkType.Implements)
 					{

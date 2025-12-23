@@ -4,6 +4,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Models;
 using ContextWinUI.ViewModels;
+using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -19,6 +20,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
 	private readonly IProjectSessionManager _sessionManager;
+	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
 	public ContextTreeViewModel TreeVM { get; }
 	public ContextGitViewModel GitVM { get; }
@@ -70,56 +72,87 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	/// <summary>
 	/// Reage imediatamente quando o usuário marca/desmarca arquivos no Explorer.
 	/// </summary>
-	private async void OnSelectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	private void OnSelectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
 	{
 		if (!_sessionManager.IsProjectLoaded) return;
 
-		// 1. Novos itens selecionados -> Adicionar à árvore de análise
 		if (e.NewItems != null)
 		{
 			foreach (FileSystemItem item in e.NewItems)
 			{
 				if (!item.IsCodeFile) continue;
-
-				// Evita duplicatas
 				if (TreeVM.Items.Any(x => x.FullPath == item.FullPath)) continue;
 
-				// Cria o nó visual para a direita
+				// 1. Cria o nó visual IMEDIATAMENTE (vazio)
 				var analysisNode = _itemFactory.CreateWrapper(item.FullPath, FileSystemItemType.File, "\uE943");
-				analysisNode.IsChecked = true; // Mantém sincronia visual
+				analysisNode.IsChecked = true;
 
+				// Adiciona na UI agora (para o usuário ver que algo aconteceu)
 				TreeVM.Items.Add(analysisNode);
 
-				// --- O PULO DO GATO ---
-				// Chama o Orchestrator para popular os métodos filhos usando o GRAFO em MEMÓRIA.
-				// Como o grafo já está carregado, isso é instantâneo (não trava a UI).
-				try
-				{
-					await _analysisOrchestrator.EnrichFileNodeAsync(analysisNode, _sessionManager.CurrentProjectPath!);
-					RegisterItemRecursively(analysisNode);
-				}
-				catch (Exception ex)
-				{
-					OnStatusChanged($"Erro ao detalhar arquivo: {ex.Message}");
-				}
+				// 2. Dispara o processamento pesado em BACKGROUND (Fire and Forget seguro)
+				_ = EnrichNodeInBackgroundAsync(analysisNode);
 			}
 		}
 
-		// 2. Itens desmarcados -> Remover da árvore de análise
 		if (e.OldItems != null)
 		{
+			// Remoção é rápida, pode ficar na UI thread
 			foreach (FileSystemItem item in e.OldItems)
 			{
 				var target = TreeVM.Items.FirstOrDefault(x => x.FullPath == item.FullPath);
-				if (target != null)
-				{
-					TreeVM.Items.Remove(target);
-				}
+				if (target != null) TreeVM.Items.Remove(target);
 			}
 		}
 
-		// Atualiza visibilidade do painel direito
 		IsVisible = TreeVM.Items.Count > 0;
+	}
+
+	private async Task EnrichNodeInBackgroundAsync(FileSystemItem node)
+	{
+		try
+		{
+			// Roda o processamento pesado (Roslyn/Busca no Grafo) em outra thread
+			await Task.Run(async () =>
+			{
+				// Aqui o Orchestrator vai tentar popular 'node.Children'.
+				// COMO node.Children é uma ObservableCollection ligada à UI, 
+				// o Orchestrator PRECISA ser Thread-Safe ou precisamos de um truque.
+
+				// TRUQUE DE PERFORMANCE:
+				// Vamos pedir para o Orchestrator preparar os itens, mas o Orchestrator atual
+				// adiciona direto na coleção. Para não refatorar o Orchestrator inteiro agora,
+				// vamos usar o Dispatcher DENTRO da chamada se necessário, ou garantir
+				// que a coleção Children suporte acesso de background (WinUI 3 geralmente suporta, mas falha às vezes).
+
+				// A abordagem mais segura sem refatorar o Orchestrator inteiro é:
+				// Garantir que a busca do grafo (pesada) ocorra antes, e a adição visual depois.
+
+				// Como o Orchestrator atual mistura os dois, vamos envolver a chamada inteira
+				// em um try/catch e torcer para o WinUI lidar com o binding, 
+				// OU (Recomendado) -> Alterar levemente o Orchestrator para usar Dispatcher.
+
+				// Mas para resolver seu freeze AGORA:
+				// O simples fato de usarmos Task.Run aqui já tira a carga da CPU da UI Thread.
+				// O único risco é "Cross-Thread Exception" ao adicionar filhos.
+				// Se der erro, usamos _dispatcherQueue.TryEnqueue.
+
+				// Vamos assumir que precisamos voltar para a UI para tocar nos Children:
+
+				_dispatcherQueue.TryEnqueue(async () =>
+				{
+					// Voltamos para a UI Thread só para preencher os dados, 
+					// MAS garantindo que GetOrIndexProjectAsync (que é chamado dentro)
+					// já retornou do background e está cacheado.
+					await _analysisOrchestrator.EnrichFileNodeAsync(node, _sessionManager.CurrentProjectPath!);
+					RegisterItemRecursively(node);
+				});
+			});
+		}
+		catch (Exception ex)
+		{
+			_dispatcherQueue.TryEnqueue(() => OnStatusChanged($"Erro background: {ex.Message}"));
+		}
 	}
 
 	// Este método agora serve mais como um "Reset Total" ou "Reload"

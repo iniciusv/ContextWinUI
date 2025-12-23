@@ -31,111 +31,176 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		_fileSystemService = fileSystemService;
 	}
 
+
 	/// <summary>
-	/// Preenche um nó de ARQUIVO com seus métodos e classes contidos.
-	/// Operação: Lookup O(N) no Grafo (onde N é total de símbolos do projeto, filtrado por path).
+	/// Preenche um nó de MÉTODO com suas dependências recursivas.
+	/// Operação: Algoritmo de busca em Grafo (BFS/DFS) em memória.
 	/// </summary>
 	public async Task EnrichFileNodeAsync(FileSystemItem item, string projectPath)
 	{
-		// 1. Garante que o grafo existe
+		// Cede controle inicial
+		await Task.Yield();
+
 		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
-		item.Children.Clear();
 
-		// 2. NORMALIZAÇÃO DE CAMINHO (O Segredo da Relação)
-		// Converte tudo para minúsculo e caminho absoluto para garantir o Match
-		var targetPath = Path.GetFullPath(item.FullPath).ToLowerInvariant();
+		// Normalização da chave de busca (deve bater com a do GraphBuilder)
+		var searchKey = Path.GetFullPath(item.FullPath).ToLowerInvariant();
 
-		// 3. Busca símbolos usando a chave normalizada
-		var fileSymbols = graph.Nodes.Values
-			.Where(n => Path.GetFullPath(n.FilePath).ToLowerInvariant() == targetPath)
-			.OrderBy(n => n.StartPosition)
-			.ToList();
+		// [OTIMIZAÇÃO 1] Lookup O(1) Instantâneo
+		if (!graph.FileIndex.TryGetValue(searchKey, out var fileSymbols))
+		{
+			return; // Arquivo não tem símbolos mapeados ou caminho diferente
+		}
 
-		// Se não achou nada, pode ser que o arquivo não seja C# ou foi ignorado
-		if (!fileSymbols.Any()) return;
+		// [OTIMIZAÇÃO 2] Preparar dados fora da UI Thread
+		// Cria as listas em memória pura antes de criar os wrappers visuais
+		var methodNodes = new List<SymbolNode>();
+		var typeNodes = new List<SymbolNode>();
 
-		// --- Criação dos Grupos Visuais ---
+		// Iteração rápida em memória
+		lock (fileSymbols) // Lista pode estar sendo escrita se indexação for paralela
+		{
+			foreach (var s in fileSymbols)
+			{
+				if (s.Type == SymbolType.Method || s.Type == SymbolType.Constructor)
+					methodNodes.Add(s);
+				else if (s.Type == SymbolType.Class || s.Type == SymbolType.Interface)
+					typeNodes.Add(s);
+			}
+		}
 
-		// Métodos
-		var methods = fileSymbols.Where(s => s.Type == SymbolType.Method || s.Type == SymbolType.Constructor).ToList();
-		if (methods.Any())
+		// Ordenação rápida
+		methodNodes.Sort((a, b) => a.StartPosition.CompareTo(b.StartPosition));
+
+		// [OTIMIZAÇÃO 3] Batch Update na UI
+		// Usamos Dispatcher apenas uma vez por grupo se possível, ou construímos os itens antes
+
+		// Criar os Wrappers (ainda desconectados da UI)
+		var newChildren = new List<FileSystemItem>();
+
+		if (methodNodes.Count > 0)
 		{
 			var methodsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
 			methodsGroup.SharedState.Name = "Métodos";
 
-			foreach (var node in methods)
+			foreach (var node in methodNodes)
 			{
 				var methodItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Method, "\uF158");
 				methodItem.SharedState.Name = node.Name;
-				methodItem.MethodSignature = node.Id; // IMPORTANTE: Guarda o ID do grafo para usar depois
+				methodItem.MethodSignature = node.Id;
 				methodsGroup.Children.Add(methodItem);
 			}
-			item.Children.Add(methodsGroup);
-
-			// Expande o arquivo automaticamente se encontrou métodos
-			item.IsExpanded = true;
+			newChildren.Add(methodsGroup);
 		}
-	}
 
+		if (typeNodes.Count > 0)
+		{
+			var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types", FileSystemItemType.LogicalGroup, "\uE943");
+			typesGroup.SharedState.Name = "Tipos";
+
+			foreach (var node in typeNodes)
+			{
+				var typeItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Class, "\uE943");
+				typeItem.SharedState.Name = node.Name;
+				typesGroup.Children.Add(typeItem);
+			}
+			newChildren.Add(typesGroup);
+		}
+
+		// Atualização Visual Atômica
+		// Se estivermos rodando via Task.Run (do ViewModel), precisamos do Dispatcher aqui.
+		// Se o ViewModel já chamou dentro do Dispatcher, isso roda direto.
+
+		// Dica: Use o DispatcherQueue do MainThread para garantir
+		Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+		{
+			item.Children.Clear();
+			foreach (var child in newChildren)
+			{
+				item.Children.Add(child);
+			}
+			if (newChildren.Any()) item.IsExpanded = true;
+		});
+	}
 	/// <summary>
 	/// Preenche um nó de MÉTODO com suas dependências recursivas.
 	/// Operação: Algoritmo de busca em Grafo (BFS/DFS) em memória.
 	/// </summary>
 	public async Task EnrichMethodFlowAsync(FileSystemItem item, string projectPath)
 	{
-		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
-		var startNodeId = item.MethodSignature; // Isso deve conter o ID do Roslyn agora
+		// [OTIMIZAÇÃO 1] Cache Visual
+		// Se já expandiu e tem filhos, não faz nada. 
+		// Isso evita reprocessar se o usuário fecha e abre o nó.
+		if (item.Children.Any()) return;
 
-		if (string.IsNullOrEmpty(startNodeId) || !graph.Nodes.TryGetValue(startNodeId, out var startNode))
+		await Task.Yield(); // Libera UI thread
+
+		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
+		var methodId = item.MethodSignature;
+
+		// Lookup O(1)
+		if (string.IsNullOrEmpty(methodId) || !graph.Nodes.TryGetValue(methodId, out var startNode))
 			return;
 
-		item.Children.Clear();
-
-		// 1. Obter dependências diretas para categorização visual imediata
+		// [OTIMIZAÇÃO 2] Acesso Direto (Sem Recursão)
+		// Em vez de chamar _trackerService.GetDeepDependencies (que percorre o mundo todo),
+		// olhamos apenas para os links que saem DESTE nó.
 		var directLinks = startNode.OutgoingLinks;
 
-		// Grupo: Chamadas de Fluxo (Lógica)
-		var logicLinks = directLinks.Where(l => l.Type == LinkType.Calls || l.Type == LinkType.Accesses).ToList();
-		if (logicLinks.Any())
-		{
-			var flowGroup = _itemFactory.CreateWrapper($"{item.FullPath}::flow", FileSystemItemType.LogicalGroup, "\uE80D");
-			flowGroup.SharedState.Name = "Lógica (Chamadas & Acessos)";
+		if (!directLinks.Any()) return;
 
-			foreach (var link in logicLinks)
+		// Prepara listas em memória (fora da UI Thread)
+		var flowItems = new List<FileSystemItem>();
+		var dependencyItems = new List<FileSystemItem>();
+
+		foreach (var link in directLinks)
+		{
+			// Resolve o nó alvo (O(1))
+			if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
 			{
-				if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
+				if (link.Type == LinkType.Calls || link.Type == LinkType.Accesses)
 				{
-					// Define ícone baseado no tipo (Método vs Propriedade)
 					string icon = targetNode.Type == SymbolType.Method ? "\uF158" : "\uE946";
 					var child = CreateItemFromNode(targetNode, FileSystemItemType.Method, icon);
 
-					// IMPORTANTE: Marca como "Checked" para vir selecionado por padrão na exportação
+					// Marca dependências diretas automaticamente para facilitar a vida do usuário
 					child.IsChecked = true;
-
-					flowGroup.Children.Add(child);
+					flowItems.Add(child);
 				}
-			}
-			item.Children.Add(flowGroup);
-		}
-
-		// Grupo: Dependências de Tipo (Complex Types / Entities)
-		var typeLinks = directLinks.Where(l => l.Type == LinkType.UsesType).ToList();
-		if (typeLinks.Any())
-		{
-			var depsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
-			depsGroup.SharedState.Name = "Usa Tipos (Classes/Entities)";
-
-			foreach (var link in typeLinks)
-			{
-				if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
+				else if (link.Type == LinkType.UsesType)
 				{
 					var child = CreateItemFromNode(targetNode, FileSystemItemType.Dependency, "\uE972");
 					child.IsChecked = true;
-					depsGroup.Children.Add(child);
+					dependencyItems.Add(child);
 				}
 			}
-			item.Children.Add(depsGroup);
 		}
+
+		// [OTIMIZAÇÃO 3] Batch Update na UI
+		// Só voltamos para a Thread principal para desenhar
+		Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+		{
+			// Grupo Lógico: Fluxo
+			if (flowItems.Count > 0)
+			{
+				var flowGroup = _itemFactory.CreateWrapper($"{item.FullPath}::flow", FileSystemItemType.LogicalGroup, "\uE80D");
+				flowGroup.SharedState.Name = "Chamadas & Acessos";
+				foreach (var child in flowItems) flowGroup.Children.Add(child);
+				item.Children.Add(flowGroup);
+			}
+
+			// Grupo Lógico: Tipos
+			if (dependencyItems.Count > 0)
+			{
+				var depsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
+				depsGroup.SharedState.Name = "Tipos Usados";
+				foreach (var child in dependencyItems) depsGroup.Children.Add(child);
+				item.Children.Add(depsGroup);
+			}
+
+			// Expande o item se houve algo adicionado
+			if (item.Children.Any()) item.IsExpanded = true;
+		});
 	}
 
 	/// <summary>
@@ -249,4 +314,5 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		int separatorIndex = fullPath.IndexOf("::");
 		return separatorIndex > 0 ? fullPath.Substring(0, separatorIndex) : fullPath;
 	}
+
 }
