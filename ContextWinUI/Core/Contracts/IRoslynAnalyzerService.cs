@@ -12,4 +12,5 @@ public interface IRoslynAnalyzerService
 	Task<List<string>> GetMethodCallsAsync(string filePath, string methodSignature);
 	Task<string> FilterClassContentAsync(string filePath,IEnumerable<string> keptMethodSignatures,bool removeUsings,bool removeNamespaces,bool removeComments,bool removeEmptyLines);
 	Task<MethodBodyResult> AnalyzeMethodBodyAsync(string filePath, string methodSignature);
+	Task<HashSet<string>> GetConnectedMethodsRecursivelyAsync(string filePath, string startMethodSignature);
 }

@@ -6,5 +6,8 @@ public enum FileSystemItemType
 	Directory,
 	LogicalGroup,
 	Method,
-	Dependency
+	Dependency,
+	Class,
+	Interface,
+	Property
 }

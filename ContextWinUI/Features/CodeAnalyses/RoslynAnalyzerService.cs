@@ -217,85 +217,214 @@ public class RoslynAnalyzerService : IRoslynAnalyzerService
 
 	public async Task<MethodBodyResult> AnalyzeMethodBodyAsync(string filePath, string methodSignature)
 	{
-		var result = new MethodBodyResult();
+		// 1. Validar e Ler Arquivo
+		if (!File.Exists(filePath)) return new MethodBodyResult();
+		var code = await File.ReadAllTextAsync(filePath);
 
-		if (!File.Exists(filePath)) return result;
+		// 2. Parse do código
+		var tree = CSharpSyntaxTree.ParseText(code);
+		var root = await tree.GetRootAsync();
 
-		try
+		// Setup do compilador (necessário para o SemanticModel funcionar bem)
+		var mscorlib = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
+		var compilation = CSharpCompilation.Create("Analysis")
+			.AddReferences(mscorlib)
+			.AddSyntaxTrees(tree);
+
+		var semanticModel = compilation.GetSemanticModel(tree);
+
+		// =======================================================================
+		// 3. ESTRATÉGIA DE BUSCA ROBUSTA (A Correção)
+		// =======================================================================
+
+		// Extrai apenas o nome do método da assinatura (ex: "Salvar(string)" -> "Salvar")
+		var targetName = methodSignature.Contains("(")
+			? methodSignature.Substring(0, methodSignature.IndexOf("(")).Trim()
+			: methodSignature.Trim();
+
+		// Busca TODOS os métodos com esse nome
+		var candidates = root.DescendantNodes()
+			.OfType<MethodDeclarationSyntax>()
+			.Where(m => m.Identifier.Text == targetName)
+			.ToList();
+
+		MethodDeclarationSyntax? methodNode = null;
+
+		if (candidates.Count == 0)
 		{
-			var code = await File.ReadAllTextAsync(filePath);
-			var tree = CSharpSyntaxTree.ParseText(code);
-			var root = await tree.GetRootAsync();
-
-			// 1. Encontrar o nó do método específico usando a assinatura
-			// Simplificação: Compara o nome e tenta bater a assinatura gerada
-			var methodNode = root.DescendantNodes()
-				.OfType<MethodDeclarationSyntax>()
-				.FirstOrDefault(m =>
-				{
-					var paramsList = m.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
-					var sig = $"{m.Identifier.Text}({string.Join(", ", paramsList)})";
-					return sig == methodSignature;
-				});
-
-			if (methodNode?.Body == null) return result;
-
-			// 2. Analisar o corpo do método
-			var nodesInBody = methodNode.Body.DescendantNodes();
-
-			// A) Encontrar chamadas de métodos (InvocationExpression)
-			var invocations = nodesInBody.OfType<InvocationExpressionSyntax>();
-			foreach (var invocation in invocations)
-			{
-				// Pega o nome do método chamado (ex: "Calcular()" ou "servico.Salvar()")
-				string callName = "";
-
-				if (invocation.Expression is IdentifierNameSyntax idSyntax)
-				{
-					// Chamada interna direta: Calcular()
-					callName = idSyntax.Identifier.Text;
-					// Adiciona como chamada interna (potencialmente outro método nesta classe)
-					result.InternalMethodCalls.Add(callName);
-				}
-				else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-				{
-					// Chamada em objeto: _servico.Salvar()
-					// Aqui o interesse maior é identificar o "_servico" para achar a dependência de tipo
-					callName = memberAccess.Name.Identifier.Text;
-				}
-			}
-
-			// B) Encontrar Tipos usados (Classes, Interfaces) para Dependências Externas
-			// Varre todos os identificadores no corpo
-			var identifiers = nodesInBody.OfType<IdentifierNameSyntax>();
-
-			foreach (var id in identifiers)
-			{
-				string name = id.Identifier.Text;
-
-				// Verifica se esse nome é uma classe mapeada no projeto
-				if (_projectTypeMap.TryGetValue(name, out var depPath))
-				{
-					// Evita auto-referência
-					if (depPath != filePath)
-					{
-						result.ExternalDependencies[name] = depPath;
-					}
-				}
-				// Verifica se é uma interface mapeada (ex: IService -> Service.cs)
-				// Lógica simples: Se encontrou IService, tenta achar onde ele é definido
-				else if (name.StartsWith("I") && name.Length > 1 && _projectTypeMap.TryGetValue(name, out var interfacePath))
-				{
-					if (interfacePath != filePath)
-						result.ExternalDependencies[name] = interfacePath;
-				}
-			}
-
-			// Limpeza de duplicatas
-			result.InternalMethodCalls = result.InternalMethodCalls.Distinct().ToList();
+			// Debug: Nao achou nenhum metodo com esse nome. 
+			// Verifique se o nome passado em 'methodSignature' está correto.
+			return new MethodBodyResult();
 		}
-		catch { }
+		else if (candidates.Count == 1)
+		{
+			// CENÁRIO IDEAL: Só existe um método com esse nome. Não precisamos comparar parâmetros chatos.
+			methodNode = candidates.First();
+		}
+		else
+		{
+			var normalizedTargetSig = methodSignature.Replace(" ", "");
+
+			methodNode = candidates.FirstOrDefault(m =>
+			{
+				var paramsList = m.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "var");
+				var currentSig = $"{m.Identifier.Text}({string.Join(",", paramsList)})";
+
+				return currentSig.Replace(" ", "") == normalizedTargetSig;
+			});
+
+			// Fallback: Se a comparação de string falhar, pega o primeiro (melhor que nada)
+			if (methodNode == null) methodNode = candidates.First();
+		}
+		// =======================================================================
+
+		if (methodNode == null) return new MethodBodyResult();
+
+		// 4. Preparar Resultado
+		var result = new MethodBodyResult
+		{
+			InternalMethodCalls = new List<string>(),
+			AccessedProperties = new List<string>(), // <--- Inicializando a lista
+			ExternalDependencies = new Dictionary<string, string>()
+		};
+
+		// 5. Obter Símbolo da Classe
+		var containingClass = methodNode.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+		if (containingClass == null) return result;
+
+		var classSymbol = semanticModel.GetDeclaredSymbol(containingClass);
+
+		// 6. Executar o Walker (Sua versão corrigida com VisitIdentifierName)
+		var walker = new MethodBodyWalker(semanticModel, result, classSymbol);
+
+		if (methodNode.Body != null)
+			walker.Visit(methodNode.Body);
+		else if (methodNode.ExpressionBody != null)
+			walker.Visit(methodNode.ExpressionBody);
 
 		return result;
+	}
+
+	public async Task<HashSet<string>> GetConnectedMethodsRecursivelyAsync(string filePath, string startMethodSignature)
+	{
+		var visited = new HashSet<string>();
+		var queue = new Queue<string>();
+
+		queue.Enqueue(startMethodSignature);
+
+		while (queue.Count > 0)
+		{
+			var currentMethod = queue.Dequeue();
+
+			if (visited.Contains(currentMethod)) continue;
+			visited.Add(currentMethod);
+
+			var bodyResult = await AnalyzeMethodBodyAsync(filePath, currentMethod);
+
+			foreach (var internalCall in bodyResult.InternalMethodCalls)
+			{
+				if (!visited.Contains(internalCall))
+				{
+					queue.Enqueue(internalCall);
+				}
+			}
+		}
+
+		return visited;
+	}
+
+
+	private class MethodBodyWalker : CSharpSyntaxWalker
+	{
+		private readonly SemanticModel _semanticModel;
+		private readonly MethodBodyResult _result;
+		private readonly INamedTypeSymbol _containingClassSymbol;
+
+		public MethodBodyWalker(SemanticModel semanticModel, MethodBodyResult result, INamedTypeSymbol containingClassSymbol)
+		{
+			_semanticModel = semanticModel;
+			_result = result;
+			_containingClassSymbol = containingClassSymbol;
+		}
+
+		// 1. Captura Chamadas de Métodos (Ex: OnStatusChanged(...))
+		public override void VisitInvocationExpression(InvocationExpressionSyntax node)
+		{
+			var symbolInfo = _semanticModel.GetSymbolInfo(node);
+			var symbol = symbolInfo.Symbol as IMethodSymbol;
+
+			if (symbol != null)
+			{
+				// Verifica se o método pertence à classe atual
+				if (SymbolEqualityComparer.Default.Equals(symbol.ContainingType, _containingClassSymbol))
+				{
+					// É uma chamada interna (Ex: OnStatusChanged)
+					if (!_result.InternalMethodCalls.Contains(symbol.Name))
+					{
+						_result.InternalMethodCalls.Add(symbol.Name);
+					}
+				}
+				else
+				{
+					// É uma dependência externa (Ex: Clipboard.SetContent)
+					AddExternalDependency(symbol.ContainingType);
+				}
+			}
+
+			// Continua visitando os filhos para achar argumentos que sejam propriedades
+			base.VisitInvocationExpression(node);
+		}
+
+		// 2. Captura Propriedades e Campos (Ex: SelectionVM, IsLoading, _sessionManager)
+		// Esta é a correção principal para o seu problema.
+		public override void VisitIdentifierName(IdentifierNameSyntax node)
+		{
+			var symbolInfo = _semanticModel.GetSymbolInfo(node);
+			var symbol = symbolInfo.Symbol;
+
+			if (symbol != null)
+			{
+				// Estamos interessados apenas em Propriedades (SelectionVM) ou Campos (_sessionManager)
+				bool isPropertyOrField = symbol is IPropertySymbol || symbol is IFieldSymbol;
+
+				if (isPropertyOrField)
+				{
+					// VERIFICAÇÃO CRUCIAL: O dono dessa propriedade é a classe que estamos analisando?
+					if (SymbolEqualityComparer.Default.Equals(symbol.ContainingType, _containingClassSymbol))
+					{
+						// Sim! É uma propriedade interna. Adiciona à lista.
+						// Isso vai pegar "SelectionVM" mesmo em "SelectionVM.SelectedItemsList"
+						if (!_result.AccessedProperties.Contains(symbol.Name))
+						{
+							_result.AccessedProperties.Add(symbol.Name);
+						}
+					}
+					else
+					{
+						// Se a propriedade pertence a outra classe (Ex: .SelectedItemsList pertence a FileSelectionViewModel)
+						// Registramos o tipo dono dessa propriedade como dependência externa
+						AddExternalDependency(symbol.ContainingType);
+					}
+				}
+			}
+
+			// Importante chamar a base para continuar a árvore, embora IdentifierName geralmente seja uma folha
+			base.VisitIdentifierName(node);
+		}
+
+		// Método auxiliar para evitar duplicidade na lógica de dependências externas
+		private void AddExternalDependency(INamedTypeSymbol typeSymbol)
+		{
+			if (typeSymbol == null) return;
+
+			// Ignora tipos do sistema básico se desejar limpar a visualização (opcional)
+			if (typeSymbol.ContainingNamespace.ToString().StartsWith("System")) return;
+
+			string typeName = typeSymbol.Name;
+			if (!_result.ExternalDependencies.ContainsKey(typeName))
+			{
+				_result.ExternalDependencies.Add(typeName, typeSymbol.ToDisplayString());
+			}
+		}
 	}
 }

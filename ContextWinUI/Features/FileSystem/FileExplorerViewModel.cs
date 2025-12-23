@@ -8,6 +8,7 @@ using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,13 +18,14 @@ namespace ContextWinUI.ViewModels;
 public partial class FileExplorerViewModel : ObservableObject
 {
 	private readonly IProjectSessionManager _sessionManager;
+	private readonly IFileSystemService _fileSystemService;
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 	private CancellationTokenSource? _searchCts;
-
-	// Armazena o item que está sendo exibido atualmente
 	private FileSystemItem? _selectedItem;
 
 	public ITagManagementUiService TagService { get; }
+
+	public ContextSelectionViewModel SelectionViewModel { get; }
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> rootItems = new();
@@ -37,10 +39,17 @@ public partial class FileExplorerViewModel : ObservableObject
 	public event EventHandler<string>? StatusChanged;
 	public event EventHandler<FileSystemItem>? FileSelected;
 
-	public FileExplorerViewModel(IProjectSessionManager sessionManager, ITagManagementUiService tagService)
+	public FileExplorerViewModel(
+		IProjectSessionManager sessionManager,
+		ITagManagementUiService tagService,
+		IFileSystemService fileSystemService,
+		ContextSelectionViewModel sharedSelectionViewModel) 
 	{
 		_sessionManager = sessionManager;
 		TagService = tagService;
+		_fileSystemService = fileSystemService;
+
+		SelectionViewModel = sharedSelectionViewModel;
 
 		_sessionManager.ProjectLoaded += OnProjectLoaded;
 		_sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
@@ -51,22 +60,55 @@ public partial class FileExplorerViewModel : ObservableObject
 		RootItems = e.RootItems;
 		CurrentPath = e.RootPath;
 		IsLoading = false;
+
+		// Limpa a seleção anterior ao carregar novo projeto
+		SelectionViewModel.Clear();
+
+		// Registra eventos de clique para cada item da árvore
+		foreach (var item in RootItems)
+		{
+			RegisterItemEvents(item);
+
+			// Se o item já vier marcado (do cache), avisa o SelectionViewModel
+			if (item.IsChecked) SelectionViewModel.AddItem(item);
+		}
+
 		OnStatusChanged("Projeto carregado com sucesso.");
 	}
-
-	// Chamado quando o usuário clica num arquivo na árvore (via MainWindow/View)
-	public void SelectFile(FileSystemItem item)
+	private void RegisterItemEvents(FileSystemItem item)
 	{
-		_selectedItem = item; // Guarda a referência para o SyncFocus usar depois
-		FileSelected?.Invoke(this, item);
+		item.PropertyChanged -= OnItemPropertyChanged;
+		item.PropertyChanged += OnItemPropertyChanged;
+
+		if (item.Children != null)
+		{
+			foreach (var child in item.Children)
+			{
+				RegisterItemEvents(child);
+			}
+		}
 	}
 
-	// --- LÓGICA DE FOCAR NO ITEM ATUAL ---
+	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		if (e.PropertyName == nameof(FileSystemItem.IsChecked) && sender is FileSystemItem item)
+		{
+			if (item.IsChecked)
+				SelectionViewModel.AddItem(item);
+			else
+				SelectionViewModel.RemoveItem(item);
+		}
+	}
+
+	public void SelectFile(FileSystemItem item)
+	{
+		_selectedItem = item;
+		FileSelected?.Invoke(this, item);
+	}
 
 	[RelayCommand]
 	private void SyncFocus()
 	{
-		// Se não tem nada carregado ou nenhum arquivo selecionado, fecha tudo.
 		if (RootItems == null || !RootItems.Any()) return;
 
 		if (_selectedItem == null)
@@ -75,35 +117,24 @@ public partial class FileExplorerViewModel : ObservableObject
 			return;
 		}
 
-		// Algoritmo: Percorre a árvore recursivamente.
-		// Se o nó faz parte do caminho até _selectedItem, ele se expande.
-		// Se não faz parte, ele se fecha.
 		foreach (var item in RootItems)
 		{
 			DetermineExpansionState(item, _selectedItem);
 		}
 	}
 
-	/// <summary>
-	/// Retorna TRUE se este item (ou um descendente) for o alvo.
-	/// Define IsExpanded baseado nisso.
-	/// </summary>
 	private bool DetermineExpansionState(FileSystemItem current, FileSystemItem target)
 	{
-		// 1. É o próprio arquivo alvo?
 		if (current == target)
 		{
-			// Arquivos não expandem, mas retornamos true para avisar o pai para ficar aberto
 			return true;
 		}
 
-		// 2. Verifica os filhos recursivamente
 		bool containsTarget = false;
 		if (current.Children != null && current.Children.Any())
 		{
 			foreach (var child in current.Children)
 			{
-				// Se ALGUM filho retornar true, este item (current) precisa ficar aberto
 				if (DetermineExpansionState(child, target))
 				{
 					containsTarget = true;
@@ -111,7 +142,6 @@ public partial class FileExplorerViewModel : ObservableObject
 			}
 		}
 
-		// 3. Aplica o estado visual (apenas se for diretório)
 		if (current.IsDirectory)
 		{
 			current.IsExpanded = containsTarget;
@@ -119,8 +149,6 @@ public partial class FileExplorerViewModel : ObservableObject
 
 		return containsTarget;
 	}
-
-	// --- OUTROS COMANDOS DE VISUALIZAÇÃO ---
 
 	[RelayCommand]
 	private void ExpandAll()
@@ -151,19 +179,20 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	// --- NAVEGAÇÃO / BUSCA ---
-
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
 	{
 		if (IsLoading) return;
+
 		try
 		{
 			IsLoading = true;
 			await _sessionManager.LoadProjectAsync();
 		}
 		catch (Exception ex) { OnStatusChanged($"Erro: {ex.Message}"); }
-		finally { IsLoading = false; }
+		// Nota: O IsLoading = false é feito no evento OnProjectLoaded ou em caso de erro deve ser tratado aqui se o evento não disparar.
+		// Como LoadProjectAsync do SessionManager dispara eventos, garantimos o finally no SessionManager ou aqui se der erro síncrono.
+		if (!IsLoading && string.IsNullOrEmpty(CurrentPath)) IsLoading = false;
 	}
 
 	[RelayCommand]
@@ -176,6 +205,7 @@ public partial class FileExplorerViewModel : ObservableObject
 		try
 		{
 			await Task.Delay(300, token); // Debounce
+
 			if (!token.IsCancellationRequested && RootItems != null)
 			{
 				await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
@@ -193,6 +223,43 @@ public partial class FileExplorerViewModel : ObservableObject
 		if (item != null)
 		{
 			item.IsExpanded = true;
+		}
+	}
+
+
+
+	// [CORREÇÃO] Comandos de Seleção em Massa
+	[RelayCommand]
+	private void SelectAll()
+	{
+		if (RootItems == null) return;
+		SetCheckedRecursive(RootItems, true);
+	}
+
+	[RelayCommand]
+	private void UnselectAll()
+	{
+		if (RootItems == null) return;
+		SetCheckedRecursive(RootItems, false);
+	}
+
+	// Helper recursivo para marcar/desmarcar
+	private void SetCheckedRecursive(IEnumerable<FileSystemItem> items, bool isChecked)
+	{
+		foreach (var item in items)
+		{
+			// Só marcamos se for arquivo de código (pastas não entram na seleção final)
+			if (item.IsCodeFile)
+			{
+				item.IsChecked = isChecked;
+				// A mágica reativa que criamos antes (OnItemPropertyChanged) 
+				// vai rodar automaticamente aqui e atualizar a SelectionViewModel
+			}
+
+			if (item.Children != null && item.Children.Any())
+			{
+				SetCheckedRecursive(item.Children, isChecked);
+			}
 		}
 	}
 }

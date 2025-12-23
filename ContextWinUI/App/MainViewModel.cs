@@ -1,13 +1,14 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
-using ContextWinUI.Features.CodeAnalyses;   // Para RoslynAnalyzer e Orchestrator
-using ContextWinUI.Features.ContextBuilder; // Para ContextAnalysisViewModel e sub-VMs
-using ContextWinUI.Features.Prompting;      // Para PrePromptViewModel
-
+using ContextWinUI.Core.Services;
+using ContextWinUI.Features.CodeAnalyses;
+using ContextWinUI.Features.ContextBuilder;
+using ContextWinUI.Features.Prompting;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
+using ContextWinUI.ViewModels;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -17,169 +18,164 @@ public partial class MainViewModel : ObservableObject
 {
 	// --- ViewModels Filhos ---
 	public FileExplorerViewModel FileExplorer { get; }
-	public FileContentViewModel FileContent { get; }
-	public FileSelectionViewModel FileSelection { get; }
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
+	public FileContentViewModel FileContent { get; }
+	private readonly SemanticIndexService _semanticIndexService;
+	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
 
-	// --- Gerenciador de Sessão ---
-	private readonly IProjectSessionManager _sessionManager;
+	public IProjectSessionManager SessionManager { get; }
 
+	// [CORREÇÃO] Propriedades de Estado Global exigidas pelo XAML
 	[ObservableProperty]
-	private string statusMessage = "Selecione uma pasta para começar";
+	private string statusMessage = "Pronto";
 
 	[ObservableProperty]
 	private bool isLoading;
 
 	public MainViewModel()
 	{
-		// 1. Instanciação dos Serviços Básicos (Core Services)
-		// Certifique-se que essas classes concretas existem nos namespaces importados acima
+		// 1. Serviços (Mantenha igual)
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
-		IRoslynAnalyzerService roslynAnalyzer = new RoslynAnalyzerService();
-		ITagManagementUiService tagService = new TagManagementUiService();
 		IGitService gitService = new GitService();
 		ISelectionIOService selectionIOService = new SelectionIOService();
+		ITagManagementUiService tagService = new TagManagementUiService();
 
-		// 2. Gerenciador de Sessão
-		_sessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
+		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 
-		// 3. ViewModels Independentes
-		FileExplorer = new FileExplorerViewModel(_sessionManager, tagService);
-		FileContent = new FileContentViewModel(fileSystemService);
-		FileSelection = new FileSelectionViewModel(fileSystemService, _sessionManager);
-		PrePrompt = new PrePromptViewModel(_sessionManager);
+		var semanticIndexService = new SemanticIndexService();
+		var dependencyTrackerService = new DependencyTrackerService();
 
-		// 4. Configuração da Análise de Contexto
-
-		// 4a. ViewModel de Seleção (Compartilhado internamente no ContextAnalysis)
-		var contextSelectionVM = new ContextSelectionViewModel(itemFactory, selectionIOService);
-
-		// 4b. Orchestrator (Lógica pesada de análise)
-		IDependencyAnalysisOrchestrator analysisOrchestrator = new DependencyAnalysisOrchestrator(
-			roslynAnalyzer, // Corrigido: Orchestrator precisa do RoslynService
-			itemFactory,    // Corrigido: precisa da Factory
-			fileSystemService // Corrigido: precisa de acesso a arquivos
+		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
+			semanticIndexService,
+			dependencyTrackerService,
+			itemFactory,
+			fileSystemService
 		);
 
-		// 5. Instanciação do ContextAnalysisViewModel (Orquestrador Mestre)
-		// A ordem aqui deve bater EXATAMENTE com o construtor refatorado em ContextAnalysisViewModel.cs
-		ContextAnalysis = new ContextAnalysisViewModel(
-			roslynAnalyzer,
+		IRoslynAnalyzerService roslynLegacyService = new RoslynAnalyzerService();
+
+		// 2. [CORREÇÃO AQUI] Instanciar ContextSelectionViewModel com as novas dependências
+		var sharedSelectionVM = new ContextSelectionViewModel(
 			itemFactory,
-			analysisOrchestrator,
-			_sessionManager,
+			selectionIOService,
+			orchestrator,    // <--- Novo parametro
+			SessionManager   // <--- Novo parametro
+		);
+
+		// 3. Passar a MESMA instância para os ViewModels filhos (Mantenha igual)
+		FileExplorer = new FileExplorerViewModel(
+			SessionManager,
+			tagService,
+			fileSystemService,
+			sharedSelectionVM
+		);
+
+		ContextAnalysis = new ContextAnalysisViewModel(
+			roslynLegacyService,
+			itemFactory,
+			orchestrator,
+			SessionManager,
 			gitService,
 			tagService,
-			contextSelectionVM
+			sharedSelectionVM
 		);
 
-		// 6. Conectar Eventos
-		WireUpEvents();
+		FileContent = new FileContentViewModel(fileSystemService);
+		PrePrompt = new PrePromptViewModel(SessionManager);
+
+		RegisterEvents();
 	}
 
-	private void WireUpEvents()
+	private void RegisterEvents()
 	{
-		// Quando um arquivo é selecionado na árvore principal, carrega o conteúdo no editor
-		FileExplorer.FileSelected += async (s, item) => await FileContent.LoadFileAsync(item);
-
-		// Sincroniza a árvore principal com a lista de seleção global
-		FileExplorer.PropertyChanged += (s, e) =>
-		{
-			if (e.PropertyName == nameof(FileExplorer.RootItems))
-				FileSelection.SetRootItems(FileExplorer.RootItems);
-		};
-
-		// Atualiza o preview da análise quando a seleção muda na aba principal
-		FileSelection.PropertyChanged += (s, e) =>
-		{
-			if (e.PropertyName == nameof(FileSelection.SelectedFilesCount))
-			{
-				var currentSelection = FileSelection.GetCheckedFiles();
-				// Importante: Certifique-se que você adicionou o método UpdateSelectionPreview
-				// de volta no ContextAnalysisViewModel como instruído anteriormente.
-				ContextAnalysis.UpdateSelectionPreview(currentSelection);
-			}
-		};
-
-		// Centraliza o estado de Loading (Qualquer VM carregando ativa o spinner global)
-		void UpdateLoading() => IsLoading = FileExplorer.IsLoading || FileContent.IsLoading || FileSelection.IsLoading || ContextAnalysis.IsLoading;
-
-		FileExplorer.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
-		FileContent.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
-		FileSelection.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
-		ContextAnalysis.PropertyChanged += (s, e) => { if (e.PropertyName == "IsLoading") UpdateLoading(); };
-
-		// Centraliza Mensagens de Status na barra inferior
-		_sessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
+		// Atualiza barra de status global
+		SessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
-		FileContent.StatusChanged += (s, msg) => StatusMessage = msg;
-		FileSelection.StatusChanged += (s, msg) => StatusMessage = msg;
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 
-		// Propaga status dos sub-VMs do ContextAnalysis (se necessário, ou deixe o ContextAnalysis propagar)
-		// ContextAnalysis.GitVM não tem evento StatusChanged exposto diretamente, 
-		// mas o ContextAnalysis orquestra isso geralmente.
+		// Sincroniza Loading global com o Explorer (carregamento inicial)
+		FileExplorer.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(FileExplorerViewModel.IsLoading))
+			{
+				IsLoading = FileExplorer.IsLoading;
+			}
+		};
 	}
 
-	// Chamado pela View (Code-behind da MainWindow) quando clica na árvore
+	// Método chamado pelo Code-Behind (MainWindow.xaml.cs)
 	public void OnFileSelected(FileSystemItem item)
 	{
-		FileExplorer.SelectFile(item);
+		if (item != null && item.IsCodeFile)
+		{
+			_ = FileContent.LoadFileAsync(item);
+		}
 	}
 
-	// Comando Principal: "Analisar Contexto" (Botão Grande da Toolbar)
+	// Comando para o botão "Analisar Contexto" (se houver)
 	[RelayCommand]
-	public async Task AnalyzeContextAsync()
+	private async Task AnalyzeContextAsync()
 	{
-		var selectedFiles = FileSelection.GetCheckedFiles().ToList();
+		var selectedFiles = FileExplorer.SelectionViewModel.GetCheckedFiles().ToList();
+		var rootPath = SessionManager.CurrentProjectPath;
 
-		// Se nada selecionado mas tem arquivo aberto no editor, usa ele como contexto único
-		if (!selectedFiles.Any() && FileContent.SelectedItem?.IsCodeFile == true)
+		if (selectedFiles.Any() && !string.IsNullOrEmpty(rootPath))
 		{
-			selectedFiles.Add(FileContent.SelectedItem);
-		}
-
-		if (!selectedFiles.Any())
-		{
-			StatusMessage = "Selecione arquivos para analisar.";
-			return;
-		}
-
-		if (_sessionManager.CurrentProjectPath != null)
-		{
-			// --- CORREÇÃO DE REFATORAÇÃO ---
-			// O comando RefreshChangesCommand agora vive dentro do GitVM
-			if (ContextAnalysis.GitVM.RefreshChangesCommand.CanExecute(null))
+			StatusMessage = "Iniciando análise...";
+			IsLoading = true;
+			try
 			{
-				await ContextAnalysis.GitVM.RefreshChangesCommand.ExecuteAsync(null);
+				await ContextAnalysis.AnalyzeContextAsync(selectedFiles, rootPath);
 			}
-
-			// Inicia análise principal (Geração de Árvore e Indexação)
-			await ContextAnalysis.AnalyzeContextAsync(selectedFiles, _sessionManager.CurrentProjectPath);
+			finally
+			{
+				IsLoading = false;
+			}
 		}
 	}
 
+	// [CORREÇÃO] Comando para o botão "Salvar" no header
 	[RelayCommand]
-	public async Task SaveWorkAsync()
+	private async Task SaveWorkAsync()
 	{
-		if (IsLoading) return;
+		if (!SessionManager.IsProjectLoaded) return;
 
 		IsLoading = true;
 		try
 		{
-			await _sessionManager.SaveSessionAsync();
-			StatusMessage = "Projeto salvo com sucesso.";
-		}
-		catch (System.Exception ex)
-		{
-			StatusMessage = $"Erro ao salvar: {ex.Message}";
+			await SessionManager.SaveSessionAsync();
+			StatusMessage = "Trabalho salvo com sucesso.";
 		}
 		finally
 		{
 			IsLoading = false;
 		}
 	}
+	private async void OnProjectLoaded_IndexGraph(object? sender, ProjectLoadedEventArgs e)
+	{
+		// Evita travar a UI rodando em Task.Run
+		await Task.Run(async () =>
+		{
+			try
+			{
+				// Atualiza status na UI (precisa de dispatcher se não for ObservableProperty thread-safe)
+				_dispatcherQueue.TryEnqueue(() => StatusMessage = "Indexando grafo de dependências...");
+
+				// O serviço já tem lógica de cache, então se for a mesma pasta, é rápido
+				await _semanticIndexService.GetOrIndexProjectAsync(e.RootPath);
+
+				_dispatcherQueue.TryEnqueue(() => StatusMessage = "Grafo de dependências pronto.");
+			}
+			catch (Exception ex)
+			{
+				_dispatcherQueue.TryEnqueue(() => StatusMessage = $"Erro na indexação: {ex.Message}");
+			}
+		});
+	}
+
+	// Necessário para acessar thread de UI dentro do Task.Run
+	private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 }

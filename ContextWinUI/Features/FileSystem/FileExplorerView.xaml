@@ -47,14 +47,14 @@
 			</Grid.ColumnDefinitions>
 
 			<Button Content="Todos" 
-                    Command="{x:Bind SelectionViewModel.SelectAllCommand}" 
-                    Style="{StaticResource AccentButtonStyle}" 
-                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
+        Command="{x:Bind ExplorerViewModel.SelectAllCommand}" 
+        Style="{StaticResource AccentButtonStyle}" 
+        Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 
 			<Button Grid.Column="1" 
-                    Content="Nenhum" 
-                    Command="{x:Bind SelectionViewModel.UnselectAllCommand}" 
-                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
+        Content="Nenhum" 
+        Command="{x:Bind ExplorerViewModel.UnselectAllCommand}" 
+        Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 
 			<StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
 				<TextBlock Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}" FontWeight="SemiBold"/>

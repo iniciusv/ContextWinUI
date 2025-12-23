@@ -50,15 +50,16 @@ public sealed partial class FileExplorerView : UserControl
 		set => SetValue(ExplorerViewModelProperty, value);
 	}
 
+	// [CORREÇÃO AQUI] Alterar o tipo registrado de FileSelectionViewModel para ContextSelectionViewModel
 	public static readonly DependencyProperty SelectionViewModelProperty =
-		DependencyProperty.Register(nameof(SelectionViewModel), typeof(FileSelectionViewModel), typeof(FileExplorerView), new PropertyMetadata(null));
+		DependencyProperty.Register(nameof(SelectionViewModel), typeof(ContextSelectionViewModel), typeof(FileExplorerView), new PropertyMetadata(null));
 
-	public FileSelectionViewModel SelectionViewModel
+	// [CORREÇÃO AQUI] Alterar o tipo da propriedade C#
+	public ContextSelectionViewModel SelectionViewModel
 	{
-		get => (FileSelectionViewModel)GetValue(SelectionViewModelProperty);
+		get => (ContextSelectionViewModel)GetValue(SelectionViewModelProperty);
 		set => SetValue(SelectionViewModelProperty, value);
 	}
-
 	public event EventHandler<FileSystemItem>? FileSelected;
 
 	public FileExplorerView()
@@ -77,11 +78,7 @@ public sealed partial class FileExplorerView : UserControl
 
 	private void OnCheckBoxClick(object sender, RoutedEventArgs e)
 	{
-		if (sender is CheckBox chk && chk.DataContext is FileSystemItem item)
-		{
-			item.IsChecked = chk.IsChecked ?? false;
-			SelectionViewModel?.RecalculateSelection();
-		}
+
 	}
 
 	private void OnTagMenuOpening(object sender, object e)

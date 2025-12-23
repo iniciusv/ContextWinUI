@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System;
+using System.Text.RegularExpressions;
 
 namespace ContextWinUI.Helpers;
 
@@ -63,5 +64,16 @@ public static class CodeCleanupHelper
 		}
 
 		return processed.Trim();
+	}
+	public static string RemoveComments(string code)
+	{
+		// Regex para remover comentários de bloco (/* ... */) e linha (// ...)
+		var blockComments = @"/\*(.*?)\*/";
+		var lineComments = @"//(.*?)\r?\n";
+
+		// Remove mantendo quebras de linha para não quebrar contagem de linhas se necessário
+		return Regex.Replace(code, blockComments + "|" + lineComments,
+			me => me.Value.StartsWith("//") ? Environment.NewLine : "",
+			RegexOptions.Singleline);
 	}
 }

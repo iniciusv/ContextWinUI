@@ -18,6 +18,7 @@ public partial class FileSelectionViewModel : ObservableObject
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IProjectSessionManager _sessionManager;
 	private ObservableCollection<FileSystemItem> _rootItems = new();
+	public ObservableCollection<FileSystemItem> SelectedItemsList { get; } = new();
 
 	[ObservableProperty]
 	[NotifyCanExecuteChangedFor(nameof(CopySelectedFilesCommand))]
@@ -164,4 +165,60 @@ public partial class FileSelectionViewModel : ObservableObject
 	}
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	public void AddItem(FileSystemItem item)
+	{
+		if (!SelectedItemsList.Contains(item))
+		{
+			SelectedItemsList.Add(item);
+			RecalculateCount();
+		}
+	}
+
+	public void RemoveItem(FileSystemItem item)
+	{
+		if (SelectedItemsList.Contains(item))
+		{
+			SelectedItemsList.Remove(item);
+			RecalculateCount();
+		}
+	}
+
+	private void RecalculateCount()
+	{
+		SelectedFilesCount = SelectedItemsList.Count;
+	}
+
+	// Chamado no load inicial para preencher quem já estava marcado (ex: do cache)
+	public void SetRootItems(IEnumerable<FileSystemItem> rootItems)
+	{
+		SelectedItemsList.Clear();
+		// Método auxiliar recursivo para achar tudo que já está IsChecked=true
+		PopulateSelectedRecursively(rootItems);
+		RecalculateCount();
+	}
+
+	private void PopulateSelectedRecursively(IEnumerable<FileSystemItem> items)
+	{
+		foreach (var item in items)
+		{
+			if (item.IsChecked && item.IsCodeFile) SelectedItemsList.Add(item);
+			if (item.Children.Any()) PopulateSelectedRecursively(item.Children);
+		}
+	}
 }
