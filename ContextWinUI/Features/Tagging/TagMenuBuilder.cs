@@ -1,6 +1,6 @@
 ﻿using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
-using ContextWinUI.Core.Services;
+
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using Microsoft.UI;

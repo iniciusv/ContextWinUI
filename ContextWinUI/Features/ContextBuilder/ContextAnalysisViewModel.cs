@@ -16,7 +16,6 @@ namespace ContextWinUI.Features.ContextBuilder;
 
 public partial class ContextAnalysisViewModel : ObservableObject
 {
-	private readonly IRoslynAnalyzerService _roslynAnalyzer; // Mantido se houver legado
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
 	private readonly IProjectSessionManager _sessionManager;
@@ -40,7 +39,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
 
 	public ContextAnalysisViewModel(
-		IRoslynAnalyzerService roslynAnalyzer,
 		IFileSystemItemFactory itemFactory,
 		IDependencyAnalysisOrchestrator analysisOrchestrator,
 		IProjectSessionManager sessionManager,
@@ -48,7 +46,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		ITagManagementUiService tagService,
 		ContextSelectionViewModel selectionVM)
 	{
-		_roslynAnalyzer = roslynAnalyzer;
 		_itemFactory = itemFactory;
 		_analysisOrchestrator = analysisOrchestrator;
 		_sessionManager = sessionManager;

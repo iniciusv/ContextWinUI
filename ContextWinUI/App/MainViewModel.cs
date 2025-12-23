@@ -1,13 +1,10 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Services;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
-using ContextWinUI.Features.Prompting;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
-using ContextWinUI.ViewModels;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -55,7 +52,7 @@ public partial class MainViewModel : ObservableObject
 			fileSystemService
 		);
 
-		IRoslynAnalyzerService roslynLegacyService = new RoslynAnalyzerService();
+
 
 		// 2. [CORREÇÃO AQUI] Instanciar ContextSelectionViewModel com as novas dependências
 		var sharedSelectionVM = new ContextSelectionViewModel(
@@ -74,7 +71,6 @@ public partial class MainViewModel : ObservableObject
 		);
 
 		ContextAnalysis = new ContextAnalysisViewModel(
-			roslynLegacyService,
 			itemFactory,
 			orchestrator,
 			SessionManager,
