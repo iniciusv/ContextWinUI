@@ -226,9 +226,6 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-
-
-	// [CORREÇÃO] Comandos de Seleção em Massa
 	[RelayCommand]
 	private void SelectAll()
 	{
@@ -261,5 +258,70 @@ public partial class FileExplorerViewModel : ObservableObject
 				SetCheckedRecursive(item.Children, isChecked);
 			}
 		}
+	}
+
+	[RelayCommand]
+	private void SubmitSearch(string query)
+	{
+		if (string.IsNullOrWhiteSpace(query)) return;
+
+		string trimmedQuery = query.Trim();
+		bool? selectMode = null;
+		string tagToProcess = string.Empty;
+
+		// Verifica a sintaxe
+		if (trimmedQuery.StartsWith("+#"))
+		{
+			selectMode = true;
+			tagToProcess = trimmedQuery.Substring(2);
+		}
+		else if (trimmedQuery.StartsWith("-#"))
+		{
+			selectMode = false;
+			tagToProcess = trimmedQuery.Substring(2);
+		}
+
+		// Se detectou o comando de seleção por tag
+		if (selectMode.HasValue && !string.IsNullOrWhiteSpace(tagToProcess))
+		{
+			if (RootItems == null) return;
+
+			int count = ModifySelectionByTagRecursive(RootItems, tagToProcess, selectMode.Value);
+
+			string action = selectMode.Value ? "selecionados" : "desselecionados";
+			OnStatusChanged($"{count} itens com a tag '{tagToProcess}' foram {action}.");
+		}
+		else
+		{
+			// Se apertou enter mas não é um comando especial, pode forçar uma busca ou fazer nada
+			// Neste caso, a busca já acontece no TextChanged, então não fazemos nada.
+		}
+	}
+
+	private int ModifySelectionByTagRecursive(IEnumerable<FileSystemItem> items, string tag, bool shouldSelect)
+	{
+		int count = 0;
+		foreach (var item in items)
+		{
+			// Verifica se o item possui a tag (case insensitive)
+			bool hasTag = item.SharedState.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+
+			if (hasTag && item.IsCodeFile)
+			{
+				// Só altera se o estado for diferente para evitar processamento desnecessário
+				if (item.IsChecked != shouldSelect)
+				{
+					item.IsChecked = shouldSelect;
+					count++;
+				}
+			}
+
+			// Recurso para filhos
+			if (item.Children != null && item.Children.Any())
+			{
+				count += ModifySelectionByTagRecursive(item.Children, tag, shouldSelect);
+			}
+		}
+		return count;
 	}
 }

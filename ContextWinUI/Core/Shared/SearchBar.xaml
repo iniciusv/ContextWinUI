@@ -8,8 +8,9 @@
 
 	<Grid>
 		<TextBox x:Name="SearchTextBox"
-                 PlaceholderText="Buscar..."
+                 PlaceholderText="Buscar... (+#tag ou -#tag para seleção)"
                  TextChanged="OnTextChanged"
+                 KeyDown="OnKeyDown" 
                  VerticalAlignment="Center">
 			<TextBox.Header>
 				<TextBlock Text=" " Height="0"/>
