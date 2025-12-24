@@ -22,7 +22,7 @@
 		<Grid Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}" 
               BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
 			<StackPanel Orientation="Horizontal" Spacing="8">
-				<TextBlock Text="Revisão (Diff)" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center"/>
+				<TextBlock Text="Review (Diff)" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center"/>
 				<TextBlock Text="{Binding SelectedChange.FilePath, TargetNullValue=''}" 
                            Foreground="Gray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 			</StackPanel>
@@ -31,7 +31,6 @@
 		<ListView Grid.Row="1"
                   ItemsSource="{Binding DiffLines}"
                   SelectionMode="None">
-
 			<ListView.ItemContainerStyle>
 				<Style TargetType="ListViewItem">
 					<Setter Property="Padding" Value="0"/>
@@ -40,14 +39,12 @@
 					<Setter Property="VerticalContentAlignment" Value="Stretch"/>
 				</Style>
 			</ListView.ItemContainerStyle>
-
 			<ListView.ItemTemplate>
 				<DataTemplate x:DataType="services:DiffLine">
 					<Grid>
 						<Grid.Background>
 							<Binding Path="Type" Converter="{StaticResource DiffToColorConverter}" ConverterParameter="Background"/>
 						</Grid.Background>
-
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="40"/>
 							<ColumnDefinition Width="40"/>
@@ -76,7 +73,7 @@
 		</ListView>
 
 		<TextBlock Grid.Row="1" 
-                   Text="Selecione um arquivo para ver as mudanças exatas." 
+                   Text="Select a file to view exact changes." 
                    HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Gray"
                    Visibility="{Binding SelectedChange, Converter={StaticResource NullToVisibleConverter}}"/>
 	</Grid>
