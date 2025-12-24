@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject
 	public FileContentViewModel FileContent { get; }
 	private readonly SemanticIndexService _semanticIndexService;
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
+	public AiChangesViewModel AiChanges { get; }
 
 	public IProjectSessionManager SessionManager { get; }
 
@@ -41,8 +42,9 @@ public partial class MainViewModel : ObservableObject
 		ITagManagementUiService tagService = new TagManagementUiService();
 
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
-
 		var semanticIndexService = new SemanticIndexService();
+
+		AiChanges = new AiChangesViewModel(fileSystemService, SessionManager, semanticIndexService);
 		var dependencyTrackerService = new DependencyTrackerService();
 
 		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
