@@ -1,4 +1,4 @@
-﻿// ARQUIVO: RoslynHighlightService.cs
+// ARQUIVO: RoslynHighlightService.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,7 +16,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace ContextWinUI.Services;
- 
+
 public class RoslynHighlightService
 {
 	// Cache básico de referências para performance (mscorlib, system, etc)
@@ -173,6 +173,53 @@ public class RoslynHighlightService
 		catch
 		{
 			// Ignorar erros de range durante edição rápida
+		}
+		finally
+		{
+			editor.Document.ApplyDisplayUpdates();
+		}
+	}
+
+	public void ApplyDiffHighlights(RichEditBox editor, List<DiffLine> diffLines)
+	{
+		if (editor == null || diffLines == null) return;
+
+		// Cores para o Diff (Verde claro para adição)
+		var addedColor = ContextWinUI.Helpers.ThemeHelper.IsDarkTheme()
+			? Color.FromArgb(60, 40, 80, 40)  // Verde escuro transparente (Dark Mode)
+			: Color.FromArgb(60, 200, 255, 200); // Verde claro transparente (Light Mode)
+
+		editor.Document.BatchDisplayUpdates();
+		try
+		{
+			// 1. Reseta cor de fundo
+			editor.Document.GetText(TextGetOptions.None, out string text);
+			editor.Document.GetRange(0, text.Length).CharacterFormat.BackgroundColor = Colors.Transparent;
+
+			// Precisamos mapear as linhas do Diff para posições de caracteres no RichEditBox
+			int currentCharIndex = 0;
+
+			foreach (var line in diffLines)
+			{
+				int lineLength = line.Text.Length;
+
+				// +1 conta o \r ou \n. O RichEditBox no Windows normaliza para \r
+				int rangeLength = lineLength + 1;
+
+				if (line.Type == DiffType.Added)
+				{
+					// Proteção para não estourar o tamanho do texto
+					int safeEnd = Math.Min(currentCharIndex + rangeLength, text.Length + 1);
+
+					if (safeEnd > currentCharIndex)
+					{
+						var range = editor.Document.GetRange(currentCharIndex, safeEnd);
+						range.CharacterFormat.BackgroundColor = addedColor;
+					}
+				}
+
+				currentCharIndex += rangeLength;
+			}
 		}
 		finally
 		{

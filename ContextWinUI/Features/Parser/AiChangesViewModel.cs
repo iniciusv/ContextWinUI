@@ -92,7 +92,7 @@ public partial class AiChangesViewModel : ObservableObject
 			{
 				// Instancia o Patcher (que usa o código do SmartSnippetPatcher.cs que criamos)
 				var patcher = new SmartSnippetPatcher(_semanticIndexService);
-				string relatorioDebug = patcher.InspectSnippetStructure(RawInput);
+				//string relatorioDebug = patcher.InspectSnippetStructure(RawInput);
 
 				// Tenta realizar o merge inteligente
 				var smartChange = await patcher.PatchAsync(RawInput, projectRoot);

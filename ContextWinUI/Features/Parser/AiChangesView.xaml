@@ -77,13 +77,18 @@
 				</AppBarElementContainer>
 			</CommandBar>
 
-			<ScrollViewer Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="16">
-				<RichTextBlock x:Name="CodePreviewBlock" FontFamily="Consolas" IsTextSelectionEnabled="True">
-					<Paragraph>
-						<Run Text="{x:Bind ViewModel.SelectedChange.NewContent, Mode=OneWay}" />
-					</Paragraph>
-				</RichTextBlock>
-			</ScrollViewer>
+			<Grid Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}">
+				<RichEditBox x:Name="CodeDiffEditor"
+                 IsReadOnly="True"
+                 FontFamily="Consolas"
+                 FontSize="14"
+                 BorderThickness="0"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch"
+                 Padding="12"/>
+			</Grid>
 
 			<Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
 				<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">

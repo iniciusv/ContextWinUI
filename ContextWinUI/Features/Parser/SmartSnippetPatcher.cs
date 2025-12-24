@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
@@ -15,6 +16,11 @@ public class SmartSnippetPatcher
 {
 	private readonly SemanticIndexService _indexService;
 
+	// Regex para capturar o caminho, ignorando textos extras como "(método adicionado)"
+	private static readonly Regex HeaderRegex = new Regex(
+		@"^//\s*(?:ARQUIVO|FILE|PATH):\s*(?<path>[\w\.\\/\-]+)",
+		RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
 	public SmartSnippetPatcher(SemanticIndexService indexService)
 	{
 		_indexService = indexService;
@@ -22,177 +28,175 @@ public class SmartSnippetPatcher
 
 	public async Task<ProposedFileChange?> PatchAsync(string snippetCode, string projectRoot)
 	{
-		// Tenta parsear normalmente primeiro
-		var tree = CSharpSyntaxTree.ParseText(snippetCode);
-		var root = tree.GetRoot();
+		// 1. Tenta identificar o arquivo alvo pelo cabeçalho (Estratégia mais forte)
+		string? targetFilePath = DetectFileFromHeader(snippetCode, projectRoot);
 
-		// Tenta achar a classe declarada explicitamente
-		var snippetClass = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+		// 2. Prepara o Snippet para análise (Envelopamento Virtual)
+		// Isso resolve o erro CS0106 (public não permitido em script)
+		string wrappedCode = $"public class __WrapperTemp__ {{ \n{snippetCode}\n }}";
+		var wrappedTree = CSharpSyntaxTree.ParseText(wrappedCode);
+		var wrappedRoot = wrappedTree.GetRoot();
 
-		// --- NOVO: LÓGICA DE ROBUSTEZ (Envelopamento) ---
-		if (snippetClass == null)
+		var wrapperClass = wrappedRoot.DescendantNodes()
+									  .OfType<ClassDeclarationSyntax>()
+									  .FirstOrDefault(c => c.Identifier.Text == "__WrapperTemp__");
+
+		if (wrapperClass == null) return null; // Snippet ininteligível
+
+		// 3. Se não achou pelo cabeçalho, tenta inferir pelo conteúdo (Construtores/Métodos existentes)
+		if (string.IsNullOrEmpty(targetFilePath))
 		{
-			// Se não achou classe, envelopa o código para validar membros soltos
-			string wrappedCode = $"public class __WrapperTemp__ {{ \n{snippetCode}\n }}";
-			var wrappedTree = CSharpSyntaxTree.ParseText(wrappedCode);
-			var wrappedRoot = wrappedTree.GetRoot();
-
-			var wrapperClass = wrappedRoot.DescendantNodes()
-										  .OfType<ClassDeclarationSyntax>()
-										  .FirstOrDefault(c => c.Identifier.Text == "__WrapperTemp__");
-
-			if (wrapperClass != null && wrapperClass.Members.Any())
-			{
-				// Tenta descobrir o nome da classe real baseando-se nos membros
-				string? inferredClassName = InferClassNameFromMembers(wrapperClass);
-
-				if (inferredClassName != null)
-				{
-					// Recria uma classe sintática com o nome correto para o Rewriter usar
-					snippetClass = SyntaxFactory.ClassDeclaration(inferredClassName)
-												.WithMembers(wrapperClass.Members);
-				}
-			}
+			targetFilePath = InferTargetFile(wrapperClass);
 		}
-		// ------------------------------------------------
 
-		if (snippetClass == null) return null; // Desistimos se não conseguimos inferir nada
+		// Se falhou em tudo, desiste
+		if (string.IsNullOrEmpty(targetFilePath) || !File.Exists(targetFilePath)) return null;
 
-		// Busca no Grafo (agora temos um nome de classe, seja explícito ou inferido)
-		var graph = _indexService.GetCurrentGraph();
-		var targetNode = graph.Nodes.Values.FirstOrDefault(n => n.Name == snippetClass.Identifier.Text && n.Type == SymbolType.Class);
-
-		if (targetNode == null || !File.Exists(targetNode.FilePath)) return null;
-
-		string originalFilePath = targetNode.FilePath;
-		string originalCode = await File.ReadAllTextAsync(originalFilePath);
-
-		// Executar o Merge
+		// 4. Executa o Merge (Inserção ou Substituição)
+		string originalCode = await File.ReadAllTextAsync(targetFilePath);
 		var originalTree = CSharpSyntaxTree.ParseText(originalCode);
-		var rewriter = new SnippetMergerRewriter(snippetClass);
+
+		// Descobre o nome da classe principal no arquivo original para saber onde injetar
+		var mainClassInOriginal = originalTree.GetRoot().DescendantNodes()
+											  .OfType<ClassDeclarationSyntax>()
+											  .FirstOrDefault(); // Pega a primeira classe (assumindo 1 classe por arquivo)
+
+		if (mainClassInOriginal == null) return null;
+
+		// Configura o Rewriter com os membros extraídos do Wrapper
+		var rewriter = new RobustMergerRewriter(mainClassInOriginal.Identifier.Text, wrapperClass.Members);
 
 		var newRoot = rewriter.Visit(originalTree.GetRoot());
 
-		if (newRoot.ToFullString() == originalTree.GetRoot().ToFullString()) return null;
+		// Formata o código para ficar bonito (arruma identação das injeções)
+		newRoot = newRoot.NormalizeWhitespace();
 
 		return new ProposedFileChange
 		{
-			FilePath = originalFilePath,
+			FilePath = targetFilePath,
 			OriginalContent = originalCode,
 			NewContent = newRoot.ToFullString(),
-			Status = "Smart Patch (Inferido)"
+			Status = "Smart Merge (Inserção/Edição)"
 		};
 	}
 
-	private string? InferClassNameFromMembers(ClassDeclarationSyntax wrapperClass)
+	private string? DetectFileFromHeader(string snippet, string projectRoot)
 	{
-		// PISTA 1: Construtores (Certeza de 100%)
-		// Se tem "public MainViewModel()", a classe TEM que ser MainViewModel
+		var match = HeaderRegex.Match(snippet);
+		if (match.Success)
+		{
+			string relativePath = match.Groups["path"].Value.Trim();
+			// Normaliza barras
+			relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+
+			// Tenta encontrar o arquivo exato
+			string fullPath = Path.Combine(projectRoot, relativePath);
+			if (File.Exists(fullPath)) return fullPath;
+
+			// Busca recursiva caso o caminho seja parcial (ex: ScenariosService.cs sem pasta)
+			var files = Directory.GetFiles(projectRoot, Path.GetFileName(relativePath), SearchOption.AllDirectories);
+			return files.FirstOrDefault();
+		}
+		return null;
+	}
+
+	private string? InferTargetFile(ClassDeclarationSyntax wrapperClass)
+	{
+		var graph = _indexService.GetCurrentGraph();
+
+		// Pista 1: Construtor
 		var constructor = wrapperClass.Members.OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
 		if (constructor != null)
 		{
-			return constructor.Identifier.Text;
+			var node = graph.Nodes.Values.FirstOrDefault(n => n.Name == constructor.Identifier.Text && n.Type == SymbolType.Class);
+			return node?.FilePath;
 		}
 
-		// PISTA 2: Métodos únicos (Busca no Grafo)
-		// Se não tem construtor, olhamos os métodos e tentamos achar qual classe no projeto tem esse método
-		var methods = wrapperClass.Members.OfType<MethodDeclarationSyntax>();
-		var graph = _indexService.GetCurrentGraph();
-
-		foreach (var method in methods)
+		// Pista 2: Método Único (Só funciona para métodos que JÁ existem no projeto)
+		// Para métodos novos, isso falha, por isso dependemos do HeaderRegex acima.
+		foreach (var method in wrapperClass.Members.OfType<MethodDeclarationSyntax>())
 		{
-			string methodName = method.Identifier.Text;
-
-			// Procura no grafo quem tem esse método
-			// O Grafo mapeia nós. Precisamos achar um nó do tipo Method com esse nome, 
-			// e pegar o "Parent" (que é a classe).
-
-			// Como seu SymbolNode atual não tem link direto "Parent", usamos o FileIndex ou conveção
-			// Vamos procurar nós com esse nome e ver a qual arquivo pertencem
-
-			var methodNodes = graph.Nodes.Values.Where(n => n.Name == methodName && n.Type == SymbolType.Method).ToList();
-
-			if (methodNodes.Count == 1)
-			{
-				// Achamos um método único no projeto inteiro! 
-				// Vamos descobrir o nome da classe desse arquivo.
-				var fileClasses = graph.FileIndex.GetValueOrDefault(methodNodes[0].FilePath.ToLowerInvariant());
-				var parentClass = fileClasses?.FirstOrDefault(n => n.Type == SymbolType.Class);
-
-				if (parentClass != null) return parentClass.Name;
-			}
+			var nodes = graph.Nodes.Values.Where(n => n.Name == method.Identifier.Text && n.Type == SymbolType.Method).ToList();
+			if (nodes.Count == 1) return nodes[0].FilePath;
 		}
 
 		return null;
 	}
-	// Adicione dentro da classe SmartSnippetPatcher
+}
 
-	public string InspectSnippetStructure(string codeSnippet)
+// O Rewriter Robusto que sabe INSERIR e SUBSTITUIR
+public class RobustMergerRewriter : CSharpSyntaxRewriter
+{
+	private readonly string _targetClassName;
+	private readonly List<MemberDeclarationSyntax> _snippetMembers;
+
+	public RobustMergerRewriter(string targetClassName, SyntaxList<MemberDeclarationSyntax> snippetMembers)
 	{
-		var sb = new System.Text.StringBuilder();
-		sb.AppendLine("=== INÍCIO DA INSPEÇÃO ROSLYN ===");
-		sb.AppendLine($"Tamanho do Input: {codeSnippet.Length} caracteres");
-
-		// 1. Parse
-		var tree = CSharpSyntaxTree.ParseText(codeSnippet);
-		var root = tree.GetRoot();
-
-		// 2. Verificar Erros de Sintaxe (Diagnostics)
-		// O Roslyn é tolerante, mas diagnósticos mostram se ele "se perdeu"
-		var diagnostics = tree.GetDiagnostics();
-		if (diagnostics.Any())
-		{
-			sb.AppendLine("\n[ALERTA] Diagnósticos encontrados (Syntax Errors):");
-			foreach (var diag in diagnostics)
-			{
-				// Ignora erros comuns de snippets incompletos, mas lista os graves
-				sb.AppendLine($" - {diag.Id}: {diag.GetMessage()} (Linha: {diag.Location.GetLineSpan().StartLinePosition.Line})");
-			}
-		}
-		else
-		{
-			sb.AppendLine("\n[OK] Nenhuma erro de sintaxe grave detectado.");
-		}
-
-		// 3. Testar a Linha Crítica de Detecção
-		var detectedClass = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
-
-		sb.AppendLine("\n--- ANÁLISE DE ESTRUTURA ---");
-
-		if (detectedClass != null)
-		{
-			sb.AppendLine($"[SUCESSO] Classe Detectada: '{detectedClass.Identifier.Text}'");
-
-			// Listar o que tem dentro da classe
-			sb.AppendLine("Membros encontrados dentro da classe:");
-			foreach (var member in detectedClass.Members)
-			{
-				string tipoMembro = member.Kind().ToString(); // Ex: MethodDeclaration, PropertyDeclaration
-				string nome = GetMemberName(member);
-				sb.AppendLine($"   -> {tipoMembro}: {nome}");
-			}
-		}
-		else
-		{
-			sb.AppendLine("[FALHA] Nenhuma 'ClassDeclarationSyntax' encontrada.");
-			sb.AppendLine("O Roslyn vê este código como Top-Level Statements ou apenas métodos soltos.");
-
-			// O que ele encontrou então?
-			var firstNode = root.DescendantNodes().FirstOrDefault();
-			sb.AppendLine($"Primeiro nó encontrado: {firstNode?.Kind().ToString() ?? "Nenhum"}");
-		}
-
-		sb.AppendLine("=================================");
-		return sb.ToString();
+		_targetClassName = targetClassName;
+		_snippetMembers = snippetMembers.ToList();
 	}
 
-	// Helper para pegar nome de métodos/propriedades genericamente
-	private string GetMemberName(MemberDeclarationSyntax member)
+	public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node)
 	{
-		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
-		if (member is PropertyDeclarationSyntax p) return p.Identifier.Text;
-		if (member is ConstructorDeclarationSyntax c) return c.Identifier.Text;
-		if (member is FieldDeclarationSyntax f) return f.Declaration.Variables.First().Identifier.Text;
-		return "(sem nome)";
+		// Só mexe na classe alvo
+		if (node.Identifier.Text != _targetClassName) return base.VisitClassDeclaration(node);
+
+		var updatedNode = node;
+		var membersToAdd = new List<MemberDeclarationSyntax>();
+
+		// Para cada membro que veio do snippet (o novo código)
+		foreach (var newMember in _snippetMembers)
+		{
+			bool isReplaced = false;
+
+			// Tenta achar um correspondente no original
+			var existingMember = FindMatchingMember(updatedNode, newMember);
+
+			if (existingMember != null)
+			{
+				// SUBSTITUIÇÃO: O método já existe, trocamos pelo novo
+				updatedNode = updatedNode.ReplaceNode(existingMember, newMember);
+				isReplaced = true;
+			}
+			else
+			{
+				// INSERÇÃO: O método não existe, vamos adicionar no final
+				membersToAdd.Add(newMember);
+			}
+		}
+
+		// Se tiver membros novos, adiciona ao final da classe
+		if (membersToAdd.Any())
+		{
+			// Adiciona quebras de linha para não colar no último método
+			updatedNode = updatedNode.AddMembers(membersToAdd.ToArray());
+		}
+
+		return updatedNode;
+	}
+
+	private MemberDeclarationSyntax? FindMatchingMember(ClassDeclarationSyntax classNode, MemberDeclarationSyntax memberToFind)
+	{
+		if (memberToFind is MethodDeclarationSyntax method)
+		{
+			// Busca método com mesmo nome e (opcionalmente) mesmos parâmetros
+			// Simplificado: Busca por nome. Melhoria futura: comparar assinatura.
+			return classNode.Members.OfType<MethodDeclarationSyntax>()
+							.FirstOrDefault(m => m.Identifier.Text == method.Identifier.Text);
+		}
+
+		if (memberToFind is ConstructorDeclarationSyntax ctor)
+		{
+			return classNode.Members.OfType<ConstructorDeclarationSyntax>()
+							.FirstOrDefault(c => c.Identifier.Text == ctor.Identifier.Text);
+		}
+
+		if (memberToFind is PropertyDeclarationSyntax prop)
+		{
+			return classNode.Members.OfType<PropertyDeclarationSyntax>()
+							.FirstOrDefault(p => p.Identifier.Text == prop.Identifier.Text);
+		}
+
+		return null;
 	}
 }
