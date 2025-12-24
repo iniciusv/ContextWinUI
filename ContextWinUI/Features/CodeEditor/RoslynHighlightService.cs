@@ -1,205 +1,182 @@
-﻿using ContextWinUI.Helpers;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.UI;
-using Microsoft.UI.Text;
-using Microsoft.UI.Xaml.Controls;
+﻿// ARQUIVO: RoslynHighlightService.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using ContextWinUI.Features.CodeEditor;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Classification;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.UI;
+using Microsoft.UI.Text;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace ContextWinUI.Services;
-
+ 
 public class RoslynHighlightService
 {
-	private static readonly Regex _interfaceRegex = new Regex(@"^I[A-Z]", RegexOptions.Compiled);
+	// Cache básico de referências para performance (mscorlib, system, etc)
+	private static readonly List<MetadataReference> _defaultReferences = new();
 
-	public struct HighlightSpan
+	static RoslynHighlightService()
 	{
-		public int Start;
-		public int Length;
-		public Color Color;
+		// Carrega referências básicas para que o 'var', 'string', 'int' sejam reconhecidos semanticamente
+		var assemblies = new[]
+		{
+			typeof(object).Assembly,                  // mscorlib / System.Private.CoreLib
+                typeof(Uri).Assembly,                     // System.Private.Uri
+                typeof(System.Linq.Enumerable).Assembly   // System.Linq
+            };
+
+		foreach (var assembly in assemblies)
+		{
+			try { _defaultReferences.Add(MetadataReference.CreateFromFile(assembly.Location)); } catch { }
+		}
 	}
 
-	// PASSO 1: Cálculo em Background (Seguro, sem UI)
 	public async Task<List<HighlightSpan>> CalculateHighlightsAsync(string text, ColorCode.Styling.StyleDictionary theme, bool isDark)
 	{
 		if (string.IsNullOrWhiteSpace(text)) return new List<HighlightSpan>();
 
-		return await Task.Run(() =>
+		return await Task.Run(async () =>
 		{
 			var highlights = new List<HighlightSpan>();
-			try
+
+			// 1. Criar um "Adhoc Workspace" para análise
+			using var workspace = new AdhocWorkspace();
+			var projectId = ProjectId.CreateNewId();
+			var versionStamp = VersionStamp.Create();
+
+			var projectInfo = ProjectInfo.Create(projectId, versionStamp, "TempProject", "TempAssembly", LanguageNames.CSharp)
+				.WithMetadataReferences(_defaultReferences);
+
+			var project = workspace.AddProject(projectInfo);
+			var document = workspace.AddDocument(project.Id, "TempFile.cs", SourceText.From(text));
+
+			// 2. Obter spans classificados (A mágica acontece aqui)
+			// Isso usa a mesma engine do Visual Studio para categorizar cada pedaço do código
+			var classifiedSpans = await Classifier.GetClassifiedSpansAsync(document, TextSpan.FromBounds(0, text.Length));
+
+			// 3. Mapear classificações do Roslyn para Cores
+			foreach (var span in classifiedSpans)
 			{
-				var tree = CSharpSyntaxTree.ParseText(text);
-				var root = tree.GetRoot();
+				var color = GetColorForClassification(span.ClassificationType, theme, isDark);
 
-				Color GetColor(string scope, Color fallback)
+				// Só adiciona se a cor for diferente da padrão (otimização)
+				if (color != Colors.Transparent)
 				{
-					if (theme.Contains(scope)) return GetColorFromHex(theme[scope].Foreground);
-					return fallback;
-				}
-
-				// Definição de Cores
-				var colorComment = GetColor(ColorCode.Common.ScopeName.Comment, Colors.Green);
-				var colorKeyword = GetColor(ColorCode.Common.ScopeName.Keyword, isDark ? Colors.DeepSkyBlue : Colors.Blue);
-				var colorControl = GetColor(ThemeHelper.ControlKeywordScope, isDark ? Colors.Violet : Colors.Purple);
-				var colorString = GetColor(ColorCode.Common.ScopeName.String, isDark ? Colors.Orange : Colors.Brown);
-				var colorNumber = GetColor(ColorCode.Common.ScopeName.Number, isDark ? Colors.LightGreen : Colors.DarkGreen);
-				var colorClass = GetColor(ThemeHelper.ClassScope, isDark ? Colors.Teal : Colors.DarkCyan);
-				var colorInterface = GetColor(ThemeHelper.InterfaceScope, isDark ? Colors.LightGreen : Colors.DarkGreen);
-				var colorMethod = GetColor(ThemeHelper.MethodScope, isDark ? Colors.LightYellow : Colors.DarkGoldenrod);
-				var colorParam = GetColor(ThemeHelper.ParameterScope, isDark ? Colors.LightSkyBlue : Colors.DarkBlue);
-				var colorPunctuation = GetColor(ThemeHelper.PunctuationScope, isDark ? Colors.Gold : Colors.Black);
-
-				// A. Trivia (Comentários)
-				foreach (var trivia in root.DescendantTrivia().Where(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia) || t.IsKind(SyntaxKind.MultiLineCommentTrivia)))
-				{
-					highlights.Add(new HighlightSpan { Start = trivia.Span.Start, Length = trivia.Span.Length, Color = colorComment });
-				}
-
-				// B. Nodes (Semântica)
-				foreach (var node in root.DescendantNodes())
-				{
-					// Identificadores (Classes, Tipos)
-					if (node is IdentifierNameSyntax idNode && IsTypeUsage(idNode))
+					highlights.Add(new HighlightSpan
 					{
-						var color = IsInterface(idNode.Identifier.Text) ? colorInterface : colorClass;
-						highlights.Add(new HighlightSpan { Start = idNode.Span.Start, Length = idNode.Span.Length, Color = color });
-					}
-					// Genéricos (List<T>)
-					else if (node is GenericNameSyntax genericNode)
-					{
-						var color = IsInterface(genericNode.Identifier.Text) ? colorInterface : colorClass;
-						highlights.Add(new HighlightSpan { Start = genericNode.Identifier.Span.Start, Length = genericNode.Identifier.Span.Length, Color = color });
-					}
-					// Métodos
-					else if (node is MethodDeclarationSyntax methodDecl)
-					{
-						highlights.Add(new HighlightSpan { Start = methodDecl.Identifier.Span.Start, Length = methodDecl.Identifier.Span.Length, Color = colorMethod });
-						// Tipo de retorno
-						if (methodDecl.ReturnType is IdentifierNameSyntax retId)
-							highlights.Add(new HighlightSpan { Start = retId.Span.Start, Length = retId.Span.Length, Color = colorClass });
-					}
-					// Chamadas de Método (obj.Metodo())
-					else if (node is InvocationExpressionSyntax invocation)
-					{
-						if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-							highlights.Add(new HighlightSpan { Start = memberAccess.Name.Span.Start, Length = memberAccess.Name.Span.Length, Color = colorMethod });
-						else if (invocation.Expression is IdentifierNameSyntax directCall)
-							highlights.Add(new HighlightSpan { Start = directCall.Span.Start, Length = directCall.Span.Length, Color = colorMethod });
-					}
-					// Parâmetros
-					else if (node is ParameterSyntax param)
-					{
-						highlights.Add(new HighlightSpan { Start = param.Identifier.Span.Start, Length = param.Identifier.Span.Length, Color = colorParam });
-					}
-				}
-
-				// C. Tokens (Keywords, Pontuação)
-				foreach (var token in root.DescendantTokens())
-				{
-					var kind = token.Kind();
-
-					if (IsPunctuation(kind))
-						highlights.Add(new HighlightSpan { Start = token.Span.Start, Length = token.Span.Length, Color = colorPunctuation });
-					else if (IsControlKeyword(kind))
-						highlights.Add(new HighlightSpan { Start = token.Span.Start, Length = token.Span.Length, Color = colorControl });
-					else if (kind == SyntaxKind.StringLiteralToken || kind == SyntaxKind.InterpolatedStringTextToken)
-						highlights.Add(new HighlightSpan { Start = token.Span.Start, Length = token.Span.Length, Color = colorString });
-					else if (kind == SyntaxKind.NumericLiteralToken)
-						highlights.Add(new HighlightSpan { Start = token.Span.Start, Length = token.Span.Length, Color = colorNumber });
-					else if (IsGenericKeyword(kind))
-						highlights.Add(new HighlightSpan { Start = token.Span.Start, Length = token.Span.Length, Color = colorKeyword });
+						Start = span.TextSpan.Start,
+						Length = span.TextSpan.Length,
+						Color = color
+					});
 				}
 			}
-			catch { }
 
 			return highlights;
 		});
 	}
 
-	// PASSO 2: Aplicação na UI (Executar via DispatcherQueue)
+	private Color GetColorForClassification(string classificationType, ColorCode.Styling.StyleDictionary theme, bool isDark)
+	{
+		// Helper para buscar do tema ou usar fallback
+		Color C(string scope, Color fallback)
+		{
+			if (theme.Contains(scope))
+				return ContextWinUI.Helpers.ThemeHelper.GetColorFromHex(theme[scope].Foreground);
+			return fallback;
+		}
+
+		// Mapeamento: Roslyn Classification Type -> VS Code Colors
+		// Baseado no VS Code Dark+ (Dark) e Visual Studio Light (Light)
+		return classificationType switch
+		{
+			// Keywords & Control
+			ClassificationTypeNames.Keyword => C("Keyword", isDark ? Color.FromArgb(255, 86, 156, 214) : Color.FromArgb(255, 0, 0, 255)),
+			ClassificationTypeNames.ControlKeyword => C("Control Keyword", isDark ? Color.FromArgb(255, 197, 134, 192) : Color.FromArgb(255, 143, 8, 196)),
+			ClassificationTypeNames.Operator => isDark ? Color.FromArgb(255, 212, 212, 212) : Colors.Black,
+			ClassificationTypeNames.Punctuation => isDark ? Color.FromArgb(255, 255, 215, 0) : Colors.Black, // Gold no Dark para destaque
+
+			// Strings & Characters
+			ClassificationTypeNames.StringLiteral => C("String", isDark ? Color.FromArgb(255, 206, 145, 120) : Color.FromArgb(255, 163, 21, 21)),
+			ClassificationTypeNames.VerbatimStringLiteral => C("String", isDark ? Color.FromArgb(255, 206, 145, 120) : Color.FromArgb(255, 163, 21, 21)),
+
+			// Classes, Structs, Interfaces
+			ClassificationTypeNames.ClassName => C("Class", isDark ? Color.FromArgb(255, 78, 201, 176) : Color.FromArgb(255, 43, 145, 175)),
+			ClassificationTypeNames.StructName => C("Struct", isDark ? Color.FromArgb(255, 134, 198, 145) : Color.FromArgb(255, 43, 145, 175)),
+			ClassificationTypeNames.InterfaceName => C("Interface Name", isDark ? Color.FromArgb(255, 184, 215, 163) : Color.FromArgb(255, 43, 145, 175)),
+			ClassificationTypeNames.EnumName => C("Enum", isDark ? Color.FromArgb(255, 184, 215, 163) : Color.FromArgb(255, 43, 145, 175)),
+
+			// Members
+			ClassificationTypeNames.MethodName => C("Method Name", isDark ? Color.FromArgb(255, 220, 220, 170) : Color.FromArgb(255, 116, 83, 31)),
+			ClassificationTypeNames.ExtensionMethodName => C("Method Name", isDark ? Color.FromArgb(255, 220, 220, 170) : Color.FromArgb(255, 116, 83, 31)),
+			ClassificationTypeNames.PropertyName => isDark ? Colors.White : Colors.Black, // VS Code geralmente deixa propriedades em branco/preto
+			ClassificationTypeNames.FieldName => isDark ? Color.FromArgb(255, 156, 220, 254) : Colors.Black,
+			ClassificationTypeNames.ConstantName => isDark ? Color.FromArgb(255, 156, 220, 254) : Colors.Black,
+
+			// Variables & Parameters
+			ClassificationTypeNames.ParameterName => C("Parameter", isDark ? Color.FromArgb(255, 156, 220, 254) : Color.FromArgb(255, 31, 55, 127)),
+			ClassificationTypeNames.LocalName => C("Local Variable", isDark ? Color.FromArgb(255, 156, 220, 254) : Color.FromArgb(255, 31, 55, 127)),
+
+			// Comments
+			ClassificationTypeNames.Comment => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 0, 128, 0)),
+			ClassificationTypeNames.XmlDocCommentText => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 0, 128, 0)),
+			ClassificationTypeNames.XmlDocCommentAttributeName => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 128, 128, 128)),
+
+			// Misc
+			ClassificationTypeNames.NumericLiteral => C("Number", isDark ? Color.FromArgb(255, 181, 206, 168) : Colors.Black),
+			ClassificationTypeNames.PreprocessorKeyword => C("Keyword", isDark ? Color.FromArgb(255, 155, 155, 155) : Colors.Gray),
+
+			_ => Colors.Transparent
+		};
+	}
+
 	public void ApplyHighlights(RichEditBox editor, List<HighlightSpan> highlights)
 	{
 		if (editor == null || highlights == null) return;
 
-		editor.Document.GetText(TextGetOptions.None, out string currentText);
-		int currentLength = currentText.Length;
-
-		// SEGURANÇA: Se o texto mudou (ex: deletou) e o highlight aponta pra fora, aborta.
-		if (highlights.Any(h => h.Start + h.Length > currentLength + 1)) return;
-
+		// Congela atualizações visuais para performance
 		editor.Document.BatchDisplayUpdates();
 
 		try
 		{
-			var theme = ThemeHelper.GetCurrentThemeStyle();
-			bool isDark = ThemeHelper.IsDarkTheme();
+			// Obter texto total
+			editor.Document.GetText(TextGetOptions.None, out string text);
+			int totalLength = text.Length;
 
-			var defaultColor = theme.Contains(ColorCode.Common.ScopeName.PlainText)
-				? GetColorFromHex(theme[ColorCode.Common.ScopeName.PlainText].Foreground)
-				: (isDark ? Colors.White : Colors.Black);
+			// 1. Resetar cor base (evita sobras de highlights antigos)
+			var defaultColor = ContextWinUI.Helpers.ThemeHelper.IsDarkTheme()
+				? Color.FromArgb(255, 212, 212, 212)
+				: Colors.Black;
 
-			// Reseta cor base
-			editor.Document.GetRange(0, currentLength + 1).CharacterFormat.ForegroundColor = defaultColor;
+			editor.Document.GetRange(0, totalLength).CharacterFormat.ForegroundColor = defaultColor;
 
-			// Aplica highlights
-			foreach (var span in highlights)
+			// 2. Aplicar highlights
+			// Ordenar por início ajuda o motor de renderização
+			foreach (var span in highlights.OrderBy(h => h.Start))
 			{
-				int start = Math.Clamp(span.Start, 0, currentLength);
-				int end = Math.Clamp(span.Start + span.Length, 0, currentLength);
+				int start = Math.Clamp(span.Start, 0, totalLength);
+				int end = Math.Clamp(span.Start + span.Length, 0, totalLength);
 
 				if (end > start)
 				{
-					editor.Document.GetRange(start, end).CharacterFormat.ForegroundColor = span.Color;
+					var range = editor.Document.GetRange(start, end);
+					range.CharacterFormat.ForegroundColor = span.Color;
 				}
 			}
 		}
-		catch { }
+		catch
+		{
+			// Ignorar erros de range durante edição rápida
+		}
 		finally
 		{
-			// IMPORTANTE: Não restauramos seleção nem scroll aqui para evitar "pulos".
 			editor.Document.ApplyDisplayUpdates();
 		}
-	}
-
-	private bool IsTypeUsage(IdentifierNameSyntax node)
-	{
-		var parent = node.Parent;
-		return parent is VariableDeclarationSyntax || parent is ObjectCreationExpressionSyntax ||
-			   parent is ParameterSyntax || parent is MethodDeclarationSyntax ||
-			   parent is GenericNameSyntax || parent is TypeArgumentListSyntax ||
-			   parent is CastExpressionSyntax || parent is SimpleBaseTypeSyntax;
-	}
-
-	private bool IsInterface(string text) => text.Length > 2 && _interfaceRegex.IsMatch(text);
-
-	private bool IsPunctuation(SyntaxKind kind) =>
-		kind == SyntaxKind.OpenParenToken || kind == SyntaxKind.CloseParenToken ||
-		kind == SyntaxKind.OpenBraceToken || kind == SyntaxKind.CloseBraceToken ||
-		kind == SyntaxKind.OpenBracketToken || kind == SyntaxKind.CloseBracketToken ||
-		kind == SyntaxKind.SemicolonToken || kind == SyntaxKind.CommaToken || kind == SyntaxKind.DotToken;
-
-	private bool IsControlKeyword(SyntaxKind kind) =>
-		kind == SyntaxKind.ReturnKeyword || kind == SyntaxKind.IfKeyword || kind == SyntaxKind.ElseKeyword ||
-		kind == SyntaxKind.TryKeyword || kind == SyntaxKind.CatchKeyword || kind == SyntaxKind.FinallyKeyword ||
-		kind == SyntaxKind.ForKeyword || kind == SyntaxKind.ForEachKeyword || kind == SyntaxKind.WhileKeyword ||
-		kind == SyntaxKind.SwitchKeyword || kind == SyntaxKind.AwaitKeyword || kind == SyntaxKind.ThrowKeyword;
-
-	private bool IsGenericKeyword(SyntaxKind kind) => kind.ToString().EndsWith("Keyword") && !IsControlKeyword(kind);
-
-	private Color GetColorFromHex(string hex)
-	{
-		if (string.IsNullOrEmpty(hex)) return Colors.Black;
-		hex = hex.Replace("#", "");
-		byte a = 255, r = 0, g = 0, b = 0;
-		if (hex.Length == 6) { r = Convert.ToByte(hex.Substring(0, 2), 16); g = Convert.ToByte(hex.Substring(2, 2), 16); b = Convert.ToByte(hex.Substring(4, 2), 16); }
-		else if (hex.Length == 8) { a = Convert.ToByte(hex.Substring(0, 2), 16); r = Convert.ToByte(hex.Substring(2, 2), 16); g = Convert.ToByte(hex.Substring(4, 2), 16); b = Convert.ToByte(hex.Substring(6, 2), 16); }
-		return Color.FromArgb(a, r, g, b);
 	}
 }

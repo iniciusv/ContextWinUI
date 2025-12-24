@@ -1,4 +1,5 @@
-﻿using ContextWinUI.Services;
+﻿using ContextWinUI.Features.CodeEditor;
+using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -6,20 +7,21 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows.Input;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace ContextWinUI.Views;
 
 public sealed partial class FileContentView : UserControl
 {
-	// Serviços para EDIÇÃO (Pesados)
-	private readonly RoslynHighlightService _roslynHighlightService;
-	private readonly RegexHighlightService _regexHighlightService;
-
-	// Serviço para VISUALIZAÇÃO (Leve, gera blocos estáticos)
+	private readonly RoslynHighlightService _fullRoslynService; // Para Visualização (Lento, Bonito)
+	private readonly FastEditorHighlightService _fastEditorService; // Para Edição (Rápido, Estável)
+	private readonly RegexHighlightService _regexHighlightService; // Para outros arquivos
 	private readonly SyntaxHighlightService _syntaxViewerService;
+	private System.Threading.CancellationTokenSource? _editCts;
 
 	private bool _isInternalUpdate = false;
 	private bool _isEditing = false;
@@ -53,9 +55,10 @@ public sealed partial class FileContentView : UserControl
 	public FileContentView()
 	{
 		this.InitializeComponent();
-		_roslynHighlightService = new RoslynHighlightService();
+		_fullRoslynService = new RoslynHighlightService();
+		_fastEditorService = new FastEditorHighlightService();
 		_regexHighlightService = new RegexHighlightService();
-		_syntaxViewerService = new SyntaxHighlightService(); // Certifique-se que esta classe existe (do seu contexto original)
+		_syntaxViewerService = new SyntaxHighlightService();
 
 		this.Loaded += (s, e) => EnsureScrollViewer();
 	}
@@ -111,9 +114,11 @@ public sealed partial class FileContentView : UserControl
 		var content = ContentViewModel.FileContent ?? string.Empty;
 		var ext = ContentViewModel.SelectedItem?.SharedState.Extension ?? ".txt";
 
+		UpdateLineNumbers(content);
+
 		// --- CORREÇÃO AQUI ---
 		// 1. Aplica o Background no ScrollViewer (pois o RichTextBlock é transparente)
-		ApplyThemeAttributes(ViewScrollViewer);
+		ApplyThemeAttributes(MainScrollViewer);
 
 		// 2. Aplica o Foreground (texto) no RichTextBlock
 		ApplyThemeAttributes(CodeViewer);
@@ -188,7 +193,6 @@ public sealed partial class FileContentView : UserControl
 		_isInternalUpdate = false;
 
 		// Atualiza UI
-		ViewScrollViewer.Visibility = Visibility.Collapsed;
 		CodeEditor.Visibility = Visibility.Visible;
 		BtnEdit.Visibility = Visibility.Collapsed;
 		BtnSave.Visibility = Visibility.Visible;
@@ -211,7 +215,6 @@ public sealed partial class FileContentView : UserControl
 
 		// Atualiza UI
 		CodeEditor.Visibility = Visibility.Collapsed;
-		ViewScrollViewer.Visibility = Visibility.Visible;
 		BtnEdit.Visibility = Visibility.Visible;
 		BtnSave.Visibility = Visibility.Collapsed;
 		BtnCancel.Visibility = Visibility.Collapsed;
@@ -226,14 +229,15 @@ public sealed partial class FileContentView : UserControl
 	{
 		if (_isInternalUpdate || !_isEditing) return;
 
-		CodeEditor.Document.GetText(TextGetOptions.None, out string currentText);
+		CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentText);
+
+		UpdateLineNumbers(currentText);
 
 		_isInternalUpdate = true;
 		if (ContentViewModel != null) ContentViewModel.FileContent = currentText;
 		_isInternalUpdate = false;
 
-		// Opcional: só fazer highlight ao digitar se a performance permitir
-		// RequestEditorHighlighting(); 
+		RequestEditorHighlighting();
 	}
 
 	private void CodeEditor_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -256,53 +260,155 @@ public sealed partial class FileContentView : UserControl
 		}
 	}
 
+	private void ZoomSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+	{
+		if (MainScrollViewer != null)
+		{
+			MainScrollViewer.ChangeView(null, null, (float)e.NewValue);
+		}
+	}
+
 	private void RequestEditorHighlighting()
 	{
+		// 1. Validação básica: se não tem arquivo, não faz nada
 		if (ContentViewModel?.SelectedItem == null) return;
 
+		// 2. Mecanismo de Cancelamento (Debounce)
+		// Se uma nova tecla for pressionada antes do processamento anterior terminar,
+		// cancelamos a tarefa antiga. Isso é CRUCIAL para a performance na edição.
+		_editCts?.Cancel();
+		_editCts = new System.Threading.CancellationTokenSource();
+		var token = _editCts.Token;
+
+		// 3. Coleta de dados na Thread UI (Rápido)
 		string ext = System.IO.Path.GetExtension(ContentViewModel.SelectedItem.FullPath).ToLower();
-		EnsureScrollViewer();
 
-		CodeEditor.Document.GetText(TextGetOptions.None, out string textToHighlight);
+		// Pega o texto cru do editor sem formatação
+		CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentText);
 
-		// UI Thread vars
-		var currentTheme = ContextWinUI.Helpers.ThemeHelper.GetCurrentThemeStyle();
+		// Verifica o estado do tema (Dark/Light)
 		bool isDark = ContextWinUI.Helpers.ThemeHelper.IsDarkTheme();
 
-		double currentVOffset = _editorScrollViewer?.VerticalOffset ?? 0;
-		double currentHOffset = _editorScrollViewer?.HorizontalOffset ?? 0;
-
-		_ = System.Threading.Tasks.Task.Run(async () =>
+		// 4. Inicia processamento em Background com pequeno atraso (Throttle)
+		// O delay de 50ms serve para agrupar digitações rápidas em uma única atualização visual.
+		_ = System.Threading.Tasks.Task.Delay(50, token).ContinueWith(async _ =>
 		{
+			// Se foi cancelado durante o delay, aborta.
+			if (token.IsCancellationRequested) return;
+
 			try
 			{
+				List<HighlightSpan> spans = new();
+
+				// 5. Cálculo dos Highlights (Pesado - roda em Thread separada)
 				if (ext == ".cs")
 				{
-					var spans = await _roslynHighlightService.CalculateHighlightsAsync(textToHighlight, currentTheme, isDark);
-					DispatcherQueue.TryEnqueue(() =>
-					{
-						if (_isEditing) // Só aplica se ainda estiver editando
-						{
-							_roslynHighlightService.ApplyHighlights(CodeEditor, spans);
-							// Tenta manter scroll
-							try { _editorScrollViewer?.ChangeView(currentHOffset, currentVOffset, null, true); } catch { }
-						}
-					});
+					// Para C#: Usa o FastEditorHighlightService (Baseado em Roslyn SyntaxTree)
+					// Vantagem: Detecta comentários // corretamente e ignora strings.
+					spans = await _fastEditorService.CalculateHighlightsAsync(currentText, isDark);
 				}
 				else
 				{
-					var spans = await _regexHighlightService.CalculateHighlightsAsync(textToHighlight, ext, currentTheme);
-					DispatcherQueue.TryEnqueue(() =>
+					// Para Outros (JS, XML, JSON): Usa RegexHighlightService
+					var currentTheme = ContextWinUI.Helpers.ThemeHelper.GetCurrentThemeStyle();
+					spans = await _regexHighlightService.CalculateHighlightsAsync(currentText, ext, currentTheme);
+				}
+
+				// Checagem dupla de cancelamento após o cálculo pesado
+				if (token.IsCancellationRequested) return;
+
+				// 6. Aplicação Visual (Volta para a Thread UI)
+				DispatcherQueue.TryEnqueue(() =>
+				{
+					// Só aplica se:
+					// a) O token ainda é válido
+					// b) O usuário ainda está no modo de edição (não clicou em salvar/cancelar nesse meio tempo)
+					if (token.IsCancellationRequested || !_isEditing) return;
+
+					try
 					{
-						if (_isEditing)
+						if (ext == ".cs")
+						{
+							_fastEditorService.ApplyHighlights(CodeEditor, spans);
+						}
+						else
 						{
 							_regexHighlightService.ApplyHighlights(CodeEditor, spans);
-							try { _editorScrollViewer?.ChangeView(currentHOffset, currentVOffset, null, true); } catch { }
 						}
-					});
-				}
+					}
+					catch
+					{
+						// Silencia erros de concorrência visual (raros, mas possíveis em updates muito rápidos)
+					}
+				});
 			}
-			catch { }
-		});
+			catch
+			{
+				// Silencia erros de Task cancelada ou parsing inválido
+			}
+
+		}, System.Threading.Tasks.TaskScheduler.Default);
+	}
+
+	private void MainScrollViewer_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+	{
+		// 1. Verifica se a tecla CTRL está pressionada
+		var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+		bool isCtrlDown = (ctrlState & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+
+		if (isCtrlDown)
+		{
+			// 2. Obtém a direção do scroll (Delta)
+			var pointerPoint = e.GetCurrentPoint(MainScrollViewer);
+			int mouseWheelDelta = pointerPoint.Properties.MouseWheelDelta;
+
+			if (mouseWheelDelta != 0)
+			{
+				// 3. Define o passo do Zoom (0.1, igual ao Slider antigo)
+				// Se Delta > 0 (Scroll pra cima), aumenta. Se < 0, diminui.
+				float zoomStep = 0.1f;
+				float currentZoom = MainScrollViewer.ZoomFactor;
+				float newZoom = mouseWheelDelta > 0
+					? currentZoom + zoomStep
+					: currentZoom - zoomStep;
+
+				// 4. Limita o zoom aos máximos definidos no XAML (0.5 a 4.0)
+				newZoom = Math.Clamp(newZoom, 0.5f, 4.0f);
+
+				// 5. Aplica o zoom programaticamente
+				// null nos offsets mantém a posição de rolagem relativa atual
+				MainScrollViewer.ChangeView(null, null, newZoom);
+
+				// 6. IMPEDE o comportamento nativo do ScrollViewer
+				// Isso evita aquele "pulo" ou inércia indesejada do Windows
+				e.Handled = true;
+			}
+		}
+		// Se CTRL não estiver pressionado, deixa o evento passar para o Scroll normal
+	}
+	private void UpdateLineNumbers(string content)
+	{
+		if (string.IsNullOrEmpty(content))
+		{
+			LineNumbersDisplay.Text = "1";
+			return;
+		}
+
+		// Conta quebras de linha de forma simples e rápida
+		int lineCount = 1;
+		for (int i = 0; i < content.Length; i++)
+		{
+			if (content[i] == '\n') lineCount++;
+		}
+
+		// Gera a string "1\n2\n3..."
+		// Usando StringBuilder para performance
+		var sb = new System.Text.StringBuilder();
+		for (int i = 1; i <= lineCount; i++)
+		{
+			sb.AppendLine(i.ToString());
+		}
+
+		LineNumbersDisplay.Text = sb.ToString();
 	}
 }
