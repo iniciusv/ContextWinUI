@@ -27,9 +27,9 @@
                               VerticalAlignment="Stretch"/>
 
 		<views:AiDiffViewer Grid.Column="1" 
-                            DataContext="{x:Bind ViewModel, Mode=OneWay}"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"/>
+                    DataContext="{x:Bind ViewModel, Mode=OneWay}"
+                    HorizontalAlignment="Stretch" 
+                    VerticalAlignment="Stretch"/>
 
 		<Grid Grid.ColumnSpan="2" 
               Grid.Column="0"

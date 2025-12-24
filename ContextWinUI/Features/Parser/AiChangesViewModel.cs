@@ -1,12 +1,14 @@
+// ARQUIVO: AiChangesViewModel.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Models;
-using ContextWinUI.Services; // Namespace onde está o RoslynSemanticDiffService
+using ContextWinUI.Services;
+using Microsoft.UI.Dispatching;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -18,10 +20,14 @@ public partial class AiChangesViewModel : ObservableObject
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IProjectSessionManager _sessionManager;
 	private readonly SemanticIndexService _semanticIndexService;
-	private readonly AiResponseParser _parser = new();
 
-	// ALTERAÇÃO: Trocado TextDiffService por RoslynSemanticDiffService
+	// Serviços de processamento
+	private readonly AiResponseParser _parser = new();
 	private readonly RoslynSemanticDiffService _semanticDiffService = new();
+	private readonly SemanticMergeService _semanticMergeService = new();
+
+	// Estado interno
+	private string _lastProcessedFile = string.Empty;
 
 	[ObservableProperty]
 	private string rawInput = string.Empty;
@@ -38,8 +44,12 @@ public partial class AiChangesViewModel : ObservableObject
 	[ObservableProperty]
 	private ObservableCollection<ModificationHistoryEntry> history = new();
 
+	// Coleção principal para a UI: Lista de Métodos/Propriedades alterados
 	[ObservableProperty]
-	private ObservableCollection<DiffLine> diffLines = new();
+	[NotifyPropertyChangedFor(nameof(HasSemanticBlocks))]
+	private ObservableCollection<SemanticChangeBlock> semanticBlocks = new();
+
+	public bool HasSemanticBlocks => SemanticBlocks != null && SemanticBlocks.Any();
 
 	public AiChangesViewModel(IFileSystemService fileSystemService, IProjectSessionManager sessionManager, SemanticIndexService semanticIndexService)
 	{
@@ -48,11 +58,17 @@ public partial class AiChangesViewModel : ObservableObject
 		_semanticIndexService = semanticIndexService;
 	}
 
-	// ALTERAÇÃO: Método hook gerado pelo CommunityToolkit para reagir à mudança de seleção.
-	// Isso elimina a necessidade de código no Code-Behind da View.
+	// Trigger automático ao selecionar um arquivo na lista lateral
 	partial void OnSelectedChangeChanged(ProposedFileChange? value)
 	{
-		_ = GenerateDiffForSelectedAsync();
+		if (value != null)
+		{
+			_ = GenerateDiffForSelectedAsync();
+		}
+		else
+		{
+			SemanticBlocks.Clear();
+		}
 	}
 
 	[RelayCommand]
@@ -63,53 +79,23 @@ public partial class AiChangesViewModel : ObservableObject
 
 		IsProcessing = true;
 		DetectedChanges.Clear();
+		SemanticBlocks.Clear();
 		SelectedChange = null;
 
 		try
 		{
 			var projectRoot = _sessionManager.CurrentProjectPath;
-			var currentGraph = _semanticIndexService.GetCurrentGraph();
+			var currentGraph = await _semanticIndexService.GetOrIndexProjectAsync(projectRoot);
 
-			var finalChangesList = new List<ProposedFileChange>();
+			// Parser extrai os arquivos do texto da IA
+			var changes = await Task.Run(() => _parser.ParseInput(RawInput, projectRoot, currentGraph));
 
-			// O parser agora usa a lógica centralizada internamente
-			var standardChanges = await Task.Run(() => _parser.ParseInput(RawInput, projectRoot, currentGraph));
-			finalChangesList.AddRange(standardChanges);
-
-			bool hasSnippetMarkers = RawInput.Contains("...");
-			bool noResultsFound = !finalChangesList.Any();
-			bool potentialDestructiveOverwrite = finalChangesList.Any(c => c.Status == "Novo Arquivo" && hasSnippetMarkers);
-
-			if (hasSnippetMarkers || noResultsFound || potentialDestructiveOverwrite)
+			foreach (var change in changes)
 			{
-				var patcher = new SmartSnippetPatcher(_semanticIndexService);
-				var smartChange = await patcher.PatchAsync(RawInput, projectRoot);
-
-				if (smartChange != null)
-				{
-					finalChangesList.RemoveAll(c => c.FilePath == smartChange.FilePath);
-					finalChangesList.Add(smartChange);
-				}
-			}
-
-			foreach (var change in finalChangesList)
-			{
-				// Carrega conteúdo original se existir
+				// Se o arquivo existe, carregamos o original para comparação
 				if (string.IsNullOrEmpty(change.OriginalContent) && File.Exists(change.FilePath))
 				{
-					try
-					{
-						change.OriginalContent = await _fileSystemService.ReadFileContentAsync(change.FilePath);
-					}
-					catch
-					{
-						change.OriginalContent = string.Empty;
-					}
-				}
-
-				if (!File.Exists(change.FilePath) && change.Status == "Pendente")
-				{
-					change.Status = "Novo Arquivo";
+					change.OriginalContent = await _fileSystemService.ReadFileContentAsync(change.FilePath);
 				}
 
 				DetectedChanges.Add(change);
@@ -122,7 +108,55 @@ public partial class AiChangesViewModel : ObservableObject
 		}
 		catch (Exception ex)
 		{
-			DetectedChanges.Add(new ProposedFileChange { FilePath = "Erro Fatal", NewContent = ex.ToString(), Status = "Erro" });
+			DetectedChanges.Add(new ProposedFileChange
+			{
+				FilePath = "Erro de Processamento",
+				NewContent = ex.ToString(),
+				Status = "Erro"
+			});
+		}
+		finally
+		{
+			IsProcessing = false;
+		}
+	}
+
+	public async Task GenerateDiffForSelectedAsync()
+	{
+		if (SelectedChange == null) return;
+
+		// Evita reprocessar se já estamos mostrando este arquivo
+		if (_lastProcessedFile == SelectedChange.FilePath && SemanticBlocks.Any() && !isProcessing)
+			return;
+
+		IsProcessing = true;
+		try
+		{
+			var graph = _semanticIndexService.GetCurrentGraph();
+
+			// O Serviço Roslyn compara a estrutura e retorna blocos (métodos, props)
+			var blocks = await _semanticDiffService.ComputeSemanticDiffAsync(
+				SelectedChange.OriginalContent ?? "",
+				SelectedChange.NewContent ?? "",
+				graph
+			);
+
+			SemanticBlocks.Clear();
+			foreach (var b in blocks)
+			{
+				SemanticBlocks.Add(b);
+			}
+
+			_lastProcessedFile = SelectedChange.FilePath;
+			OnPropertyChanged(nameof(HasSemanticBlocks));
+		}
+		catch (Exception ex)
+		{
+			Debug.WriteLine($"Erro ao gerar diff semântico: {ex}");
+			// Fallback simples em caso de erro crítico no Roslyn
+			SemanticBlocks.Clear();
+			var errLine = new DiffLine { Text = "Erro ao analisar estrutura: " + ex.Message, Type = DiffType.Deleted };
+			SemanticBlocks.Add(new SemanticChangeBlock("Erro", "\uE783", DiffType.Deleted, new[] { errLine }));
 		}
 		finally
 		{
@@ -133,28 +167,55 @@ public partial class AiChangesViewModel : ObservableObject
 	[RelayCommand]
 	private async Task ApplySelectedChangesAsync()
 	{
-		var toApply = DetectedChanges.Where(c => c.IsSelected && c.Status != "Aplicado").ToList();
-		if (!toApply.Any()) return;
+		// Aplica APENAS o arquivo selecionado atualmente e seus blocos marcados
+		// (Pode ser expandido para aplicar em lote se necessário)
+		if (SelectedChange == null) return;
 
 		IsProcessing = true;
-		foreach (var change in toApply)
+		try
 		{
-			try
-			{
-				var historyEntry = new ModificationHistoryEntry(change.FilePath, change.OriginalContent);
-				History.Insert(0, historyEntry);
+			// Salva histórico para Undo
+			var historyEntry = new ModificationHistoryEntry(SelectedChange.FilePath, SelectedChange.OriginalContent);
+			History.Insert(0, historyEntry);
 
-				await _fileSystemService.SaveFileContentAsync(change.FilePath, change.NewContent);
+			string finalContent;
 
-				change.Status = "Aplicado";
-				change.OriginalContent = change.NewContent;
-			}
-			catch (Exception ex)
+			// Se temos blocos semânticos, usamos o Merge inteligente
+			if (SemanticBlocks.Any())
 			{
-				change.Status = $"Erro ao salvar: {ex.Message}";
+				// Pega apenas os blocos que o usuário deixou marcados (Checkbox = True)
+				var blocksToApply = SemanticBlocks.Where(b => b.IsSelected).ToList();
+
+				// O MergeService pega o arquivo original e substitui/insere apenas esses blocos
+				finalContent = await _semanticMergeService.MergeBlocksAsync(
+					SelectedChange.OriginalContent,
+					blocksToApply,
+					_sessionManager.CurrentProjectPath // Passar path se precisar resolver usings
+				);
 			}
+			else
+			{
+				// Fallback: Se não houve análise semântica, aplica o texto inteiro
+				finalContent = SelectedChange.NewContent;
+			}
+
+			await _fileSystemService.SaveFileContentAsync(SelectedChange.FilePath, finalContent);
+
+			// Atualiza estado
+			SelectedChange.Status = "Aplicado";
+			SelectedChange.OriginalContent = finalContent; // O novo original é o que acabamos de salvar
+
+			// Regenera o diff (deve ficar vazio ou mostrar diferenças residuais se houver)
+			await GenerateDiffForSelectedAsync();
 		}
-		IsProcessing = false;
+		catch (Exception ex)
+		{
+			SelectedChange.Status = $"Erro ao salvar: {ex.Message}";
+		}
+		finally
+		{
+			IsProcessing = false;
+		}
 	}
 
 	[RelayCommand]
@@ -167,16 +228,17 @@ public partial class AiChangesViewModel : ObservableObject
 			await _fileSystemService.SaveFileContentAsync(entry.FilePath, entry.PreviousContent);
 			History.Remove(entry);
 
-			var pendingChange = DetectedChanges.FirstOrDefault(c => c.FilePath == entry.FilePath);
-			if (pendingChange != null)
+			// Se o arquivo revertido for o atual selecionado, atualiza a view
+			if (SelectedChange != null && SelectedChange.FilePath == entry.FilePath)
 			{
-				pendingChange.Status = "Revertido";
-				pendingChange.OriginalContent = entry.PreviousContent;
+				SelectedChange.OriginalContent = entry.PreviousContent;
+				SelectedChange.Status = "Revertido";
+				await GenerateDiffForSelectedAsync();
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Diagnostics.Debug.WriteLine($"Erro ao reverter: {ex.Message}");
+			Debug.WriteLine($"Erro ao reverter: {ex}");
 		}
 		finally
 		{
@@ -189,33 +251,8 @@ public partial class AiChangesViewModel : ObservableObject
 	{
 		RawInput = string.Empty;
 		DetectedChanges.Clear();
+		SemanticBlocks.Clear();
 		SelectedChange = null;
-		DiffLines.Clear();
-	}
-
-	public async Task GenerateDiffForSelectedAsync()
-	{
-		if (SelectedChange == null)
-		{
-			DiffLines.Clear();
-			return;
-		}
-
-		IsProcessing = true;
-		try
-		{
-			// ALTERAÇÃO: Usando ComputeSemanticDiffAsync em vez de ComputeDiff (texto simples)
-			var lines = await _semanticDiffService.ComputeSemanticDiffAsync(
-				SelectedChange.OriginalContent ?? "",
-				SelectedChange.NewContent ?? ""
-			);
-
-			DiffLines.Clear();
-			foreach (var line in lines) DiffLines.Add(line);
-		}
-		finally
-		{
-			IsProcessing = false;
-		}
+		_lastProcessedFile = string.Empty;
 	}
 }

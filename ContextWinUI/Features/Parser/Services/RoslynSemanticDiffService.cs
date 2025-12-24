@@ -1,10 +1,10 @@
+using ContextWinUI.Core.Models;
+using ContextWinUI.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,152 +12,148 @@ namespace ContextWinUI.Services;
 
 public class RoslynSemanticDiffService
 {
-	/// <summary>
-	/// Compara semanticamente dois códigos C#.
-	/// Retorna apenas as linhas que contém alterações LÓGICAS ou INSERÇÕES.
-	/// Ignora mudanças puramente estéticas (espaços, tabs, quebras de linha).
-	/// </summary>
-	public async Task<List<DiffLine>> ComputeSemanticDiffAsync(string oldCode, string newCode)
+	private readonly TextDiffService _textDiffService = new();
+
+	public async Task<List<SemanticChangeBlock>> ComputeSemanticDiffAsync(string oldCode, string newCode, DependencyGraph? originalGraph)
 	{
 		return await Task.Run(() =>
 		{
-			var diffLines = new List<DiffLine>();
+			var blocks = new List<SemanticChangeBlock>();
 
-			// 1. Parse das Árvores
+			// Garante que o código não seja nulo
+			oldCode = oldCode ?? string.Empty;
+			newCode = newCode ?? string.Empty;
+
 			var oldTree = CSharpSyntaxTree.ParseText(oldCode);
 			var newTree = CSharpSyntaxTree.ParseText(newCode);
-
 			var oldRoot = oldTree.GetRoot();
 			var newRoot = newTree.GetRoot();
 
-			// 2. Mapear linhas do arquivo novo (para preencher o DiffLine)
-			// Precisamos saber quantas linhas o novo arquivo tem para preencher os "Unchanged"
-			var sourceText = newTree.GetText();
-			int totalLines = sourceText.Lines.Count;
+			var newMembers = GetMembers(newRoot);
+			var oldMembers = GetMembers(oldRoot);
 
-			// Inicializa tudo como Unchanged (padrão)
-			var lineStatus = new DiffType[totalLines];
+			// Se não encontrou membros (ex: arquivo vazio ou estrutura não reconhecida),
+			// fazemos um diff textual simples do arquivo inteiro como um único bloco.
+			if (!newMembers.Any() && !oldMembers.Any())
+			{
+				var fullDiff = _textDiffService.ComputeDiff(oldCode, newCode);
+				blocks.Add(new SemanticChangeBlock("Arquivo Completo", "\uE7C3", DiffType.Placeholder, fullDiff));
+				return blocks;
+			}
 
-			// 3. Comparação de Membros (Smart Diff)
-			var newMembers = newRoot.DescendantNodes().OfType<MemberDeclarationSyntax>();
-
+			// 1. Processar Novos e Modificados
 			foreach (var newMember in newMembers)
 			{
-				// Ignora membros aninhados para não processar duas vezes (ex: processar Classe e depois Método dentro dela)
-				// Focamos nos "folhas" lógicas: Métodos, Propriedades, Campos, Construtores.
-				if (newMember is TypeDeclarationSyntax || newMember is NamespaceDeclarationSyntax) continue;
+				var newId = GetIdentifier(newMember);
 
-				// Tenta encontrar o correspondente no antigo
-				var oldMember = FindMatchingMember(oldRoot, newMember);
+				// Busca no antigo pelo NOME. 
+				// Se o nome mudou, infelizmente conta como Delete + Add, o que é correto semanticamente.
+				var oldMemberMatch = oldMembers.FirstOrDefault(om => GetIdentifier(om) == newId);
 
-				if (oldMember == null)
+				if (oldMemberMatch != null)
 				{
-					// NOVO: Não existe no antigo -> Marca linhas como ADDED
-					MarkLines(lineStatus, newMember, sourceText, DiffType.Added);
+					oldMembers.Remove(oldMemberMatch); // Marca como processado
+
+					if (!AreSemanticallyEquivalent(oldMemberMatch, newMember))
+					{
+						// MODIFICADO (Laranja)
+						var lines = _textDiffService.ComputeDiff(oldMemberMatch.ToFullString(), newMember.ToFullString());
+						blocks.Add(CreateBlock(lines, DiffType.Placeholder));
+					}
+					else
+					{
+						// IDÊNTICO (Cinza/Transparente)
+						// IMPORTANTE: Adicionamos mesmo se igual, para o usuário ver o contexto do arquivo.
+						// O diff aqui será apenas linhas "Unchanged".
+						var lines = _textDiffService.ComputeDiff(oldMemberMatch.ToFullString(), newMember.ToFullString());
+						var block = CreateBlock(lines, DiffType.Unchanged);
+						block.IsExpanded = false; // Opcional: Colapsar código não alterado por padrão
+						blocks.Add(block);
+					}
 				}
 				else
 				{
-					// EXISTE: Verifica se são semanticamente equivalentes
-					// AreEquivalent ignora Trivia (espaços e comentários) por padrão
-					bool areEqual = SyntaxFactory.AreEquivalent(oldMember, newMember, topLevel: false);
-
-					if (!areEqual)
-					{
-						// MODIFICADO: Lógica mudou -> Marca linhas como ADDED (Visualmente Verde)
-						// (Podemos usar Modified se quisermos cor diferente, mas Added (Verde) costuma ser o padrão para "Isso é o que vai entrar")
-						MarkLines(lineStatus, newMember, sourceText, DiffType.Added);
-					}
+					// ADICIONADO (Verde)
+					var lines = _textDiffService.ComputeDiff("", newMember.ToFullString());
+					blocks.Add(CreateBlock(lines, DiffType.Added));
 				}
 			}
 
-			// 4. Converte o array de status para a lista de DiffLine esperada pela View
-			var rawLines = newCode.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-
-			for (int i = 0; i < rawLines.Length; i++)
+			// 2. Processar Deletados (O que sobrou na lista antiga)
+			foreach (var deletedMember in oldMembers)
 			{
-				var type = (i < lineStatus.Length) ? lineStatus[i] : DiffType.Unchanged;
-
-				// Se não foi marcado como Added/Modified, é Unchanged
-				if (type == 0) type = DiffType.Unchanged;
-				diffLines.Add(new DiffLine
-				{
-					Text = rawLines[i],
-					Type = type,
-					// O índice 'i' é baseado em zero, linhas geralmente são baseadas em 1.
-					// Como o Semantic Diff mostra o código resultante (novo), usamos NewLineNumber.
-					NewLineNumber = i + 1,
-					OriginalLineNumber = null
-				});
+				// DELETADO (Vermelho)
+				var lines = _textDiffService.ComputeDiff(deletedMember.ToFullString(), "");
+				blocks.Add(CreateBlock(lines, DiffType.Deleted));
 			}
 
-			return diffLines;
+			return blocks;
 		});
 	}
 
-	private void MarkLines(DiffType[] statusArray, SyntaxNode node, SourceText sourceText, DiffType type)
+	private List<MemberDeclarationSyntax> GetMembers(SyntaxNode root)
 	{
-		// Pega as linhas que esse nó ocupa no texto NOVO
-		var span = node.Span; // Span sem trivia (sem comentários/espaços antes)
-							  // Se quiser incluir comentários acima do método na marcação, use node.FullSpan
-
-		var startLine = sourceText.Lines.GetLineFromPosition(span.Start).LineNumber;
-		var endLine = sourceText.Lines.GetLineFromPosition(span.End).LineNumber;
-
-		for (int i = startLine; i <= endLine; i++)
-		{
-			if (i < statusArray.Length)
-				statusArray[i] = type;
-		}
+		// Pega membros de classes e namespaces recursivamente
+		return root.DescendantNodes()
+				   .OfType<MemberDeclarationSyntax>()
+				   .Where(m => m is MethodDeclarationSyntax ||
+							   m is PropertyDeclarationSyntax ||
+							   m is ConstructorDeclarationSyntax ||
+							   m is FieldDeclarationSyntax ||
+							   m is EventFieldDeclarationSyntax ||
+							   m is DelegateDeclarationSyntax ||
+							   m is EnumDeclarationSyntax ||
+							   m is ClassDeclarationSyntax && IsTopLevelClass(m)) // Se quiser tratar classes aninhadas ou top level
+				   .ToList();
 	}
 
-	private MemberDeclarationSyntax? FindMatchingMember(SyntaxNode oldRoot, MemberDeclarationSyntax newMember)
+	// Evita pegar a classe "wrapper" inteira como um único bloco, queremos o conteúdo dela
+	private bool IsTopLevelClass(MemberDeclarationSyntax m)
 	{
-		// Tenta encontrar um membro no antigo que tenha a mesma "Assinatura"
-
-		if (newMember is MethodDeclarationSyntax newMethod)
-		{
-			return oldRoot.DescendantNodes()
-						  .OfType<MethodDeclarationSyntax>()
-						  .FirstOrDefault(m => GenerateSignature(m) == GenerateSignature(newMethod));
-		}
-
-		if (newMember is ConstructorDeclarationSyntax newCtor)
-		{
-			// Construtores comparamos pelo nome da classe + parâmetros
-			return oldRoot.DescendantNodes()
-						  .OfType<ConstructorDeclarationSyntax>()
-						  .FirstOrDefault(c => c.ParameterList.ToString() == newCtor.ParameterList.ToString());
-		}
-
-		if (newMember is PropertyDeclarationSyntax newProp)
-		{
-			return oldRoot.DescendantNodes()
-						  .OfType<PropertyDeclarationSyntax>()
-						  .FirstOrDefault(p => p.Identifier.Text == newProp.Identifier.Text);
-		}
-
-		if (newMember is FieldDeclarationSyntax newField)
-		{
-			// Campos podem ter múltiplas variáveis "int x, y;"
-			// Simplificação: pega o primeiro nome
-			var name = newField.Declaration.Variables.FirstOrDefault()?.Identifier.Text;
-			return oldRoot.DescendantNodes()
-						  .OfType<FieldDeclarationSyntax>()
-						  .FirstOrDefault(f => f.Declaration.Variables.Any(v => v.Identifier.Text == name));
-		}
-
-		return null;
+		// Se for uma classe dentro de namespace, ok. Se for classe aninhada, talvez queiramos tratar diferente.
+		// Por simplificação, vamos ignorar classes inteiras no diff de membros e focar nos métodos internos,
+		// a não ser que seja um Enum ou Delegate.
+		return false;
 	}
 
-	private string GenerateSignature(MethodDeclarationSyntax method)
+	private string GetIdentifier(MemberDeclarationSyntax member)
 	{
-		// Cria uma string única para identificar o método (Nome + Tipos dos Parâmetros)
-		// Ex: "Salvar(String, Int32)"
-		var sb = new StringBuilder();
-		sb.Append(method.Identifier.Text);
-		sb.Append("(");
-		sb.Append(string.Join(",", method.ParameterList.Parameters.Select(p => p.Type?.ToString())));
-		sb.Append(")");
-		return sb.ToString();
+		try
+		{
+			if (member is MethodDeclarationSyntax m) return m.Identifier.Text + m.ParameterList.ToString(); // Inclui params para diferenciar overloads
+			if (member is PropertyDeclarationSyntax p) return p.Identifier.Text;
+			if (member is ConstructorDeclarationSyntax c) return c.Identifier.Text + c.ParameterList.ToString();
+			if (member is FieldDeclarationSyntax f) return f.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "";
+			if (member is EventFieldDeclarationSyntax e) return e.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "";
+			if (member is DelegateDeclarationSyntax d) return d.Identifier.Text;
+			if (member is EnumDeclarationSyntax en) return en.Identifier.Text;
+		}
+		catch { return ""; }
+		return "";
+	}
+
+	private SemanticChangeBlock CreateBlock(List<DiffLine> lines, DiffType typeOverride)
+	{
+		var finalType = typeOverride;
+
+		// Refinamento de tipo se for Placeholder
+		if (finalType == DiffType.Placeholder)
+		{
+			bool hasAdds = lines.Any(x => x.Type == DiffType.Added);
+			bool hasDels = lines.Any(x => x.Type == DiffType.Deleted);
+
+			if (hasAdds && !hasDels) finalType = DiffType.Added;
+			else if (hasDels && !hasAdds) finalType = DiffType.Deleted;
+			else if (!hasAdds && !hasDels) finalType = DiffType.Unchanged;
+			// Se tiver os dois, mantemos Placeholder (que vira Laranja/Misto na UI)
+		}
+
+		return new SemanticChangeBlock(string.Empty, string.Empty, finalType, lines);
+	}
+
+	private bool AreSemanticallyEquivalent(SyntaxNode oldNode, SyntaxNode newNode)
+	{
+		// Remove espaços em branco
+		return oldNode.ToFullString().Trim() == newNode.ToFullString().Trim();
 	}
 }
