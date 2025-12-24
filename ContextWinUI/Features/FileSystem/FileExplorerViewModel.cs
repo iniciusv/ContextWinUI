@@ -17,7 +17,7 @@ namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject
 {
-	private readonly IProjectSessionManager _sessionManager;
+	public readonly IProjectSessionManager _sessionManager;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 	private CancellationTokenSource? _searchCts;

@@ -14,6 +14,7 @@ public class ProjectCacheDto
 
 	public bool IncludeStructure { get; set; }
 	public bool StructureOnlyFolders { get; set; }
+	public Dictionary<string, string> TagColors { get; set; } = new();
 
 	public List<FileMetadataDto> Files { get; set; } = new();
 }

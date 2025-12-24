@@ -25,7 +25,8 @@ public class PersistenceService : IPersistenceService
 		bool omitComments,
 		bool omitEmptyLines,
 		bool includeStructure,
-		bool structureOnlyFolders)
+		bool structureOnlyFolders,
+		Dictionary<string, string> tagColors)
 	{
 		try
 		{

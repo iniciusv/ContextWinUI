@@ -15,7 +15,8 @@ public interface IPersistenceService
 		bool omitComments,
 		bool omitEmptyLines,
 		bool includeStructure,
-		bool structureOnlyFolders);
+		bool structureOnlyFolders,
+		Dictionary<string, string> tagColors);
 
 	Task<ProjectCacheDto?> LoadProjectCacheAsync(string projectRootPath);
 }

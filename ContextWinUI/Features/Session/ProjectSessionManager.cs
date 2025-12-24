@@ -1,6 +1,8 @@
 ﻿using ContextWinUI.Core.Contracts;
 using ContextWinUI.Models;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Windows.Storage.Pickers;
@@ -28,6 +30,7 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	public event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	public event EventHandler<string>? StatusChanged;
+	public ConcurrentDictionary<string, string> TagColors { get; } = new();
 
 	public ProjectSessionManager(
 		IFileSystemService fileSystemService,
@@ -80,10 +83,18 @@ public class ProjectSessionManager : IProjectSessionManager
 
 			NotifyStatus("Verificando cache...");
 			var cache = await _persistenceService.LoadProjectCacheAsync(path);
+			TagColors.Clear();
 
 			if (cache != null)
 			{
 				ApplyCacheToMemory(path, cache);
+				if (cache.TagColors != null)
+				{
+					foreach (var kvp in cache.TagColors)
+					{
+						TagColors.TryAdd(kvp.Key, kvp.Value);
+					}
+				}
 			}
 			else
 			{
@@ -114,6 +125,7 @@ public class ProjectSessionManager : IProjectSessionManager
 		try
 		{
 			var allStates = _itemFactory.GetAllStates();
+			var colorsToSave = new Dictionary<string, string>(TagColors);
 			await _persistenceService.SaveProjectCacheAsync(
 				CurrentProjectPath,
 				allStates,
@@ -123,7 +135,8 @@ public class ProjectSessionManager : IProjectSessionManager
 				OmitComments,
 				OmitEmptyLines,
 				IncludeStructure,
-				StructureOnlyFolders);
+				StructureOnlyFolders,
+				colorsToSave);
 
 			NotifyStatus("Sessão salva com sucesso.");
 		}

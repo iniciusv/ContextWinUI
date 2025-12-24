@@ -40,6 +40,55 @@ public sealed partial class FileExplorerView : UserControl
         Color.FromArgb(255, 255, 110, 64)   // Deep Orange
     };
 
+	private Color HexToColor(string hex)
+	{
+		hex = hex.Replace("#", "");
+		byte a = 255;
+		byte r = 255;
+		byte g = 255;
+		byte b = 255;
+
+		if (hex.Length == 8)
+		{
+			a = byte.Parse(hex.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+			r = byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+			g = byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+			b = byte.Parse(hex.Substring(6, 2), System.Globalization.NumberStyles.HexNumber);
+		}
+		else if (hex.Length == 6)
+		{
+			r = byte.Parse(hex.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+			g = byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+			b = byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+		}
+		return Color.FromArgb(a, r, g, b);
+	}
+
+	// Método principal para gerenciar cores
+	public SolidColorBrush GetTagBrush(string tagName)
+	{
+		var sessionManager = ExplorerViewModel._sessionManager; // Você precisará expor isso no VM como public ou internal
+
+		// 1. Tenta pegar a cor salva
+		if (sessionManager.TagColors.TryGetValue(tagName, out string hexColor))
+		{
+			return new SolidColorBrush(HexToColor(hexColor));
+		}
+
+		// 2. Se não existir, atribui uma nova da paleta
+		// Usa o hash da string para pegar uma cor determinística da paleta _paletteColors
+		int index = Math.Abs(tagName.GetHashCode()) % _paletteColors.Count;
+		Color selectedColor = _paletteColors[index];
+
+		// Converte para Hex
+		string newHex = $"#{selectedColor.A:X2}{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
+
+		// 3. Salva no SessionManager para persistência futura
+		sessionManager.TagColors.TryAdd(tagName, newHex);
+
+		return new SolidColorBrush(selectedColor);
+	}
+
 	// Dependency Properties
 	public static readonly DependencyProperty ExplorerViewModelProperty =
 		DependencyProperty.Register(nameof(ExplorerViewModel), typeof(FileExplorerViewModel), typeof(FileExplorerView), new PropertyMetadata(null));
