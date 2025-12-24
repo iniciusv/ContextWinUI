@@ -1,0 +1,83 @@
+<UserControl
+    x:Class="ContextWinUI.Views.AiDiffViewer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:ContextWinUI.Services"
+    xmlns:converters="using:ContextWinUI.Converters"
+    mc:Ignorable="d">
+
+	<UserControl.Resources>
+		<converters:DiffToColorConverter x:Key="DiffToColorConverter"/>
+		<converters:NullToVisibilityConverter x:Key="NullToVisibleConverter" Invert="True"/>
+	</UserControl.Resources>
+
+	<Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<Grid Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}" 
+              BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+			<StackPanel Orientation="Horizontal" Spacing="8">
+				<TextBlock Text="Revisão (Diff)" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center"/>
+				<TextBlock Text="{Binding SelectedChange.FilePath, TargetNullValue=''}" 
+                           Foreground="Gray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+			</StackPanel>
+		</Grid>
+
+		<ListView Grid.Row="1"
+                  ItemsSource="{Binding DiffLines}"
+                  SelectionMode="None">
+
+			<ListView.ItemContainerStyle>
+				<Style TargetType="ListViewItem">
+					<Setter Property="Padding" Value="0"/>
+					<Setter Property="MinHeight" Value="20"/>
+					<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+					<Setter Property="VerticalContentAlignment" Value="Stretch"/>
+				</Style>
+			</ListView.ItemContainerStyle>
+
+			<ListView.ItemTemplate>
+				<DataTemplate x:DataType="services:DiffLine">
+					<Grid>
+						<Grid.Background>
+							<Binding Path="Type" Converter="{StaticResource DiffToColorConverter}" ConverterParameter="Background"/>
+						</Grid.Background>
+
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="40"/>
+							<ColumnDefinition Width="40"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+
+						<TextBlock Text="{x:Bind OriginalLineNumber, TargetNullValue=''}" 
+                                   Foreground="Gray" FontSize="11" 
+                                   HorizontalAlignment="Right" Margin="0,0,8,0" FontFamily="Consolas"/>
+
+						<TextBlock Grid.Column="1" 
+                                   Text="{x:Bind NewLineNumber, TargetNullValue=''}" 
+                                   Foreground="Gray" FontSize="11" 
+                                   HorizontalAlignment="Right" Margin="0,0,8,0" FontFamily="Consolas"/>
+
+						<TextBlock Grid.Column="2" 
+                                   Text="{x:Bind Text}" 
+                                   FontFamily="Consolas, Cascadia Code" FontSize="13" TextWrapping="Wrap">
+							<TextBlock.Foreground>
+								<Binding Path="Type" Converter="{StaticResource DiffToColorConverter}" ConverterParameter="Foreground"/>
+							</TextBlock.Foreground>
+						</TextBlock>
+					</Grid>
+				</DataTemplate>
+			</ListView.ItemTemplate>
+		</ListView>
+
+		<TextBlock Grid.Row="1" 
+                   Text="Selecione um arquivo para ver as mudanças exatas." 
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Gray"
+                   Visibility="{Binding SelectedChange, Converter={StaticResource NullToVisibleConverter}}"/>
+	</Grid>
+</UserControl>
