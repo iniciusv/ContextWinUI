@@ -52,12 +52,41 @@ public static class TreeSearchHelper
 		PerformSearch(items, searchText, token);
 	}
 
-	// --- LÓGICA DE BUSCA COMPARTILHADA ---
 	private static void PerformSearch(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token)
 	{
 		string trimmedSearch = searchText.Trim();
-		bool isTagSearch = trimmedSearch.StartsWith("#");
-		string query = isTagSearch ? trimmedSearch.Substring(1).Trim() : trimmedSearch;
+		bool isTagSearch = false;
+		string query = trimmedSearch;
+
+		// Lógica para detectar e limpar os prefixos de comando (+# e -#)
+		if (trimmedSearch.StartsWith("+#"))
+		{
+			isTagSearch = true;
+			// Remove os 2 primeiros caracteres (+#) e limpa espaços
+			query = trimmedSearch.Substring(2).Trim();
+		}
+		else if (trimmedSearch.StartsWith("-#"))
+		{
+			isTagSearch = true;
+			// Remove os 2 primeiros caracteres (-#) e limpa espaços
+			query = trimmedSearch.Substring(2).Trim();
+		}
+		else if (trimmedSearch.StartsWith("#"))
+		{
+			isTagSearch = true;
+			// Remove o primeiro caractere (#) e limpa espaços
+			query = trimmedSearch.Substring(1).Trim();
+		}
+
+		// Se o usuário digitou apenas "+#" ou "-#" sem texto depois, 
+		// podemos decidir mostrar tudo ou nada. 
+		// Aqui optei por interromper se a query ficou vazia para evitar travar a UI ou mostrar tudo errado.
+		if (isTagSearch && string.IsNullOrEmpty(query))
+		{
+			// Opcional: Se quiser mostrar tudo enquanto não tiver texto da tag:
+			// ResetVisibilitySync(items, token); 
+			return;
+		}
 
 		foreach (var item in items)
 		{

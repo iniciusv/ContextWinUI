@@ -58,17 +58,18 @@ public partial class MainViewModel : ObservableObject
 		var sharedSelectionVM = new ContextSelectionViewModel(
 			itemFactory,
 			selectionIOService,
-			orchestrator,    // <--- Novo parametro
-			SessionManager   // <--- Novo parametro
+			orchestrator, 
+			SessionManager
 		);
 
 		// 3. Passar a MESMA instância para os ViewModels filhos (Mantenha igual)
 		FileExplorer = new FileExplorerViewModel(
-			SessionManager,
-			tagService,
-			fileSystemService,
-			sharedSelectionVM
-		);
+				SessionManager,
+				tagService,
+				fileSystemService,
+				sharedSelectionVM,
+				itemFactory
+			);
 
 		ContextAnalysis = new ContextAnalysisViewModel(
 			itemFactory,

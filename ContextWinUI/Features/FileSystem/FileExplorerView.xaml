@@ -91,9 +91,22 @@
                       MinHeight="24"
                       Padding="0">
 						<TreeViewItem.ContextFlyout>
-							<Flyout Opening="OnTagMenuOpening">
-								<Grid x:Name="FlyoutContentGrid" />
-							</Flyout>
+							<MenuFlyout>
+								<MenuFlyoutItem Text="Novo Arquivo" Icon="Add" Click="OnCreateFileClick">
+								</MenuFlyoutItem>
+
+								<MenuFlyoutItem Text="Nova Pasta" Icon="Folder" Click="OnCreateFolderClick">
+								</MenuFlyoutItem>
+
+								<MenuFlyoutSeparator />
+
+								<MenuFlyoutItem Text="Excluir" Icon="Delete" Click="OnDeleteClick">
+								</MenuFlyoutItem>
+
+								<MenuFlyoutSeparator />
+
+								<MenuFlyoutItem Text="Gerenciar Tags..." Icon="Tag" Click="OnManageTagsClick" />
+							</MenuFlyout>
 						</TreeViewItem.ContextFlyout>
 
 						<Grid Height="24">

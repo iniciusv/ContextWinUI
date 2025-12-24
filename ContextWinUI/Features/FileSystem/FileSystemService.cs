@@ -91,4 +91,36 @@ public class FileSystemService : IFileSystemService
 			throw new Exception($"Erro ao salvar arquivo: {ex.Message}");
 		}
 	}
+	public async Task CreateDirectoryAsync(string path)
+	{
+		await Task.Run(() =>
+		{
+			if (Directory.Exists(path)) throw new Exception("A pasta já existe.");
+			Directory.CreateDirectory(path);
+		});
+	}
+
+	public async Task CreateFileAsync(string path)
+	{
+		await Task.Run(() =>
+		{
+			if (File.Exists(path)) throw new Exception("O arquivo já existe.");
+			File.Create(path).Dispose(); // Cria e fecha imediatamente
+		});
+	}
+
+	public async Task DeleteItemAsync(string path)
+	{
+		await Task.Run(() =>
+		{
+			if (Directory.Exists(path))
+			{
+				Directory.Delete(path, true); // true = recursivo
+			}
+			else if (File.Exists(path))
+			{
+				File.Delete(path);
+			}
+		});
+	}
 }

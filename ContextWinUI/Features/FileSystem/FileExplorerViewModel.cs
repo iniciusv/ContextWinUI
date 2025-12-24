@@ -5,10 +5,13 @@ using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +25,7 @@ public partial class FileExplorerViewModel : ObservableObject
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 	private CancellationTokenSource? _searchCts;
 	private FileSystemItem? _selectedItem;
+	private readonly IFileSystemItemFactory _itemFactory;
 
 	public ITagManagementUiService TagService { get; }
 
@@ -43,7 +47,8 @@ public partial class FileExplorerViewModel : ObservableObject
 		IProjectSessionManager sessionManager,
 		ITagManagementUiService tagService,
 		IFileSystemService fileSystemService,
-		ContextSelectionViewModel sharedSelectionViewModel) 
+		ContextSelectionViewModel sharedSelectionViewModel,
+		IFileSystemItemFactory itemFactory)
 	{
 		_sessionManager = sessionManager;
 		TagService = tagService;
@@ -323,5 +328,123 @@ public partial class FileExplorerViewModel : ObservableObject
 			}
 		}
 		return count;
+	}
+	[RelayCommand]
+	private async Task CreateNewItemAsync(object[] args)
+	{
+		// Args: [0] = FileSystemItem (pai ou irmão), [1] = bool isFolder, [2] = XamlRoot
+		if (args.Length < 3 || args[0] is not FileSystemItem targetItem || args[2] is not XamlRoot xamlRoot) return;
+		bool isFolder = (bool)args[1];
+
+		// Determina onde criar: Se o alvo é pasta, cria dentro. Se é arquivo, cria na pasta pai.
+		FileSystemItem parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem);
+		if (parentFolder == null && targetItem.IsDirectory) parentFolder = targetItem; // Fallback para raiz
+
+		if (parentFolder == null) return;
+
+		// 1. Pedir o nome
+		var inputTextBox = new TextBox { PlaceholderText = isFolder ? "Nome da Pasta" : "Nome do Arquivo.txt" };
+		var dialog = new ContentDialog
+		{
+			Title = isFolder ? "Nova Pasta" : "Novo Arquivo",
+			Content = inputTextBox,
+			PrimaryButtonText = "Criar",
+			CloseButtonText = "Cancelar",
+			DefaultButton = ContentDialogButton.Primary,
+			XamlRoot = xamlRoot
+		};
+
+		var result = await dialog.ShowAsync();
+		if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(inputTextBox.Text)) return;
+
+		string newName = inputTextBox.Text.Trim();
+		string newFullPath = Path.Combine(parentFolder.SharedState.FullPath, newName);
+
+		try
+		{
+			// 2. Criar no disco
+			if (isFolder)
+				await _fileSystemService.CreateDirectoryAsync(newFullPath);
+			else
+				await _fileSystemService.CreateFileAsync(newFullPath);
+
+			// 3. Atualizar a UI (CORRIGIDO AQUI)
+			// Usamos a instância injetada _itemFactory
+			var newItem = _itemFactory.CreateWrapper(newFullPath, isFolder ? FileSystemItemType.Directory : FileSystemItemType.File);
+
+			parentFolder.Children.Add(newItem);
+			parentFolder.IsExpanded = true;
+
+			OnStatusChanged($"Criado: {newName}");
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao criar: {ex.Message}");
+		}
+	}
+
+	// Comando para Deletar
+	[RelayCommand]
+	private async Task DeleteItemAsync(object[] args)
+	{
+		// Args: [0] = FileSystemItem, [1] = XamlRoot
+		if (args.Length < 2 || args[0] is not FileSystemItem itemToDelete || args[1] is not XamlRoot xamlRoot) return;
+
+		var dialog = new ContentDialog
+		{
+			Title = "Confirmar Exclusão",
+			Content = $"Tem certeza que deseja excluir '{itemToDelete.Name}' permanentemente?",
+			PrimaryButtonText = "Excluir",
+			CloseButtonText = "Cancelar",
+			DefaultButton = ContentDialogButton.Close,
+			XamlRoot = xamlRoot
+		};
+
+		var result = await dialog.ShowAsync();
+		if (result != ContentDialogResult.Primary) return;
+
+		try
+		{
+			// 1. Deletar do disco
+			await _fileSystemService.DeleteItemAsync(itemToDelete.SharedState.FullPath);
+
+			// 2. Remover da UI
+			var parent = GetParentItem(itemToDelete);
+			if (parent != null)
+			{
+				parent.Children.Remove(itemToDelete);
+			}
+			else if (RootItems.Contains(itemToDelete))
+			{
+				RootItems.Remove(itemToDelete);
+			}
+
+			OnStatusChanged($"Excluído: {itemToDelete.Name}");
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao excluir: {ex.Message}");
+		}
+	}
+
+	// Método auxiliar para encontrar o pai na árvore visual
+	// Como FileSystemItem não tem propriedade "Parent", precisamos buscar recursivamente
+	private FileSystemItem? GetParentItem(FileSystemItem child)
+	{
+		return FindParentRecursive(RootItems, child);
+	}
+
+	private FileSystemItem? FindParentRecursive(IEnumerable<FileSystemItem> scope, FileSystemItem target)
+	{
+		foreach (var item in scope)
+		{
+			if (item.Children.Contains(target)) return item;
+			if (item.Children.Any())
+			{
+				var found = FindParentRecursive(item.Children, target);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 }

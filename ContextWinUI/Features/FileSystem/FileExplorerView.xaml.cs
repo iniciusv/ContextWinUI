@@ -174,8 +174,32 @@ public sealed partial class FileExplorerView : UserControl
 			FileSelected?.Invoke(this, item);
 		}
 	}
+	private void OnManageTagsClick(object sender, RoutedEventArgs e)
+	{
+		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
+		{
+			// Cria um Flyout separado apenas para as tags e o exibe
+			var tagFlyout = new Flyout();
 
-    public static IEnumerable<FileSystemItem> GetExplorerChildren(IEnumerable<FileSystemItem> children, bool isDirectory) => isDirectory ? children : null;
+			tagFlyout.Content = TagMenuBuilder.BuildContent(
+				new List<FileSystemItem> { item },
+				ExplorerViewModel.TagService,
+				this.XamlRoot,
+				() => tagFlyout.Hide()
+			);
+
+			// Exibe o flyout na posição do mouse ou ancorado ao elemento
+			// Uma forma simples é abrir um Flyout anexado a um elemento dummy ou usar ShowAt
+			tagFlyout.ShowAt(this, new FlyoutShowOptions { Position = new Windows.Foundation.Point(0, 0) }); // Simplificação
+																											 // OBS: O ideal seria ancorar no TreeViewItem, mas obter a referência dele via DataContext dentro do Click é complexo.
+
+			// Alternativa Melhor: Usar o sistema antigo DENTRO do MenuFlyout
+			// Se você quiser manter o menu de tags INLINE, teremos que voltar para o evento Opening
+			// Mas a abordagem de clicar em "Gerenciar Tags" é mais limpa para menus complexos.
+		}
+	}
+
+	public static IEnumerable<FileSystemItem> GetExplorerChildren(IEnumerable<FileSystemItem> children, bool isDirectory) => isDirectory ? children : null;
 
     private void TreeView_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
 	{
@@ -186,5 +210,43 @@ public sealed partial class FileExplorerView : UserControl
 	private void TreeView_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)
 	{
 		if (args.Item is FileSystemItem item) item.IsExpanded = false;
+	}
+
+	private void OnCreateFileClick(object sender, RoutedEventArgs e)
+	{
+		ExecuteFileAction(sender, isFolder: false);
+	}
+
+	private void OnCreateFolderClick(object sender, RoutedEventArgs e)
+	{
+		ExecuteFileAction(sender, isFolder: true);
+	}
+
+	private void ExecuteFileAction(object sender, bool isFolder)
+	{
+		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
+		{
+			// Monta os argumentos: [0]=Item, [1]=IsFolder, [2]=XamlRoot
+			var args = new object[] { item, isFolder, this.XamlRoot };
+
+			if (ExplorerViewModel.CreateNewItemCommand.CanExecute(args))
+			{
+				ExplorerViewModel.CreateNewItemCommand.Execute(args);
+			}
+		}
+	}
+
+	private void OnDeleteClick(object sender, RoutedEventArgs e)
+	{
+		if (sender is MenuFlyoutItem menuItem && menuItem.DataContext is FileSystemItem item)
+		{
+			// Monta os argumentos para deleção: [0]=Item, [1]=XamlRoot
+			var args = new object[] { item, this.XamlRoot };
+
+			if (ExplorerViewModel.DeleteItemCommand.CanExecute(args))
+			{
+				ExplorerViewModel.DeleteItemCommand.Execute(args);
+			}
+		}
 	}
 }
