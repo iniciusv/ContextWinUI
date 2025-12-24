@@ -5,9 +5,15 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:localConverters="using:ContextWinUI.Converters" 
     mc:Ignorable="d">
 
-	<Grid>
+	<UserControl.Resources>
+		<localConverters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+		<localConverters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+	</UserControl.Resources>
+
+	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="400" MinWidth="300"/>
 			<ColumnDefinition Width="12"/>
@@ -15,7 +21,8 @@
 		</Grid.ColumnDefinitions>
 
 		<Grid Grid.Column="0" RowDefinitions="Auto,*,Auto,2,*">
-			<TextBlock Text="1. Cole a resposta da IA aqui:" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+
+			<TextBlock Text="1. Cole a resposta da IA:" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
 
 			<TextBox Grid.Row="1" 
                      AcceptsReturn="True" 
@@ -23,14 +30,20 @@
                      Text="{x:Bind ViewModel.RawInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                      PlaceholderText="// ARQUIVO: Pasta/Classe.cs ... código ..."
                      FontFamily="Consolas"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     BorderThickness="1"/>
 
 			<StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,8">
-				<Button Content="Detectar Arquivos" Command="{x:Bind ViewModel.ProcessInputCommand}" Style="{StaticResource AccentButtonStyle}"/>
+				<Button Command="{x:Bind ViewModel.ProcessInputCommand}" Style="{StaticResource AccentButtonStyle}">
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<FontIcon Glyph="&#xE8F4;" FontSize="16"/>
+						<TextBlock Text="Detectar Arquivos"/>
+					</StackPanel>
+				</Button>
 				<Button Content="Limpar" Command="{x:Bind ViewModel.ClearCommand}"/>
 			</StackPanel>
 
-			<controls:GridSplitter Grid.Row="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Rows" />
+			<controls:GridSplitter Grid.Row="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Rows" Height="2"/>
 
 			<ListView Grid.Row="4" 
                       ItemsSource="{x:Bind ViewModel.DetectedChanges, Mode=OneWay}"
@@ -47,13 +60,22 @@
 								<ColumnDefinition Width="*"/>
 								<ColumnDefinition Width="Auto"/>
 							</Grid.ColumnDefinitions>
-							<CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center"/>
-							<StackPanel Grid.Column="1" Margin="8,0">
-								<TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
+
+							<CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+							<StackPanel Grid.Column="1" VerticalAlignment="Center">
+								<StackPanel Orientation="Horizontal" Spacing="6">
+									<TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
+
+									<FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="Orange" 
+                                              Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVisibilityConverter}}"
+                                              ToolTipService.ToolTip="Existem avisos (TODO, Snippet ou Exclusão)"/>
+								</StackPanel>
 								<TextBlock Text="{Binding FilePath}" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
 							</StackPanel>
-							<StackPanel Grid.Column="2" HorizontalAlignment="Right">
-								<TextBlock Text="{Binding Status}" FontSize="11" HorizontalAlignment="Right"/>
+
+							<StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0">
+								<TextBlock Text="{Binding Status}" FontSize="11" HorizontalAlignment="Right" Foreground="{Binding StatusColor}"/>
 								<TextBlock Text="{Binding ChangeSummary}" FontSize="11" Foreground="{ThemeResource SystemAccentColor}" HorizontalAlignment="Right"/>
 							</StackPanel>
 						</Grid>
@@ -62,44 +84,69 @@
 			</ListView>
 		</Grid>
 
-		<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" />
+		<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Width="12"/>
 
-		<Grid Grid.Column="2" Margin="0,0,0,0">
+		<Grid Grid.Column="2">
 			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="*"/>
 				<RowDefinition Height="Auto"/>
 			</Grid.RowDefinitions>
 
-			<CommandBar DefaultLabelPosition="Right" Background="Transparent">
+			<CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent">
 				<AppBarElementContainer VerticalAlignment="Center">
-					<TextBlock Text="Visualizacao (Novo Conteúdo)" Style="{StaticResource SubtitleTextBlockStyle}" Margin="12,0"/>
+					<TextBlock Text="Visualização (Diff &amp; Syntax)" Style="{StaticResource SubtitleTextBlockStyle}" Margin="12,0"/>
 				</AppBarElementContainer>
 			</CommandBar>
 
-			<Grid Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}">
-				<RichEditBox x:Name="CodeDiffEditor"
-                 IsReadOnly="True"
-                 FontFamily="Consolas"
-                 FontSize="14"
-                 BorderThickness="0"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                 HorizontalAlignment="Stretch"
-                 VerticalAlignment="Stretch"
-                 Padding="12"/>
-			</Grid>
+			<ScrollViewer Grid.Row="1" MaxHeight="100" Margin="12,0,12,8">
+				<ItemsControl ItemsSource="{x:Bind ViewModel.SelectedChange.ValidationWarnings, Mode=OneWay}">
+					<ItemsControl.ItemTemplate>
+						<DataTemplate>
+							<InfoBar Severity="Warning" IsOpen="True" IsClosable="False" Message="{Binding}" Margin="0,0,0,4"/>
+						</DataTemplate>
+					</ItemsControl.ItemTemplate>
+				</ItemsControl>
+			</ScrollViewer>
 
-			<Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-				<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
-					<TextBlock Text="Verifique as alterações antes de aplicar." VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-					<Button Content="Aplicar Selecionados no Disco" 
-                            Command="{x:Bind ViewModel.ApplySelectedChangesCommand}" 
-                            Style="{StaticResource AccentButtonStyle}"/>
-				</StackPanel>
+			<Border Grid.Row="2" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Margin="12,0,12,0" CornerRadius="4">
+				<RichEditBox x:Name="CodeDiffEditor"
+                             IsReadOnly="True"
+                             FontFamily="Consolas, Courier New, Monospace"
+                             FontSize="14"
+                             BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             HorizontalAlignment="Stretch"
+                             VerticalAlignment="Stretch"
+                             Padding="12"/>
 			</Border>
+
+			<Grid Grid.Row="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+				<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+					<TextBlock VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Run Text="Revise o código acima (Verde = Adicionado/Alterado)."/>
+					</TextBlock>
+					<Button Command="{x:Bind ViewModel.ApplySelectedChangesCommand}" 
+                            Style="{StaticResource AccentButtonStyle}">
+						<StackPanel Orientation="Horizontal" Spacing="8">
+							<FontIcon Glyph="&#xE74E;" FontSize="16"/>
+							<TextBlock Text="Aplicar Selecionados no Disco"/>
+						</StackPanel>
+					</Button>
+				</StackPanel>
+			</Grid>
 		</Grid>
 
-		<ProgressRing Grid.ColumnSpan="3" IsActive="{x:Bind ViewModel.IsProcessing, Mode=OneWay}" Width="60" Height="60" Visibility="{x:Bind ViewModel.IsProcessing, Mode=OneWay}"/>
+		<Grid Grid.ColumnSpan="3" 
+              Background="{ThemeResource SolidBackgroundFillColorBaseAltBrush}" Opacity="0.7"
+              Visibility="{x:Bind ViewModel.IsProcessing, Mode=OneWay}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+			<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+				<ProgressRing IsActive="True" Width="50" Height="50"/>
+				<TextBlock Text="Processando inteligência de código..." FontWeight="SemiBold"/>
+			</StackPanel>
+		</Grid>
 	</Grid>
 </UserControl>
