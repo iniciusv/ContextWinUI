@@ -79,12 +79,14 @@ public class RoslynSemanticDiffService
 
 				// Se não foi marcado como Added/Modified, é Unchanged
 				if (type == 0) type = DiffType.Unchanged;
-
 				diffLines.Add(new DiffLine
 				{
 					Text = rawLines[i],
 					Type = type,
-					Index = i
+					// O índice 'i' é baseado em zero, linhas geralmente são baseadas em 1.
+					// Como o Semantic Diff mostra o código resultante (novo), usamos NewLineNumber.
+					NewLineNumber = i + 1,
+					OriginalLineNumber = null
 				});
 			}
 
