@@ -8,6 +8,7 @@
     mc:Ignorable="d">
 
 	<ItemsControl ItemsSource="{x:Bind DisplayTags, Mode=OneWay}">
+
 		<ItemsControl.ItemsPanel>
 			<ItemsPanelTemplate>
 				<StackPanel Orientation="Horizontal" Spacing="4"/>
@@ -20,10 +21,12 @@
                         CornerRadius="4" 
                         Padding="6,2" 
                         Opacity="0.9">
+
 					<TextBlock Text="{x:Bind Name}" 
                                FontSize="10" 
-                               Foreground="White" 
-                               FontWeight="SemiBold"/>
+                               Foreground="{x:Bind ForegroundBrush, Mode=OneWay}" 
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
 				</Border>
 			</DataTemplate>
 		</ItemsControl.ItemTemplate>
