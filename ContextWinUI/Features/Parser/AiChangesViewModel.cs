@@ -2,16 +2,22 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.UI;
 
 namespace ContextWinUI.ViewModels;
 
@@ -79,41 +85,51 @@ public partial class AiChangesViewModel : ObservableObject
 
 		IsProcessing = true;
 		DetectedChanges.Clear();
-		SemanticBlocks.Clear();
+		GraphLines.Clear();
 		SelectedChange = null;
+		DebugInfo = "Processando input..."; // Feedback imediato
 
 		try
 		{
 			var projectRoot = _sessionManager.CurrentProjectPath;
+
+			// 1. Indexação (Importante!)
+			//StatusMessage = "Indexando grafo...";
 			var currentGraph = await _semanticIndexService.GetOrIndexProjectAsync(projectRoot);
 
-			// Parser extrai os arquivos do texto da IA
+			// 2. Parser com Grafo
 			var changes = await Task.Run(() => _parser.ParseInput(RawInput, projectRoot, currentGraph));
 
 			foreach (var change in changes)
 			{
-				// Se o arquivo existe, carregamos o original para comparação
 				if (string.IsNullOrEmpty(change.OriginalContent) && File.Exists(change.FilePath))
 				{
 					change.OriginalContent = await _fileSystemService.ReadFileContentAsync(change.FilePath);
 				}
-
 				DetectedChanges.Add(change);
 			}
 
 			if (DetectedChanges.Any())
 			{
-				SelectedChange = DetectedChanges.First();
+				// Define a seleção
+				var firstChange = DetectedChanges.First();
+				SelectedChange = firstChange;
+
+				// --- CORREÇÃO AQUI: Força a chamada explícita ---
+				// Não confie apenas no OnSelectedChangeChanged quando definir via código
+				DebugInfo = $"Arquivo detectado: {firstChange.FileName}. Gerando visualização...";
+				await GenerateGraphVisualizationAsync();
+				// ------------------------------------------------
+			}
+			else
+			{
+				DebugInfo = "Nenhuma mudança detectada pelo Parser.";
 			}
 		}
 		catch (Exception ex)
 		{
-			DetectedChanges.Add(new ProposedFileChange
-			{
-				FilePath = "Erro de Processamento",
-				NewContent = ex.ToString(),
-				Status = "Erro"
-			});
+			DetectedChanges.Add(new ProposedFileChange { FilePath = "Erro", NewContent = ex.ToString(), Status = "Erro" });
+			DebugInfo = $"Erro no processamento: {ex.Message}";
 		}
 		finally
 		{
@@ -216,6 +232,155 @@ public partial class AiChangesViewModel : ObservableObject
 		{
 			IsProcessing = false;
 		}
+	}
+
+	// Adicione esta coleção
+	[ObservableProperty]
+	private ObservableCollection<GraphCodeLine> graphLines = new();
+
+	[ObservableProperty]
+	private string debugInfo = "Aguardando...";
+
+	// Modifique o método que é chamado quando um arquivo é selecionado
+	public async Task GenerateGraphVisualizationAsync()
+	{
+		// Obtém o Dispatcher da thread atual (UI) para garantir atualizações seguras
+		var dispatcher = DispatcherQueue.GetForCurrentThread();
+
+		// Atualiza info inicial
+		dispatcher.TryEnqueue(() =>
+		{
+			DebugInfo = "Iniciando leitura para visualização...";
+			GraphLines.Clear();
+		});
+
+		if (SelectedChange == null) return;
+
+		IsProcessing = true;
+
+		try
+		{
+			// 1. Garante o conteúdo
+			string content = SelectedChange.OriginalContent;
+
+			// Se estiver vazio no objeto, tenta ler do disco novamente
+			if (string.IsNullOrEmpty(content) && File.Exists(SelectedChange.FilePath))
+			{
+				content = await _fileSystemService.ReadFileContentAsync(SelectedChange.FilePath);
+				SelectedChange.OriginalContent = content; // Salva para não ler de novo
+			}
+
+			// Diagnóstico: Se continuar vazio, avisa
+			if (string.IsNullOrEmpty(content))
+			{
+				dispatcher.TryEnqueue(() =>
+				{
+					DebugInfo = $"ALERTA: Conteúdo vazio ou arquivo não encontrado em: {SelectedChange.FilePath}";
+					IsProcessing = false;
+				});
+				return;
+			}
+
+			// 2. Prepara o Grafo (em background para não travar a UI)
+			List<SymbolNode> fileNodes = new();
+			await Task.Run(async () =>
+			{
+				var graph = await _semanticIndexService.GetOrIndexProjectAsync(_sessionManager.CurrentProjectPath);
+				var pathKey = SelectedChange.FilePath.ToLowerInvariant();
+
+				if (graph.FileIndex.TryGetValue(pathKey, out var nodes))
+				{
+					fileNodes = nodes.ToList();
+				}
+				else
+				{
+					// Tentativa de fallback por nome de arquivo se o caminho completo falhar
+					var partialKey = graph.FileIndex.Keys.FirstOrDefault(k => k.EndsWith(Path.GetFileName(pathKey), StringComparison.OrdinalIgnoreCase));
+					if (partialKey != null)
+					{
+						fileNodes = graph.FileIndex[partialKey].ToList();
+					}
+				}
+			});
+
+			// 3. Processa as linhas (SourceText é rápido, pode ser na thread principal ou background)
+			var sourceText = SourceText.From(content);
+			var linesToRender = new List<GraphCodeLine>();
+
+			foreach (var line in sourceText.Lines)
+			{
+				var lineSpan = line.Span;
+				var lineText = line.ToString();
+
+				// Acha o nó correspondente
+				var matchingNode = fileNodes
+					.Where(n => n.StartPosition <= lineSpan.End && (n.StartPosition + n.Length) >= lineSpan.Start)
+					.OrderBy(n => n.Length) // Pega o menor nó (mais específico)
+					.FirstOrDefault();
+
+				linesToRender.Add(new GraphCodeLine
+				{
+					LineNumber = line.LineNumber + 1,
+					Text = lineText, // Tabs serão renderizados como espaços pelo TextBlock
+					SymbolName = matchingNode?.Name ?? "",
+					SymbolType = matchingNode?.Type.ToString() ?? "",
+					BackgroundColor = GetColorForNodeType(matchingNode?.Type),
+					BorderColor = GetBorderColorForNodeType(matchingNode?.Type)
+				});
+			}
+
+			// 4. ATUALIZAÇÃO DA UI (CRÍTICO: Deve ser na Thread de UI)
+			dispatcher.TryEnqueue(() =>
+			{
+				GraphLines.Clear();
+				foreach (var item in linesToRender)
+				{
+					GraphLines.Add(item);
+				}
+
+				// Diagnóstico Final
+				DebugInfo = $"Sucesso: {linesToRender.Count} linhas renderizadas. (Nós no grafo: {fileNodes.Count})";
+				IsProcessing = false;
+			});
+		}
+		catch (Exception ex)
+		{
+			dispatcher.TryEnqueue(() =>
+			{
+				DebugInfo = $"ERRO CRÍTICO: {ex.Message}";
+				IsProcessing = false;
+			});
+		}
+	}
+
+	private SolidColorBrush GetColorForNodeType(SymbolType? type)
+	{
+		if (type == null) return new SolidColorBrush(Colors.Transparent);
+
+		// Cores bem suaves para fundo (Alpha 20-30)
+		return type switch
+		{
+			SymbolType.Method => new SolidColorBrush(Color.FromArgb(30, 0, 120, 215)), // Azulzinho
+			SymbolType.Class => new SolidColorBrush(Color.FromArgb(20, 0, 150, 0)),    // Verdinho
+			SymbolType.Interface => new SolidColorBrush(Color.FromArgb(20, 150, 0, 150)), // Roxo
+			SymbolType.Property => new SolidColorBrush(Color.FromArgb(30, 255, 140, 0)),  // Laranja
+			_ => new SolidColorBrush(Colors.Transparent)
+		};
+	}
+
+	private SolidColorBrush GetBorderColorForNodeType(SymbolType? type)
+	{
+		if (type == null) return new SolidColorBrush(Colors.Transparent);
+
+		// Cores sólidas para a borda lateral
+		return type switch
+		{
+			SymbolType.Method => new SolidColorBrush(Color.FromArgb(255, 0, 120, 215)),
+			SymbolType.Class => new SolidColorBrush(Color.FromArgb(255, 0, 150, 0)),
+			SymbolType.Interface => new SolidColorBrush(Color.FromArgb(255, 150, 0, 150)),
+			SymbolType.Property => new SolidColorBrush(Color.FromArgb(255, 255, 140, 0)),
+			_ => new SolidColorBrush(Colors.Transparent)
+		};
 	}
 
 	[RelayCommand]

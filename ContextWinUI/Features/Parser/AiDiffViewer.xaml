@@ -5,101 +5,69 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:ContextWinUI.Models"
-    xmlns:services="using:ContextWinUI.Services"
     xmlns:converters="using:ContextWinUI.Converters"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
-		<converters:DiffToColorConverter x:Key="DiffToColorConverter"/>
 		<converters:BoolToVisibilityConverter x:Key="BoolToVisibleConverter" />
-		<converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibleConverter" Invert="True"/>
-		<converters:NullToVisibilityConverter x:Key="NullToVisibleConverter"/>
-		<converters:NullToVisibilityConverter x:Key="InverseNullToVisibleConverter" Invert="True"/>
-
-		<Style x:Key="GutterToggleStyle" TargetType="ToggleButton">
-			<Setter Property="Background" Value="Transparent"/>
-			<Setter Property="BorderThickness" Value="0"/>
-			<Setter Property="Padding" Value="0"/>
-			<Setter Property="Width" Value="20"/>
-			<Setter Property="Height" Value="20"/>
-			<Setter Property="Content" Value="&#xE70D;"/>
-			<Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-			<Setter Property="FontSize" Value="10"/>
-		</Style>
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
 		<Grid Grid.Row="0" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" 
-              BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="12,6">
-			<TextBlock Text="{x:Bind ViewModel.SelectedChange.FilePath, Mode=OneWay, FallbackValue=''}" 
-                       FontFamily="Consolas" FontSize="12" Foreground="Gray" TextTrimming="CharacterEllipsis"/>
+              BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+			<TextBlock Text="{x:Bind ViewModel.SelectedChange.FilePath, Mode=OneWay}" FontWeight="SemiBold"/>
 		</Grid>
 
-		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-			<ItemsControl ItemsSource="{x:Bind ViewModel.SemanticBlocks, Mode=OneWay}">
+		<Grid Grid.Row="1" Background="#FFF8E1" Padding="8">
+			<TextBlock Text="{x:Bind ViewModel.DebugInfo, Mode=OneWay}" Foreground="Black" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+		</Grid>
+
+		<ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+			<ItemsControl ItemsSource="{x:Bind ViewModel.GraphLines, Mode=OneWay}">
 				<ItemsControl.ItemsPanel>
 					<ItemsPanelTemplate>
-						<StackPanel Spacing="1"/>
+						<StackPanel Spacing="0"/>
 					</ItemsPanelTemplate>
 				</ItemsControl.ItemsPanel>
-
 				<ItemsControl.ItemTemplate>
-					<DataTemplate x:DataType="models:SemanticChangeBlock">
-						<Grid Background="{x:Bind BlockBackground}">
+					<DataTemplate x:DataType="models:GraphCodeLine">
+						<Grid Background="{x:Bind BackgroundColor}" Height="20">
 							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="32"/>
+								<ColumnDefinition Width="40"/>
 								<ColumnDefinition Width="4"/>
 								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="Auto"/>
 							</Grid.ColumnDefinitions>
 
-							<StackPanel Grid.Column="0" Orientation="Vertical" VerticalAlignment="Top" Margin="0,6,0,0">
-								<CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" Margin="4,0,0,4"
-                                          Padding="0" HorizontalAlignment="Center" ToolTipService.ToolTip="Aceitar este bloco"/>
+							<TextBlock Text="{x:Bind LineNumber}" FontFamily="Consolas" FontSize="11" Foreground="Gray" 
+                                       HorizontalAlignment="Right" Margin="0,0,8,0" VerticalAlignment="Center"/>
 
-								<ToggleButton IsChecked="{x:Bind IsExpanded, Mode=TwoWay}" Style="{StaticResource GutterToggleStyle}" 
-                                              HorizontalAlignment="Center"/>
-							</StackPanel>
+							<Rectangle Grid.Column="1" Fill="{x:Bind BorderColor}"/>
 
-							<Rectangle Grid.Column="1" Fill="{x:Bind StatusColor}" VerticalAlignment="Stretch"/>
+							<TextBlock Grid.Column="2" 
+           Text="{x:Bind Text}" 
+           FontFamily="Consolas" 
+           FontSize="13" 
+           VerticalAlignment="Center" 
+           Margin="6,0,0,0" 
+           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+           MinWidth="20"/>
 
-							<StackPanel Grid.Column="2" Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-								<ItemsControl ItemsSource="{x:Bind InternalDiffLines}">
-									<ItemsControl.ItemTemplate>
-										<DataTemplate x:DataType="services:DiffLine">
-											<Grid MinHeight="18">
-												<Grid.ColumnDefinitions>
-													<ColumnDefinition Width="40"/>
-													<ColumnDefinition Width="*"/>
-												</Grid.ColumnDefinitions>
-
-												<TextBlock Text="{x:Bind NewLineNumber}" FontFamily="Consolas" FontSize="11" 
-                                                           Foreground="Gray" HorizontalAlignment="Right" Margin="0,0,8,0" 
-                                                           VerticalAlignment="Center"
-                                                           Visibility="{x:Bind NewLineNumber, Converter={StaticResource NullToVisibleConverter}}"/>
-
-												<TextBlock Grid.Column="1" Text="{x:Bind Text}" FontFamily="Consolas" FontSize="13" 
-                                                           TextWrapping="Wrap" VerticalAlignment="Center">
-													<TextBlock.Foreground>
-														<Binding Path="Type" Converter="{StaticResource DiffToColorConverter}" ConverterParameter="Foreground"/>
-													</TextBlock.Foreground>
-												</TextBlock>
-											</Grid>
-										</DataTemplate>
-									</ItemsControl.ItemTemplate>
-								</ItemsControl>
-							</StackPanel>
-
-							<TextBlock Grid.Column="2" Text="..." Foreground="Gray" FontStyle="Italic" Margin="8" 
-                                       Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibleConverter}}"/>
+							<TextBlock Grid.Column="3" Text="{x:Bind SymbolName}" FontSize="10" Foreground="Gray" 
+                                       Opacity="0.6" Margin="0,0,8,0" VerticalAlignment="Center"/>
 						</Grid>
 					</DataTemplate>
 				</ItemsControl.ItemTemplate>
 			</ItemsControl>
 		</ScrollViewer>
+
+		<ProgressRing Grid.Row="2" IsActive="True" Width="50" Height="50"
+                      Visibility="{x:Bind ViewModel.IsProcessing, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}"/>
 	</Grid>
 </UserControl>
