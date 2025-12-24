@@ -22,6 +22,8 @@ public sealed partial class FileContentView : UserControl
 	private readonly RegexHighlightService _regexHighlightService; // Para outros arquivos
 	private readonly SyntaxHighlightService _syntaxViewerService;
 	private System.Threading.CancellationTokenSource? _editCts;
+	private readonly CodeTransformationService _transformationService;
+	private string _displayedContent = string.Empty;
 
 	private bool _isInternalUpdate = false;
 	private bool _isEditing = false;
@@ -59,9 +61,11 @@ public sealed partial class FileContentView : UserControl
 		_fastEditorService = new FastEditorHighlightService();
 		_regexHighlightService = new RegexHighlightService();
 		_syntaxViewerService = new SyntaxHighlightService();
+		_transformationService = new CodeTransformationService();
 
 		this.Loaded += (s, e) => EnsureScrollViewer();
 	}
+
 
 	private void EnsureScrollViewer()
 	{
@@ -95,8 +99,8 @@ public sealed partial class FileContentView : UserControl
 			control.SwitchToViewMode();
 		}
 	}
-
-	private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnViewOptionChanged(object sender, RoutedEventArgs e) => LoadContentToView();
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
 		if (_isInternalUpdate) return;
 
@@ -111,32 +115,57 @@ public sealed partial class FileContentView : UserControl
 	{
 		if (ContentViewModel == null) return;
 
-		var content = ContentViewModel.FileContent ?? string.Empty;
+		// 1. Pega o conteúdo original
+		var originalContent = ContentViewModel.FileContent ?? string.Empty;
 		var ext = ContentViewModel.SelectedItem?.SharedState.Extension ?? ".txt";
 
-		UpdateLineNumbers(content);
+		string contentToDisplay = originalContent;
 
-		// --- CORREÇÃO AQUI ---
-		// 1. Aplica o Background no ScrollViewer (pois o RichTextBlock é transparente)
+		// 2. Se NÃO estiver editando e for C#, aplica as transformações
+		if (!_isEditing && ext == ".cs")
+		{
+			var options = new CodeTransformationService.TransformationOptions
+			{
+				HideComments = ToggleComments.IsOn,
+				CollapseMethods = ToggleCollapse.IsOn,
+				MaxLinesForCollapse = (int)NumCollapseLines.Value
+			};
+
+			// Transforma o código (Heavy lifting feito pelo Roslyn)
+			contentToDisplay = _transformationService.TransformCode(originalContent, options);
+		}
+
+		_displayedContent = contentToDisplay;
+
+		// 3. Atualiza Linhas e Interface
+		UpdateLineNumbers(_displayedContent);
+
+		// Importante: Aplica o scroll mode
+		// HorizontalScrollBarVisibility="Auto" já garante que só aparece se necessário
+
 		ApplyThemeAttributes(MainScrollViewer);
-
-		// 2. Aplica o Foreground (texto) no RichTextBlock
 		ApplyThemeAttributes(CodeViewer);
-
-		// 3. Aplica ambos no Editor (que é um Control completo)
 		ApplyThemeAttributes(CodeEditor);
-		// ---------------------
 
 		if (_isEditing)
 		{
-			_isInternalUpdate = true;
-			CodeEditor.Document.SetText(TextSetOptions.None, content);
+			// No modo edição, SEMPRE mostramos o original cru
+			CodeEditor.Document.SetText(Microsoft.UI.Text.TextSetOptions.None, originalContent);
+
+			// Re-habilita botões/visibilidade
+			CodeViewer.Visibility = Visibility.Collapsed;
+			CodeEditor.Visibility = Visibility.Visible;
+
 			RequestEditorHighlighting();
-			_isInternalUpdate = false;
 		}
 		else
 		{
-			_syntaxViewerService.ApplySyntaxHighlighting(CodeViewer, content, ext);
+			// No modo visualização, mostramos o código transformado
+			CodeEditor.Visibility = Visibility.Collapsed;
+			CodeViewer.Visibility = Visibility.Visible;
+
+			// Highlight em cima do código transformado
+			_syntaxViewerService.ApplySyntaxHighlighting(CodeViewer, _displayedContent, ext);
 		}
 	}
 
@@ -182,8 +211,9 @@ public sealed partial class FileContentView : UserControl
 			}
 		}
 	}
+    private void OnViewOptionChanged_Number(NumberBox sender, NumberBoxValueChangedEventArgs args) => LoadContentToView();
 
-	private void BtnEdit_Click(object sender, RoutedEventArgs e)
+    private void BtnEdit_Click(object sender, RoutedEventArgs e)
 	{
 		_isEditing = true;
 
