@@ -10,8 +10,22 @@ namespace ContextWinUI.Views.Components;
 
 public sealed partial class CodeViewerControl : UserControl
 {
-	private readonly SyntaxHighlightService _syntaxViewerService;
+	// REMOVIDO: private readonly SyntaxHighlightService _syntaxViewerService;
 	private readonly CodeTransformationService _transformationService;
+
+	// NOVO: DependencyProperty para a Estratégia
+	public static readonly DependencyProperty HighlighterStrategyProperty =
+		DependencyProperty.Register(
+			nameof(HighlighterStrategy),
+			typeof(IHighlighterStrategy),
+			typeof(CodeViewerControl),
+			new PropertyMetadata(null, OnStrategyChanged));
+
+	public IHighlighterStrategy HighlighterStrategy
+	{
+		get => (IHighlighterStrategy)GetValue(HighlighterStrategyProperty);
+		set => SetValue(HighlighterStrategyProperty, value);
+	}
 
 	public static readonly DependencyProperty TextProperty =
 		DependencyProperty.Register(nameof(Text), typeof(string), typeof(CodeViewerControl), new PropertyMetadata(string.Empty, OnViewParametersChanged));
@@ -31,7 +45,6 @@ public sealed partial class CodeViewerControl : UserControl
 		set => SetValue(FileExtensionProperty, value);
 	}
 
-	// Passamos as opções de transformação como objeto de dependência
 	public static readonly DependencyProperty TransformOptionsProperty =
 		DependencyProperty.Register(nameof(TransformOptions), typeof(CodeTransformationService.TransformationOptions), typeof(CodeViewerControl), new PropertyMetadata(null, OnViewParametersChanged));
 
@@ -44,9 +57,18 @@ public sealed partial class CodeViewerControl : UserControl
 	public CodeViewerControl()
 	{
 		this.InitializeComponent();
-		_syntaxViewerService = new SyntaxHighlightService();
+
+		// MODIFICADO: Define a estratégia padrão para manter compatibilidade com o resto do app
+		HighlighterStrategy = new SyntaxHighlightService();
+
 		_transformationService = new CodeTransformationService();
 		ApplyThemeAttributes();
+	}
+
+	// NOVO: Re-renderiza se a estratégia mudar dinamicamente
+	private static void OnStrategyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	{
+		((CodeViewerControl)d).RenderContent();
 	}
 
 	private static void OnViewParametersChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -58,16 +80,23 @@ public sealed partial class CodeViewerControl : UserControl
 	{
 		string originalContent = Text ?? string.Empty;
 		string ext = FileExtension ?? ".txt";
+
 		string contentToDisplay = originalContent;
 
-		// Aplica transformações (ocultar comentários, colapsar) se for C#
+		// A transformação de código continua funcionando independentemente da cor
 		if (ext == ".cs" && TransformOptions != null)
 		{
 			contentToDisplay = _transformationService.TransformCode(originalContent, TransformOptions);
 		}
 
 		UpdateLineNumbers(contentToDisplay);
-		_syntaxViewerService.ApplySyntaxHighlighting(CodeViewer, contentToDisplay, ext);
+
+		// MODIFICADO: Usa a estratégia injetada em vez do serviço privado fixo
+		if (HighlighterStrategy != null)
+		{
+			HighlighterStrategy.ApplyHighlighting(CodeViewer, contentToDisplay, ext);
+		}
+
 		ApplyThemeAttributes();
 	}
 

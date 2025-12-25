@@ -11,18 +11,16 @@ using System;
 
 namespace ContextWinUI.Services;
 
-public class SyntaxHighlightService
+public class SyntaxHighlightService : IHighlighterStrategy
 {
-	public void ApplySyntaxHighlighting(RichTextBlock richTextBlock, string content, string fileExtension)
+	public void ApplyHighlighting(RichTextBlock richTextBlock, string content, string fileExtension)
 	{
 		richTextBlock.Blocks.Clear();
-
 		if (string.IsNullOrEmpty(content)) return;
 
 		try
 		{
 			var language = GetLanguageByExtension(fileExtension);
-
 			if (language == null)
 			{
 				DisplayPlainText(richTextBlock, content);
@@ -31,6 +29,7 @@ public class SyntaxHighlightService
 
 			var styleDictionary = ThemeHelper.GetCurrentThemeStyle();
 
+			// Nota: Assumindo que RichTextBlockFormatter está disponível no escopo original
 			var formatter = new RichTextBlockFormatter(styleDictionary);
 			formatter.FormatRichTextBlock(content, language, richTextBlock);
 		}

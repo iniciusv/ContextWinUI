@@ -89,5 +89,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Features\CodeEditor\View\" />
+    <Folder Include="Utils\" />
   </ItemGroup>
 </Project>
