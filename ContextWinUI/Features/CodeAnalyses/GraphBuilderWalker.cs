@@ -1,4 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
@@ -32,29 +32,6 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 	}
 
 	// 1. Captura Declaração de Métodos
-	public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
-	{
-		var symbol = _semanticModel.GetDeclaredSymbol(node);
-		if (symbol == null) return;
-
-		var newNode = CreateNode(symbol, node.Span);
-		_graph.AddNode(newNode);
-
-		// Define contexto e visita o corpo
-		var previousContext = _contextNode;
-		_contextNode = newNode;
-
-		// Analisa parâmetros para detectar dependências de Tipos Complexos
-		foreach (var param in symbol.Parameters)
-		{
-			AddDependency(param.Type, LinkType.UsesType);
-		}
-
-		base.VisitMethodDeclaration(node);
-		_contextNode = previousContext;
-	}
-
-	// 2. Captura Declaração de Classes (para propriedades/campos)
 	public override void VisitClassDeclaration(ClassDeclarationSyntax node)
 	{
 		var symbol = _semanticModel.GetDeclaredSymbol(node);
@@ -63,29 +40,37 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 			var classNode = CreateNode(symbol, node.Span);
 			_graph.AddNode(classNode);
 
-			// Detecta Herança e Interfaces
+			var previousContext = _contextNode;
+			_contextNode = classNode; // Define contexto para capturar links da classe
+
 			if (symbol.BaseType != null && symbol.BaseType.SpecialType == SpecialType.None)
 			{
-				// Link de Herança
-				classNode.OutgoingLinks.Add(new SymbolLink(GetId(symbol.BaseType), LinkType.Inherits));
+				// Tenta pegar a localização do nome da classe base no código
+				var baseTypeSyntax = node.BaseList?.Types.FirstOrDefault();
+				var span = baseTypeSyntax?.Span ?? node.Identifier.Span;
+
+				AddLink(GetId(symbol.BaseType), LinkType.Inherits, span);
 			}
 
 			foreach (var iface in symbol.Interfaces)
 			{
-				// Indexação reversa para Interfaces
 				var ifaceId = GetId(iface);
-				classNode.OutgoingLinks.Add(new SymbolLink(ifaceId, LinkType.Implements));
+				// Aqui seria ideal achar o SyntaxNode da interface específica no BaseList para ter o Span exato
+				// Por simplificação, usaremos o Span da classe ou Identifier se não acharmos
+				AddLink(ifaceId, LinkType.Implements, node.Identifier.Span);
 
 				_graph.InterfaceImplementations.AddOrUpdate(
 					ifaceId,
 					new List<string> { classNode.Id },
 					(k, v) => { lock (v) { v.Add(classNode.Id); return v; } });
 			}
+
+			base.VisitClassDeclaration(node); // Visita filhos
+			_contextNode = previousContext;   // Restaura contexto
 		}
-		base.VisitClassDeclaration(node);
 	}
 
-	// 3. Captura Chamadas e Acessos (O núcleo da recursão)
+	// 2. Atualizar VisitInvocationExpression (Chamadas de Método)
 	public override void VisitInvocationExpression(InvocationExpressionSyntax node)
 	{
 		if (_contextNode == null) return;
@@ -95,14 +80,16 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 
 		if (symbol != null)
 		{
-			// TRUQUE PARA GENERICS: Se chamar Method<T>(), queremos o link para Method<T> definition
 			var definition = symbol.OriginalDefinition;
-			AddLink(GetId(definition), LinkType.Calls);
+			// Captura o Span da expressão inteira ou apenas do identificador do método
+			var locationSpan = node.Expression.Span;
+			AddLink(GetId(definition), LinkType.Calls, locationSpan);
 		}
 
 		base.VisitInvocationExpression(node);
 	}
 
+	// 3. Atualizar VisitIdentifierName (Acessos a Propriedades/Campos e Uso de Tipos)
 	public override void VisitIdentifierName(IdentifierNameSyntax node)
 	{
 		if (_contextNode == null) return;
@@ -110,51 +97,77 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 		var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
 		if (symbol == null) return;
 
-		// Detecta uso de Propriedades e Campos
+		// Captura a posição exata do identificador no código
+		var span = node.Span;
+
 		if (symbol is IPropertySymbol || symbol is IFieldSymbol)
 		{
-			// Ignora se for membro da própria classe sendo analisada (opcional, depende do nível de ruído desejado)
-			AddLink(GetId(symbol), LinkType.Accesses);
+			AddLink(GetId(symbol), LinkType.Accesses, span);
 
-			// Adiciona dependência ao TIPO da propriedade (ex: public User CurrentUser { get; })
-			// Isso captura "Classes Complexas"
 			var typeSymbol = (symbol as IPropertySymbol)?.Type ?? (symbol as IFieldSymbol)?.Type;
-			AddDependency(typeSymbol, LinkType.UsesType);
+			// Para dependência de tipo implícito no acesso, podemos usar o mesmo span ou ignorar
+			// AddDependency(typeSymbol, LinkType.UsesType, span); 
 		}
 
-		// Detecta instanciação de objetos: new Customer()
 		if (symbol is INamedTypeSymbol typeUsed && !IsSystemType(typeUsed))
 		{
-			AddLink(GetId(typeUsed), LinkType.UsesType);
+			AddLink(GetId(typeUsed), LinkType.UsesType, span);
 		}
 
 		base.VisitIdentifierName(node);
 	}
 
-	// --- Helpers ---
+	// 4. Atualizar VisitMethodDeclaration (Parâmetros)
+	public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
+	{
+		var symbol = _semanticModel.GetDeclaredSymbol(node);
+		if (symbol == null) return;
 
-	private void AddDependency(ITypeSymbol? type, LinkType linkType)
+		var newNode = CreateNode(symbol, node.Span);
+		_graph.AddNode(newNode);
+
+		var previousContext = _contextNode;
+		_contextNode = newNode;
+
+		// Itera sobre os parâmetros para achar dependências de tipo
+		foreach (var parameterSyntax in node.ParameterList.Parameters)
+		{
+			var paramSymbol = _semanticModel.GetDeclaredSymbol(parameterSyntax);
+			if (paramSymbol?.Type != null)
+			{
+				// Usa o Span do TIPO do parâmetro, não o parâmetro inteiro
+				var typeSpan = parameterSyntax.Type?.Span ?? parameterSyntax.Span;
+				AddDependency(paramSymbol.Type, LinkType.UsesType, typeSpan);
+			}
+		}
+
+		base.VisitMethodDeclaration(node);
+		_contextNode = previousContext;
+	}
+
+	// 5. Métodos Auxiliares Atualizados
+	private void AddDependency(ITypeSymbol? type, LinkType linkType, Microsoft.CodeAnalysis.Text.TextSpan span)
 	{
 		if (type == null || IsSystemType(type)) return;
 
-		// Se for Lista<Customer>, queremos Customer
 		if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
 		{
-			foreach (var arg in namedType.TypeArguments) AddDependency(arg, linkType);
+			foreach (var arg in namedType.TypeArguments)
+				AddDependency(arg, linkType, span);
 		}
 
-		AddLink(GetId(type), linkType);
+		AddLink(GetId(type), linkType, span);
 	}
 
-	private void AddLink(string targetId, LinkType type)
+	// A MUDANÇA CRUCIAL AQUI: Receber TextSpan
+	private void AddLink(string targetId, LinkType type, Microsoft.CodeAnalysis.Text.TextSpan span)
 	{
 		if (string.IsNullOrEmpty(targetId)) return;
-		// Evita auto-referência
-		if (targetId == _contextNode.Id) return;
+		if (targetId == _contextNode!.Id) return; // Evita auto-referência
 
-		_contextNode.OutgoingLinks.Add(new SymbolLink(targetId, type));
+		// Agora criamos o Link COM a posição exata
+		_contextNode.OutgoingLinks.Add(new SymbolLink(targetId, type, span.Start, span.Length));
 	}
-
 	private SymbolNode CreateNode(ISymbol symbol, Microsoft.CodeAnalysis.Text.TextSpan span)
 	{
 		return new SymbolNode

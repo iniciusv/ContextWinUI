@@ -1,63 +1,64 @@
-﻿using ColorCode;
+using ColorCode;
 using ColorCode.Common;
-using System.Collections.Generic;
 using ContextWinUI.Helpers;
+using System.Collections.Generic;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Features.CodeEditor; // Verifique se o namespace está correto para sua pasta
 
 public class BetterJavascript : ILanguage
 {
 	public static ILanguage Language { get; } = new BetterJavascript();
 
-	public string Id => "TypeScript"; // Usado internamente para JS/TS/Vue/React
+	public string Id => "TypeScript";
 	public string Name => "JavaScript/TypeScript";
 	public string CssClassName => "javascript";
 	public string? FirstLinePattern => null;
+
 	public IList<LanguageRule> Rules { get; }
 
 	private BetterJavascript()
 	{
 		Rules = new List<LanguageRule>
 		{
-            // Comentários de bloco
+            // Comentário de Bloco
             new LanguageRule(
 				@"/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/",
-				new Dictionary<int, string> { { 0, ScopeName.Comment } }),
-
-            // Comentários de linha
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeComment } }),
+            
+            // Comentário de Linha
             new LanguageRule(
-				@"(//).*$",
-				new Dictionary<int, string> { { 0, ScopeName.Comment } }),
+				@"(//).*?$",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeComment } }),
 
-            // Strings (aspas simples, duplas e crase/template literals)
+            // Strings (Simples, Duplas e Template Literals)
             new LanguageRule(
 				@"'[^\n]*?'(?<!\\')|""[^\n]*?""(?<!\\"")|`[^`]*`",
-				new Dictionary<int, string> { { 0, ScopeName.String } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeString } }),
 
-            // Keywords JS/TS
+            // Keywords
             new LanguageRule(
 				@"\b(abstract|any|async|await|boolean|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|module|new|null|number|of|package|private|protected|public|require|return|set|static|string|super|switch|this|throw|true|try|type|typeof|var|void|while|with|yield|undefined)\b",
-				new Dictionary<int, string> { { 0, ScopeName.Keyword } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeKeyword } }),
 
-            // Tags JSX/HTML (ex: <div, <Component)
+            // Classes (ex: <MyClass> ou new MyClass)
             new LanguageRule(
 				@"(?<=<|/)\w+",
-				new Dictionary<int, string> { { 0, ThemeHelper.ClassScope } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeClass } }), // CORRIGIDO
 
-            // Decorators (ex: @Component)
+            // Decorators/Attributes (@Component)
             new LanguageRule(
 				@"@\w+",
-				new Dictionary<int, string> { { 0, ThemeHelper.AttributeScope } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeAttribute } }), // CORRIGIDO
 
-            // Funções invocadas ou declaradas
+            // Métodos (palavra antes de parêntese)
             new LanguageRule(
 				@"\b[\w]+(?=\s*\()",
-				new Dictionary<int, string> { { 0, ThemeHelper.MethodScope } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeMethod } }), // CORRIGIDO
 
             // Números
             new LanguageRule(
 				@"\b\d+(\.\d+)?\b",
-				new Dictionary<int, string> { { 0, ScopeName.Number } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeNumber } }),
 		};
 	}
 

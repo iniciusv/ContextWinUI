@@ -1,4 +1,4 @@
-﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
@@ -206,48 +206,57 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	/// Preenche um nó de MÉTODO com suas dependências recursivas.
 	/// Operação: Algoritmo de busca em Grafo (BFS/DFS) em memória.
 	/// </summary>
+	// ARQUIVO: DependencyAnalysisOrchestrator.cs
+
 	public async Task EnrichMethodFlowAsync(FileSystemItem item, string projectPath)
 	{
-		// [OTIMIZAÇÃO 1] Cache Visual
-		// Se já expandiu e tem filhos, não faz nada. 
-		// Isso evita reprocessar se o usuário fecha e abre o nó.
+		// Se já tiver filhos carregados, não faz nada (evita recarregar)
 		if (item.Children.Any()) return;
 
-		await Task.Yield(); // Libera UI thread
+		// Cede a vez para a UI não travar antes de processar
+		await Task.Yield();
 
+		// Obtém o grafo (já em cache se disponível)
 		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
-		var methodId = item.MethodSignature;
 
-		// Lookup O(1)
+		// Identifica o nó correspondente ao item clicado
+		var methodId = item.MethodSignature;
 		if (string.IsNullOrEmpty(methodId) || !graph.Nodes.TryGetValue(methodId, out var startNode))
 			return;
 
-		// [OTIMIZAÇÃO 2] Acesso Direto (Sem Recursão)
-		// Em vez de chamar _trackerService.GetDeepDependencies (que percorre o mundo todo),
-		// olhamos apenas para os links que saem DESTE nó.
-		var directLinks = startNode.OutgoingLinks;
+		// ----------------------------------------------------------------------------------
+		// REFATORAÇÃO AQUI:
+		// Como agora o SymbolLink guarda posições (Start/Length), podemos ter múltiplos links
+		// apontando para o mesmo TargetId (ex: duas chamadas ao mesmo método).
+		// Para a Árvore Visual, queremos apenas itens únicos, então agrupamos pelo TargetId.
+		// ----------------------------------------------------------------------------------
+		var uniqueLinks = startNode.OutgoingLinks
+			.GroupBy(link => link.TargetId)
+			.Select(group => group.First()) // Pega um representante do grupo
+			.ToList();
 
-		if (!directLinks.Any()) return;
+		if (!uniqueLinks.Any()) return;
 
-		// Prepara listas em memória (fora da UI Thread)
-		var flowItems = new List<FileSystemItem>();
-		var dependencyItems = new List<FileSystemItem>();
+		var flowItems = new List<FileSystemItem>();       // Chamadas de métodos/acessos
+		var dependencyItems = new List<FileSystemItem>(); // Tipos utilizados
 
-		foreach (var link in directLinks)
+		foreach (var link in uniqueLinks)
 		{
-			// Resolve o nó alvo (O(1))
+			// Tenta achar o nó destino no grafo
 			if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
 			{
+				// Categoria 1: Fluxo de Execução (Chamadas e Acessos)
 				if (link.Type == LinkType.Calls || link.Type == LinkType.Accesses)
 				{
+					// Ícone diferente se for Método (cubo roxo) ou Propriedade (chave inglesa)
 					string icon = targetNode.Type == SymbolType.Method ? "\uF158" : "\uE946";
-					var child = CreateItemFromNode(targetNode, FileSystemItemType.Method, icon);
 
-					// Marca dependências diretas automaticamente para facilitar a vida do usuário
-					child.IsChecked = true;
+					var child = CreateItemFromNode(targetNode, FileSystemItemType.Method, icon);
+					child.IsChecked = true; // Marca por padrão para facilitar seleção de contexto
 					flowItems.Add(child);
 				}
-				else if (link.Type == LinkType.UsesType)
+				// Categoria 2: Dependências de Tipos (UsesType, Inherits, etc)
+				else if (link.Type == LinkType.UsesType || link.Type == LinkType.Inherits || link.Type == LinkType.Implements)
 				{
 					var child = CreateItemFromNode(targetNode, FileSystemItemType.Dependency, "\uE972");
 					child.IsChecked = true;
@@ -256,33 +265,38 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 		}
 
-		// [OTIMIZAÇÃO 3] Batch Update na UI
-		// Só voltamos para a Thread principal para desenhar
+		// Atualiza a UI na Thread Principal
 		Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
 		{
-			// Grupo Lógico: Fluxo
+			// Adiciona grupo "Chamadas & Acessos" se houver itens
 			if (flowItems.Count > 0)
 			{
 				var flowGroup = _itemFactory.CreateWrapper($"{item.FullPath}::flow", FileSystemItemType.LogicalGroup, "\uE80D");
 				flowGroup.SharedState.Name = "Chamadas & Acessos";
-				foreach (var child in flowItems) flowGroup.Children.Add(child);
+
+				foreach (var child in flowItems)
+					flowGroup.Children.Add(child);
+
 				item.Children.Add(flowGroup);
 			}
 
-			// Grupo Lógico: Tipos
+			// Adiciona grupo "Tipos Usados" se houver itens
 			if (dependencyItems.Count > 0)
 			{
 				var depsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
 				depsGroup.SharedState.Name = "Tipos Usados";
-				foreach (var child in dependencyItems) depsGroup.Children.Add(child);
+
+				foreach (var child in dependencyItems)
+					depsGroup.Children.Add(child);
+
 				item.Children.Add(depsGroup);
 			}
 
-			// Expande o item se houve algo adicionado
-			if (item.Children.Any()) item.IsExpanded = true;
+			// Expande o item pai para mostrar os resultados
+			if (item.Children.Any())
+				item.IsExpanded = true;
 		});
 	}
-
 	/// <summary>
 	/// Constrói o texto final para o LLM.
 	/// Operação: Lê arquivos do disco (IO) mas usa coordenadas do Grafo para cortar o texto (Slicing) em vez de Parsing.

@@ -1,9 +1,6 @@
 // ARQUIVO: RoslynHighlightService.cs
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using ContextWinUI.Features.CodeEditor;
+using ContextWinUI.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,6 +10,10 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Windows.UI;
 
 namespace ContextWinUI.Services;
@@ -38,9 +39,11 @@ public class RoslynHighlightService
 		}
 	}
 
-	public async Task<List<HighlightSpan>> CalculateHighlightsAsync(string text, ColorCode.Styling.StyleDictionary theme, bool isDark)
+	public async Task<List<HighlightSpan>> CalculateHighlightsAsync(string text, bool isDark)
 	{
 		if (string.IsNullOrWhiteSpace(text)) return new List<HighlightSpan>();
+
+		var theme = ThemeHelper.GetCurrentThemeStyle();
 
 		return await Task.Run(async () =>
 		{
@@ -64,10 +67,10 @@ public class RoslynHighlightService
 			// 3. Mapear classificações do Roslyn para Cores
 			foreach (var span in classifiedSpans)
 			{
-				var color = GetColorForClassification(span.ClassificationType, theme, isDark);
+				var color = GetColorForClassification(span.ClassificationType, theme);
 
 				// Só adiciona se a cor for diferente da padrão (otimização)
-				if (color != Colors.Transparent)
+				if (color.A > 0)
 				{
 					highlights.Add(new HighlightSpan
 					{
@@ -77,60 +80,53 @@ public class RoslynHighlightService
 					});
 				}
 			}
-
 			return highlights;
 		});
 	}
 
-	private Color GetColorForClassification(string classificationType, ColorCode.Styling.StyleDictionary theme, bool isDark)
+	private Color GetColorForClassification(string classificationType, ColorCode.Styling.StyleDictionary theme)
 	{
-		// Helper para buscar do tema ou usar fallback
-		Color C(string scope, Color fallback)
+		Color GetThemeColor(string scope)
 		{
 			if (theme.Contains(scope))
-				return ContextWinUI.Helpers.ThemeHelper.GetColorFromHex(theme[scope].Foreground);
-			return fallback;
+			{
+				return ThemeHelper.GetColorFromHex(theme[scope].Foreground);
+			}
+			// Retorna transparente se não achar, para manter a cor padrão do texto
+			return Colors.Transparent;
 		}
 
-		// Mapeamento: Roslyn Classification Type -> VS Code Colors
-		// Baseado no VS Code Dark+ (Dark) e Visual Studio Light (Light)
 		return classificationType switch
 		{
-			// Keywords & Control
-			ClassificationTypeNames.Keyword => C("Keyword", isDark ? Color.FromArgb(255, 86, 156, 214) : Color.FromArgb(255, 0, 0, 255)),
-			ClassificationTypeNames.ControlKeyword => C("Control Keyword", isDark ? Color.FromArgb(255, 197, 134, 192) : Color.FromArgb(255, 143, 8, 196)),
-			ClassificationTypeNames.Operator => isDark ? Color.FromArgb(255, 212, 212, 212) : Colors.Black,
-			ClassificationTypeNames.Punctuation => isDark ? Color.FromArgb(255, 255, 215, 0) : Colors.Black, // Gold no Dark para destaque
+			ClassificationTypeNames.Keyword => GetThemeColor(ThemeHelper.ScopeKeyword),
+			ClassificationTypeNames.ControlKeyword => GetThemeColor(ThemeHelper.ScopeControlKeyword),
 
-			// Strings & Characters
-			ClassificationTypeNames.StringLiteral => C("String", isDark ? Color.FromArgb(255, 206, 145, 120) : Color.FromArgb(255, 163, 21, 21)),
-			ClassificationTypeNames.VerbatimStringLiteral => C("String", isDark ? Color.FromArgb(255, 206, 145, 120) : Color.FromArgb(255, 163, 21, 21)),
+			ClassificationTypeNames.Operator => GetThemeColor(ThemeHelper.ScopeOperator),
+			ClassificationTypeNames.Punctuation => GetThemeColor(ThemeHelper.ScopePunctuation),
 
-			// Classes, Structs, Interfaces
-			ClassificationTypeNames.ClassName => C("Class", isDark ? Color.FromArgb(255, 78, 201, 176) : Color.FromArgb(255, 43, 145, 175)),
-			ClassificationTypeNames.StructName => C("Struct", isDark ? Color.FromArgb(255, 134, 198, 145) : Color.FromArgb(255, 43, 145, 175)),
-			ClassificationTypeNames.InterfaceName => C("Interface Name", isDark ? Color.FromArgb(255, 184, 215, 163) : Color.FromArgb(255, 43, 145, 175)),
-			ClassificationTypeNames.EnumName => C("Enum", isDark ? Color.FromArgb(255, 184, 215, 163) : Color.FromArgb(255, 43, 145, 175)),
+			ClassificationTypeNames.StringLiteral => GetThemeColor(ThemeHelper.ScopeString),
+			ClassificationTypeNames.VerbatimStringLiteral => GetThemeColor(ThemeHelper.ScopeString),
 
-			// Members
-			ClassificationTypeNames.MethodName => C("Method Name", isDark ? Color.FromArgb(255, 220, 220, 170) : Color.FromArgb(255, 116, 83, 31)),
-			ClassificationTypeNames.ExtensionMethodName => C("Method Name", isDark ? Color.FromArgb(255, 220, 220, 170) : Color.FromArgb(255, 116, 83, 31)),
-			ClassificationTypeNames.PropertyName => isDark ? Colors.White : Colors.Black, // VS Code geralmente deixa propriedades em branco/preto
-			ClassificationTypeNames.FieldName => isDark ? Color.FromArgb(255, 156, 220, 254) : Colors.Black,
-			ClassificationTypeNames.ConstantName => isDark ? Color.FromArgb(255, 156, 220, 254) : Colors.Black,
+			ClassificationTypeNames.ClassName => GetThemeColor(ThemeHelper.ScopeClass),
+			ClassificationTypeNames.StructName => GetThemeColor(ThemeHelper.ScopeStruct),
+			ClassificationTypeNames.InterfaceName => GetThemeColor(ThemeHelper.ScopeInterface),
+			ClassificationTypeNames.EnumName => GetThemeColor(ThemeHelper.ScopeEnum),
 
-			// Variables & Parameters
-			ClassificationTypeNames.ParameterName => C("Parameter", isDark ? Color.FromArgb(255, 156, 220, 254) : Color.FromArgb(255, 31, 55, 127)),
-			ClassificationTypeNames.LocalName => C("Local Variable", isDark ? Color.FromArgb(255, 156, 220, 254) : Color.FromArgb(255, 31, 55, 127)),
+			ClassificationTypeNames.MethodName => GetThemeColor(ThemeHelper.ScopeMethod),
+			ClassificationTypeNames.ExtensionMethodName => GetThemeColor(ThemeHelper.ScopeMethod),
 
-			// Comments
-			ClassificationTypeNames.Comment => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 0, 128, 0)),
-			ClassificationTypeNames.XmlDocCommentText => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 0, 128, 0)),
-			ClassificationTypeNames.XmlDocCommentAttributeName => C("Comment", isDark ? Color.FromArgb(255, 106, 153, 85) : Color.FromArgb(255, 128, 128, 128)),
+			ClassificationTypeNames.PropertyName => GetThemeColor(ThemeHelper.ScopeProperty),
+			ClassificationTypeNames.FieldName => GetThemeColor(ThemeHelper.ScopeField),
+			ClassificationTypeNames.ConstantName => GetThemeColor(ThemeHelper.ScopeField),
 
-			// Misc
-			ClassificationTypeNames.NumericLiteral => C("Number", isDark ? Color.FromArgb(255, 181, 206, 168) : Colors.Black),
-			ClassificationTypeNames.PreprocessorKeyword => C("Keyword", isDark ? Color.FromArgb(255, 155, 155, 155) : Colors.Gray),
+			ClassificationTypeNames.ParameterName => GetThemeColor(ThemeHelper.ScopeParameter),
+			ClassificationTypeNames.LocalName => GetThemeColor(ThemeHelper.ScopeVariable),
+
+			ClassificationTypeNames.Comment => GetThemeColor(ThemeHelper.ScopeComment),
+			ClassificationTypeNames.XmlDocCommentText => GetThemeColor(ThemeHelper.ScopeComment),
+
+			ClassificationTypeNames.NumericLiteral => GetThemeColor(ThemeHelper.ScopeNumber),
+			ClassificationTypeNames.PreprocessorKeyword => GetThemeColor(ThemeHelper.ScopePreprocessor),
 
 			_ => Colors.Transparent
 		};

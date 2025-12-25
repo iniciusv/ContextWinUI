@@ -1,8 +1,9 @@
-﻿// ==================== ContextWinUI\Features\CodeEditor\SyntaxHighlightService.cs ====================
+// ==================== ContextWinUI\Features\CodeEditor\SyntaxHighlightService.cs ====================
 
 using ColorCode;
 using ColorCode.Common;
 using ColorCode.Styling;
+using ContextWinUI.Features.CodeEditor;
 using ContextWinUI.Helpers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;

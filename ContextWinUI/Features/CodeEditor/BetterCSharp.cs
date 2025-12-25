@@ -1,84 +1,101 @@
-﻿using ColorCode;
+using ColorCode;
 using ColorCode.Common;
-using System.Collections.Generic;
 using ContextWinUI.Helpers;
+using System.Collections.Generic;
 
-namespace ContextWinUI.Services;
+namespace ContextWinUI.Features.CodeEditor; // Ajuste o namespace conforme sua pasta
 
-/// <summary>
-/// Implementação customizada de ILanguage para C#.
-/// Implementamos a interface diretamente para evitar erros de referência de assembly.
-/// </summary>
 public class BetterCSharp : ILanguage
 {
-	// Singleton instance para fácil acesso
 	public static ILanguage Language { get; } = new BetterCSharp();
 
-	// Propriedades da Interface ILanguage
 	public string Id => LanguageId.CSharp;
 	public string Name => "C# (Enhanced)";
 	public string CssClassName => "csharp";
 	public string? FirstLinePattern => null;
+
 	public IList<LanguageRule> Rules { get; }
 
-	// Construtor privado onde definimos as regras
 	private BetterCSharp()
 	{
 		Rules = new List<LanguageRule>
 		{
-            // 1. Comentários
+            // Comentários de Documentação XML (/// summary)
+            new LanguageRule(
+				@"(///)(?:\s*<.+>)?(?:.+)?",
+				new Dictionary<int, string>
+				{
+					{ 1, ThemeHelper.ScopeComment },
+					{ 0, ThemeHelper.ScopeComment }
+				}),
+
+            // Comentários de Bloco /* ... */
             new LanguageRule(
 				@"/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/",
-				new Dictionary<int, string> { { 0, ScopeName.Comment } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeComment } }),
 
-			new LanguageRule(
-				@"(//.*?)\r?$",
-				new Dictionary<int, string> { { 0, ScopeName.Comment } }),
+            // Comentários de Linha // ...
+            new LanguageRule(
+				@"(//).*?$",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeComment } }),
 
-            // 2. Strings
+            // Strings Verbatim @"..."
+            new LanguageRule(
+				@"(?s)@""(?:""""|[^""])*""(?!"")",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeString } }),
+
+            // Strings Interpoladas $""
+            new LanguageRule(
+				@"(?s)\$""(?:\\""|[^""])*""(?!"")",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeString } }),
+
+            // Strings Normais "..."
+            new LanguageRule(
+				@"(?s)""(?:\\""|[^""])*""(?!"")",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeString } }),
+
+            // Char 'c'
             new LanguageRule(
 				@"'[^\n]*?'(?<!\\')",
-				new Dictionary<int, string> { { 0, ScopeName.String } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeString } }),
 
-			new LanguageRule(
-				@"(?s)@""(?:""""|[^""])*""(?!"")",
-				new Dictionary<int, string> { { 0, ScopeName.StringCSharpVerbatim } }),
-
-			new LanguageRule(
-				@"(?s)""(?:\\""|[^""])*""(?!"")",
-				new Dictionary<int, string> { { 0, ScopeName.String } }),
-
-            // 3. Keywords
+            // Palavras-chave de Controle (if, else, return, etc) - Roxo no VS
             new LanguageRule(
-				@"\b(abstract|as|async|await|base|bool|break|byte|case|catch|char|checked|class|const|continue|decimal|default|delegate|do|double|else|enum|event|explicit|extern|false|finally|fixed|float|for|foreach|get|goto|if|implicit|in|int|interface|internal|is|lock|long|namespace|new|null|object|operator|out|override|params|private|protected|public|readonly|ref|return|sbyte|sealed|set|short|sizeof|stackalloc|static|string|struct|switch|this|throw|true|try|typeof|uint|ulong|unchecked|unsafe|ushort|using|var|virtual|void|volatile|while|record|init)\b",
-				new Dictionary<int, string> { { 0, ScopeName.Keyword } }),
+				@"\b(break|case|continue|default|do|else|for|foreach|goto|if|return|switch|throw|try|catch|finally|while|yield|await)\b",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeControlKeyword } }),
 
-            // 4. Interfaces (Usando ThemeHelper.InterfaceScope)
+            // Palavras-chave Gerais (public, static, void, etc) - Azul no VS
+            new LanguageRule(
+				@"\b(abstract|as|async|base|bool|byte|char|checked|class|const|decimal|delegate|double|enum|event|explicit|extern|false|fixed|float|get|implicit|in|int|interface|internal|is|lock|long|namespace|new|null|object|operator|out|override|params|private|protected|public|readonly|ref|sbyte|sealed|set|short|sizeof|stackalloc|static|string|struct|this|true|typeof|uint|ulong|unchecked|unsafe|ushort|using|var|virtual|void|volatile|record|init)\b",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeKeyword } }),
+
+            // Interfaces (Começa com I maiúsculo seguido de outra maiúscula)
             new LanguageRule(
 				@"\bI[A-Z]\w*\b",
-				new Dictionary<int, string> { { 0, ThemeHelper.InterfaceScope } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeInterface } }),
 
-            // 5. Métodos (Usando ThemeHelper.MethodScope)
-            new LanguageRule(
-				@"\b[\w]+(?=\s*\()",
-				new Dictionary<int, string> { { 0, ThemeHelper.MethodScope } }),
-
-            // 6. Classes (Usando ThemeHelper.ClassScope)
+            // Classes (Começa com maiúscula, excluindo palavras-chave)
             new LanguageRule(
 				@"\b[A-Z]\w*\b",
-				new Dictionary<int, string> { { 0, ThemeHelper.ClassScope } }),
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeClass } }),
 
-            // 7. Números
+            // Métodos (Palavra antes de um parêntese de abertura)
             new LanguageRule(
-				@"\b\d+(\.\d+)?(f|d|m|u|l)?\b",
-				new Dictionary<int, string> { { 0, ScopeName.Number } }),
+				@"\b[\w]+(?=\s*\()",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeMethod } }),
+
+            // Atributos [Attribute]
+            new LanguageRule(
+				@"\[\s*\w+(?:\(.*\))?\s*\]",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeAttribute } }),
+
+            // Números (Hex, Float, Int)
+            new LanguageRule(
+				@"\b0x[0-9a-fA-F]+\b|(\b\d+(\.[0-9]+)?(f|d|m|u|l)?\b)",
+				new Dictionary<int, string> { { 0, ThemeHelper.ScopeNumber } }),
 		};
 	}
 
-	/// <summary>
-	/// Método necessário para algumas versões do ILanguage.
-	/// Verifica se a linguagem corresponde a um alias (ex: "cs").
-	/// </summary>
 	public bool HasAlias(string lang)
 	{
 		switch (lang.ToLower())

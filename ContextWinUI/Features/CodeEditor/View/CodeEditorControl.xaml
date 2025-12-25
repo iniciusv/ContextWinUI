@@ -1,0 +1,52 @@
+<UserControl
+    x:Class="ContextWinUI.Views.Components.CodeEditorControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
+		<ScrollViewer x:Name="EditorScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      ZoomMode="Enabled"
+                      MinZoomFactor="0.5"
+                      MaxZoomFactor="4.0"
+                      HorizontalContentAlignment="Left">
+			<Grid Margin="0,0,20,20">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="Auto" MinWidth="40"/>
+					<ColumnDefinition Width="*"/>
+				</Grid.ColumnDefinitions>
+
+				<TextBlock x:Name="LineNumbersDisplay"
+                           Grid.Column="0"
+                           FontFamily="Consolas, Courier New, Monospace"
+                           FontSize="14"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumLowBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
+                           TextAlignment="Right"
+                           Margin="0,4,12,0"
+                           IsHitTestVisible="False"/>
+
+				<RichEditBox x:Name="CodeEditor"
+                             Grid.Column="1"
+                             IsSpellCheckEnabled="False"
+                             IsTextPredictionEnabled="False"
+                             FontFamily="Consolas, Courier New, Monospace"
+                             FontSize="14"
+                             AcceptsReturn="True"
+                             BorderThickness="0"
+                             HorizontalAlignment="Stretch"
+                             VerticalAlignment="Stretch"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled" 
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             TextWrapping="NoWrap"
+                             TextChanged="CodeEditor_TextChanged"
+                             KeyDown="CodeEditor_KeyDown"/>
+			</Grid>
+		</ScrollViewer>
+	</Grid>
+</UserControl>

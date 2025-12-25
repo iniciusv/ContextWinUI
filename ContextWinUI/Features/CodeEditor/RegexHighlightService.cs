@@ -1,4 +1,4 @@
-﻿// ARQUIVO: Services/RegexHighlightService.cs
+// ARQUIVO: Services/RegexHighlightService.cs
 using ColorCode.Styling;
 using ContextWinUI.Features.CodeEditor;
 using ContextWinUI.Helpers;
@@ -81,7 +81,7 @@ namespace ContextWinUI.Services
 					rules.Add(new SimpleRule(stringPattern, "String"));
 					rules.Add(new SimpleRule(@"\b(const|let|var|function|class|import|export|from|return|if|else|switch|case|break|new|this|async|await)\b", "Keyword"));
 					rules.Add(new SimpleRule(@"\b\d+(\.\d+)?\b", "Number"));
-					rules.Add(new SimpleRule(@"\b[A-Z]\w+\b", ThemeHelper.ClassScope));
+					rules.Add(new SimpleRule(@"\b[A-Z]\w+\b", ThemeHelper.ScopeClass));
 					break;
 
 				case ".razor":
@@ -91,7 +91,7 @@ namespace ContextWinUI.Services
 					rules.Add(new SimpleRule("", "Comment"));
 					rules.Add(new SimpleRule(stringPattern, "String"));
 					rules.Add(new SimpleRule(xmlTagPattern, "Keyword")); // Tags como Keyword (Azul)
-					rules.Add(new SimpleRule(xmlAttributePattern, ThemeHelper.AttributeScope));
+					rules.Add(new SimpleRule(xmlAttributePattern, ThemeHelper.ScopeAttribute));
 					rules.Add(new SimpleRule(@"@\w+", "Control Keyword")); // Razor syntax (@code, @foreach)
 					rules.Add(new SimpleRule(@"@\{[\s\S]*?\}", "Unknown")); // Bloco Razor (difícil parsear via regex, mas pode tentar)
 					break;
@@ -104,7 +104,7 @@ namespace ContextWinUI.Services
 					rules.Add(new SimpleRule("", "Comment"));
 					rules.Add(new SimpleRule(stringPattern, "String"));
 					rules.Add(new SimpleRule("</?[\\w:.]+", "Keyword")); // Tag name com namespace
-					rules.Add(new SimpleRule("(?<=\\s)[\\w:.]+(?==)", ThemeHelper.AttributeScope)); // Atributo
+					rules.Add(new SimpleRule("(?<=\\s)[\\w:.]+(?==)", ThemeHelper.ScopeAttribute)); // Atributo
 					break;
 
 				case ".json":

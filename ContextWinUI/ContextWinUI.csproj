@@ -87,4 +87,7 @@
   <ItemGroup>
     <None Include="C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\.editorconfig" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Features\CodeEditor\View\" />
+  </ItemGroup>
 </Project>
