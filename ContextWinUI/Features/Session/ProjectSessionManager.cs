@@ -4,6 +4,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage.Pickers;
 using Windows.UI;
@@ -143,38 +144,106 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
-		PrePrompt = cache.PrePrompt ?? string.Empty;
-		OmitUsings = cache.OmitUsings;
-		OmitNamespaces = cache.OmitNamespaces;
-		OmitComments = cache.OmitComments;
-		OmitEmptyLines = cache.OmitEmptyLines;
-		IncludeStructure = cache.IncludeStructure;
-		StructureOnlyFolders = cache.StructureOnlyFolders;
+		// ... (Configurações globais: PrePrompt, OmitUsings, etc permanecem iguais)
 
-		// Importante: Limpar tags antigas antes de aplicar as novas do arquivo
-		var allItems = _itemFactory.GetAllStates();
-		foreach (var item in allItems)
-		{
-			// Opcional: Você pode querer limpar tudo ou fazer merge. 
-			// Para "usar o arquivo de contexto", geralmente limpamos o estado atual primeiro ou sobrescrevemos.
-			// Aqui estamos assumindo sobrescrever apenas os que estão no arquivo:
-		}
+		// 1. Dicionário de arquivos atuais no disco (Key: Caminho Relativo, Value: Wrapper)
+		var currentFilesOnDisk = _itemFactory.GetAllStates()
+			.ToDictionary(
+				k => Path.GetRelativePath(rootPath, k.FullPath),
+				v => _itemFactory.CreateWrapper(v.FullPath, FileSystemItemType.File)
+			);
+
+		// Lista de arquivos do cache que não foram encontrados no caminho original (Arquivos Perdidos)
+		var missingCacheEntries = new List<FileMetadataDto>();
 
 		foreach (var fileDto in cache.Files)
 		{
-			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
-			bool exists = File.Exists(fullPath) || Directory.Exists(fullPath);
-			if (exists)
+			// Tenta achar pelo caminho exato
+			if (currentFilesOnDisk.TryGetValue(fileDto.RelativePath, out var wrapper))
 			{
-				var wrapper = _itemFactory.CreateWrapper(fullPath, FileSystemItemType.File);
-				wrapper.SharedState.IsIgnored = fileDto.IsIgnored;
-				wrapper.SharedState.Tags.Clear();
-				foreach (var tag in fileDto.Tags)
-				{
-					wrapper.SharedState.Tags.Add(tag);
-				}
+				// CAMINHO EXATO: Aplica tags diretamente
+				ApplyTagsToWrapper(wrapper, fileDto);
+				// Remove da lista de processamento pois já foi resolvido
+				currentFilesOnDisk.Remove(fileDto.RelativePath);
+			}
+			else
+			{
+				// CAMINHO NÃO ENCONTRADO: Adiciona à lista de "Perdidos e Achados"
+				missingCacheEntries.Add(fileDto);
 			}
 		}
+
+		// 2. Tentar recuperar arquivos movidos (Heurística de Hash)
+		if (missingCacheEntries.Any() && currentFilesOnDisk.Any())
+		{
+			NotifyStatus($"Tentando recuperar {missingCacheEntries.Count} arquivos movidos...");
+
+			// Para cada arquivo que sobrou no disco (que não tinha tags associadas via caminho)
+			// Precisamos calcular o hash dele agora para comparar
+
+			// Otimização: Agrupar por Tamanho do arquivo primeiro (muito mais rápido que hash)
+			var diskFilesBySize = currentFilesOnDisk.Values
+				.Where(x => x.SharedState.FileSize.HasValue)
+				.GroupBy(x => x.SharedState.FileSize.Value)
+				.ToDictionary(g => g.Key, g => g.ToList());
+
+			int recoveredCount = 0;
+
+			foreach (var lostFile in missingCacheEntries)
+			{
+				// Se não temos arquivos no disco com esse tamanho, impossível ser o mesmo arquivo
+				if (!diskFilesBySize.TryGetValue(lostFile.FileSize, out var candidates))
+					continue;
+
+				// Se o hash do cache for nulo/vazio, não dá pra comparar
+				if (string.IsNullOrEmpty(lostFile.ContentHash))
+					continue;
+
+				// Procura entre os candidatos (mesmo tamanho) um com o mesmo Hash
+				foreach (var candidate in candidates)
+				{
+					// Calcula o hash do arquivo no disco AGORA
+					var currentHash = ComputeFileHash(candidate.FullPath); // Requer método auxiliar ou injeção
+
+					if (currentHash == lostFile.ContentHash)
+					{
+						// ACHAMOS! O arquivo foi movido/renomeado
+						ApplyTagsToWrapper(candidate, lostFile);
+						recoveredCount++;
+
+						// Remove da lista de candidatos para evitar duplicar tags se houver arquivos idênticos
+						candidates.Remove(candidate);
+						break;
+					}
+				}
+			}
+
+			if (recoveredCount > 0)
+				NotifyStatus($"Recuperadas tags de {recoveredCount} arquivos movidos.");
+		}
+	}
+
+	// Método auxiliar para evitar repetição de código
+	private void ApplyTagsToWrapper(FileSystemItem wrapper, FileMetadataDto dto)
+	{
+		wrapper.SharedState.IsIgnored = dto.IsIgnored;
+		wrapper.SharedState.Tags.Clear();
+		foreach (var tag in dto.Tags)
+		{
+			wrapper.SharedState.Tags.Add(tag);
+		}
+	}
+
+	// Você precisará duplicar o ComputeFileHash aqui ou injetar um serviço de Hashing
+	private string ComputeFileHash(string filePath)
+	{
+		try
+		{
+			using var md5 = System.Security.Cryptography.MD5.Create();
+			using var stream = File.OpenRead(filePath);
+			return Convert.ToHexString(md5.ComputeHash(stream));
+		}
+		catch { return string.Empty; }
 	}
 	private string ToHex(Color c)
 	{

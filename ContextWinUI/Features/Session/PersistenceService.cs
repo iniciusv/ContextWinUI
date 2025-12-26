@@ -69,7 +69,9 @@ public class PersistenceService : IPersistenceService
 				{
 					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),
 					IsIgnored = s.IsIgnored,
-					Tags = s.Tags.ToList()
+					Tags = s.Tags.ToList(),
+					FileSize = s.FileSize ?? 0,
+					ContentHash = ComputeFileHash(s.FullPath)
 				}).ToList()
 			};
 
@@ -79,6 +81,24 @@ public class PersistenceService : IPersistenceService
 		catch (Exception)
 		{
 			throw;
+		}
+	}
+
+	private string ComputeFileHash(string filePath)
+	{
+		try
+		{
+			if (!File.Exists(filePath)) return string.Empty;
+
+			// Usamos MD5 por ser rápido, SHA256 seria mais seguro mas mais lento
+			using var md5 = MD5.Create();
+			using var stream = File.OpenRead(filePath);
+			var hash = md5.ComputeHash(stream);
+			return Convert.ToHexString(hash);
+		}
+		catch
+		{
+			return string.Empty;
 		}
 	}
 
