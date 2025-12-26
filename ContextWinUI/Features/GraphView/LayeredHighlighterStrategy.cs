@@ -108,13 +108,19 @@ namespace ContextWinUI.Features.GraphView
 					if (hasBackground)
 					{
 						// CASO A: Tem Fundo (Escopo) -> Usa Border + TextBlock (InlineUIContainer)
+
 						var textBlock = new TextBlock
 						{
 							Text = textSegment,
 							Foreground = new SolidColorBrush(fgColor),
 							FontFamily = new FontFamily(FontFamilyName),
 							FontSize = FontSizeValue,
-							// Margens zeradas para evitar aumento da altura da linha
+
+							// --- ADICIONE ISTO ---
+							LineHeight = 20, // O mesmo valor do XAML
+							LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+							// ---------------------
+
 							Margin = new Thickness(0),
 							Padding = new Thickness(0),
 							VerticalAlignment = VerticalAlignment.Center

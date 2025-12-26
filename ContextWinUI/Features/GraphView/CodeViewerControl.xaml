@@ -25,6 +25,10 @@
                            Grid.Column="0"
                            FontFamily="Consolas, Courier New, Monospace"
                            FontSize="14"
+                           
+                           LineHeight="20"
+                           LineStackingStrategy="BlockLineHeight"
+                           
                            Foreground="{ThemeResource SystemControlForegroundBaseMediumLowBrush}"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Top"
@@ -36,10 +40,10 @@
                                Grid.Column="1"
                                FontFamily="Consolas, Courier New, Monospace"
                                FontSize="14"
-               
+                               
                                LineHeight="20"
                                LineStackingStrategy="BlockLineHeight"
-               
+                               
                                IsTextSelectionEnabled="True"
                                Padding="0,12,12,12"
                                SelectionHighlightColor="{ThemeResource SystemControlHighlightAccentBrush}"/>
