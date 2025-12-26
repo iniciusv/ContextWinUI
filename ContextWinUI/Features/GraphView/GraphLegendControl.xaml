@@ -1,0 +1,58 @@
+<UserControl
+    x:Class="ContextWinUI.Features.GraphView.GraphLegendControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:ContextWinUI.ViewModels"
+    mc:Ignorable="d">
+
+    <Grid Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="Análise Granular" Style="{StaticResource SubtitleTextBlockStyle}"/>
+            <TextBlock Text="Fundo = Estrutura | Texto = Sintaxe" 
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                       Style="{StaticResource CaptionTextBlockStyle}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Spacing="16" Orientation="Horizontal" VerticalAlignment="Center">
+
+            <StackPanel>
+                <CheckBox IsChecked="{x:Bind ViewModel.ShowScopes, Mode=TwoWay}" Content="Escopos (Fundo)" FontSize="12" MinHeight="0" Padding="4,0,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,4,0,0">
+                    <Border Background="#280078D7" Padding="4,2" CornerRadius="2" ToolTipService.ToolTip="Classe">
+                        <TextBlock Text="C" FontSize="10"/>
+                    </Border>
+                    <Border Background="#28FFD700" Padding="4,2" CornerRadius="2" ToolTipService.ToolTip="Método">
+                        <TextBlock Text="M" FontSize="10"/>
+                    </Border>
+                    <Border Background="#28C832C8" Padding="4,2" CornerRadius="2" ToolTipService.ToolTip="Fluxo (If/Loops)">
+                        <TextBlock Text="F" FontSize="10"/>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <Rectangle Width="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,4"/>
+
+            <StackPanel>
+                <CheckBox IsChecked="{x:Bind ViewModel.ShowTokens, Mode=TwoWay}" Content="Sintaxe (Letra)" FontSize="12" MinHeight="0" Padding="4,0,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,4,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="4" ToolTipService.ToolTip="Palavra-chave">
+                        <Rectangle Width="8" Height="8" Fill="#569CD6"/>
+                        <TextBlock Text="Key" FontSize="10"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4" ToolTipService.ToolTip="Variável">
+                        <Rectangle Width="8" Height="8" Fill="#9CDCFE"/>
+                        <TextBlock Text="Var" FontSize="10"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

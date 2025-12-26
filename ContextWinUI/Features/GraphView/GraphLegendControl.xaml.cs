@@ -4,14 +4,14 @@ using ContextWinUI.ViewModels;
 
 namespace ContextWinUI.Features.GraphView;
 
-public sealed partial class GraphVisualizationView : UserControl
+public sealed partial class GraphLegendControl : UserControl
 {
-	// Dependency Property para receber o ViewModel do XAML Pai (MainWindow)
+	// Propriedade de Dependência para permitir Binding no XAML Pai
 	public static readonly DependencyProperty ViewModelProperty =
 		DependencyProperty.Register(
 			nameof(ViewModel),
 			typeof(GraphVisualizationViewModel),
-			typeof(GraphVisualizationView),
+			typeof(GraphLegendControl),
 			new PropertyMetadata(null));
 
 	public GraphVisualizationViewModel ViewModel
@@ -20,7 +20,7 @@ public sealed partial class GraphVisualizationView : UserControl
 		set => SetValue(ViewModelProperty, value);
 	}
 
-	public GraphVisualizationView()
+	public GraphLegendControl()
 	{
 		this.InitializeComponent();
 	}

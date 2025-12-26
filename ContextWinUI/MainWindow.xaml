@@ -5,8 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:views="using:ContextWinUI.Views"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:views="using:ContextWinUI.Views"
+    xmlns:graph="using:ContextWinUI.Features.GraphView"
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
 
@@ -80,9 +81,9 @@
             </Grid.ColumnDefinitions>
 
             <views:FileExplorerView Grid.Column="0"
-                                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
-                                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
-                                    FileSelected="OnFileExplorer_FileSelected"/>
+                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
+                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
+                    FileSelected="OnFileExplorer_FileSelected"/>
 
             <TextBlock Grid.Column="1" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
             <controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
@@ -100,8 +101,9 @@
                 </PivotItem>
 
                 <PivotItem Header="Visualizar Grafo" Margin="0">
-                    <views:GraphVisualizationView ViewModel="{x:Bind ViewModel.GraphVisualization}" />
+                    <graph:GraphVisualizationView ViewModel="{x:Bind ViewModel.GraphVisualization}" />
                 </PivotItem>
+
                 <PivotItem Header="Pré-Prompt Global" Margin="0">
                     <views:PrePromptView 
                            ViewModel="{x:Bind ViewModel.PrePrompt}"/>
@@ -112,7 +114,7 @@
             <controls:GridSplitter Grid.Column="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
             <views:ContextAnalysisView Grid.Column="4" 
-                                       ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"/>
+                                     ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"/>
         </Grid>
 
         <Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">

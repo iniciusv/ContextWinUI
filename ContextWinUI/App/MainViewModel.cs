@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
+using ContextWinUI.Features.GraphView;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
@@ -59,6 +60,9 @@ public partial class MainViewModel : ObservableObject
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 		_semanticIndexService = new SemanticIndexService();
 
+		ISyntaxAnalysisService syntaxService = new RoslynSyntaxAnalysisService();
+		IClipboardService clipboardService = new ClipboardService();
+
 		// 2. Instanciação de ViewModels Independentes ou de Dependência Circular
 		AiChanges = new AiChangesViewModel(fileSystemService, SessionManager, _semanticIndexService);
 
@@ -100,7 +104,7 @@ public partial class MainViewModel : ObservableObject
 		FileContent = new FileContentViewModel(fileSystemService);
 
 		// Agora podemos instanciar o GraphVisualization, pois ele acessa this.FileContent no construtor
-		GraphVisualization = new GraphVisualizationViewModel(this, _semanticIndexService);
+		GraphVisualization = new GraphVisualizationViewModel(this, syntaxService, clipboardService);
 		// ---------------------------------
 
 		PrePrompt = new PrePromptViewModel(SessionManager);

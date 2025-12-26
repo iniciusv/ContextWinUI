@@ -1,0 +1,39 @@
+<UserControl
+    x:Class="ContextWinUI.Features.GraphView.SnippetAnalysisView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ContextWinUI.Features.GraphView"
+    xmlns:viewmodels="using:ContextWinUI.ViewModels">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Padding="12,8" Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Button Command="{x:Bind ViewModel.PasteSnippetCommand}" Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE77F;" FontSize="16"/>
+                    <TextBlock Text="Colar da Área de Transferência"/>
+                </StackPanel>
+            </Button>
+            <TextBlock Text="Analisa estrutura e sintaxe do código colado." 
+                       VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
+        </StackPanel>
+
+        <local:CodeViewerControl 
+            Grid.Row="1"
+            Text="{x:Bind ViewModel.SnippetContent, Mode=OneWay}"
+            FileExtension=".cs"
+            HighlighterStrategy="{x:Bind ViewModel.SnippetStrategy, Mode=OneWay}" />
+
+        <StackPanel Grid.Row="1" 
+                    VerticalAlignment="Center" HorizontalAlignment="Center" 
+                    Visibility="{x:Bind ViewModel.SnippetOverlayVisibility, Mode=OneWay}"
+                    Spacing="12" Opacity="0.5" IsHitTestVisible="False">
+            <FontIcon Glyph="&#xE8C4;" FontSize="48"/>
+            <TextBlock Text="Nenhum snippet carregado" Style="{StaticResource SubtitleTextBlockStyle}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
