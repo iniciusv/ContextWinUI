@@ -144,74 +144,61 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
-		// ... (Configurações globais: PrePrompt, OmitUsings, etc permanecem iguais)
+		// 1. APLICA AS CONFIGURAÇÕES DO PRÉ-PROMPT (FALTANDO NA VERSÃO ATUAL)
+		PrePrompt = cache.PrePrompt ?? string.Empty;
+		OmitUsings = cache.OmitUsings;
+		OmitNamespaces = cache.OmitNamespaces;
+		OmitComments = cache.OmitComments;
+		OmitEmptyLines = cache.OmitEmptyLines;
+		IncludeStructure = cache.IncludeStructure;
+		StructureOnlyFolders = cache.StructureOnlyFolders;
 
-		// 1. Dicionário de arquivos atuais no disco (Key: Caminho Relativo, Value: Wrapper)
+		// 2. APLICA AS CONFIGURAÇÕES DOS ARQUIVOS (TAGS E IGNORED)
 		var currentFilesOnDisk = _itemFactory.GetAllStates()
 			.ToDictionary(
 				k => Path.GetRelativePath(rootPath, k.FullPath),
 				v => _itemFactory.CreateWrapper(v.FullPath, FileSystemItemType.File)
 			);
 
-		// Lista de arquivos do cache que não foram encontrados no caminho original (Arquivos Perdidos)
 		var missingCacheEntries = new List<FileMetadataDto>();
 
 		foreach (var fileDto in cache.Files)
 		{
-			// Tenta achar pelo caminho exato
 			if (currentFilesOnDisk.TryGetValue(fileDto.RelativePath, out var wrapper))
 			{
-				// CAMINHO EXATO: Aplica tags diretamente
 				ApplyTagsToWrapper(wrapper, fileDto);
-				// Remove da lista de processamento pois já foi resolvido
 				currentFilesOnDisk.Remove(fileDto.RelativePath);
 			}
 			else
 			{
-				// CAMINHO NÃO ENCONTRADO: Adiciona à lista de "Perdidos e Achados"
 				missingCacheEntries.Add(fileDto);
 			}
 		}
 
-		// 2. Tentar recuperar arquivos movidos (Heurística de Hash)
 		if (missingCacheEntries.Any() && currentFilesOnDisk.Any())
 		{
 			NotifyStatus($"Tentando recuperar {missingCacheEntries.Count} arquivos movidos...");
-
-			// Para cada arquivo que sobrou no disco (que não tinha tags associadas via caminho)
-			// Precisamos calcular o hash dele agora para comparar
-
-			// Otimização: Agrupar por Tamanho do arquivo primeiro (muito mais rápido que hash)
 			var diskFilesBySize = currentFilesOnDisk.Values
 				.Where(x => x.SharedState.FileSize.HasValue)
 				.GroupBy(x => x.SharedState.FileSize.Value)
 				.ToDictionary(g => g.Key, g => g.ToList());
 
 			int recoveredCount = 0;
-
 			foreach (var lostFile in missingCacheEntries)
 			{
-				// Se não temos arquivos no disco com esse tamanho, impossível ser o mesmo arquivo
 				if (!diskFilesBySize.TryGetValue(lostFile.FileSize, out var candidates))
 					continue;
 
-				// Se o hash do cache for nulo/vazio, não dá pra comparar
 				if (string.IsNullOrEmpty(lostFile.ContentHash))
 					continue;
 
-				// Procura entre os candidatos (mesmo tamanho) um com o mesmo Hash
 				foreach (var candidate in candidates)
 				{
-					// Calcula o hash do arquivo no disco AGORA
-					var currentHash = ComputeFileHash(candidate.FullPath); // Requer método auxiliar ou injeção
-
+					var currentHash = ComputeFileHash(candidate.FullPath);
 					if (currentHash == lostFile.ContentHash)
 					{
-						// ACHAMOS! O arquivo foi movido/renomeado
 						ApplyTagsToWrapper(candidate, lostFile);
 						recoveredCount++;
-
-						// Remove da lista de candidatos para evitar duplicar tags se houver arquivos idênticos
 						candidates.Remove(candidate);
 						break;
 					}
