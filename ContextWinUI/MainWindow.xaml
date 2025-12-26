@@ -10,118 +10,115 @@
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
 
-	<Window.SystemBackdrop>
-		<MicaBackdrop />
-	</Window.SystemBackdrop>
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
 
-	<Grid>
-		<Grid.RowDefinitions>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="*"/>
-			<RowDefinition Height="Auto"/>
-		</Grid.RowDefinitions>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-		<Grid Grid.Row="0" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="Auto"/>
-				<ColumnDefinition Width="Auto"/>
-				<ColumnDefinition Width="*"/>
-				<ColumnDefinition Width="Auto"/>
-			</Grid.ColumnDefinitions>
+        <Grid Grid.Row="0" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-			<Button Grid.Column="0" 
-            Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
-            ToolTipService.ToolTip="Abrir pasta do projeto">
-				<StackPanel Orientation="Horizontal" Spacing="8">
-					<FontIcon Glyph="&#xE8B7;" FontSize="16"/>
-					<TextBlock Text="Abrir"/>
-				</StackPanel>
-			</Button>
+            <Button Grid.Column="0" 
+                    Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
+                    ToolTipService.ToolTip="Abrir pasta do projeto">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE8B7;" FontSize="16"/>
+                    <TextBlock Text="Abrir"/>
+                </StackPanel>
+            </Button>
 
-			<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0">
+                <Button Command="{x:Bind ViewModel.ImportContextFileCommand}"
+                        ToolTipService.ToolTip="Importar arquivo de contexto (.json)">
+                    <FontIcon Glyph="&#xE896;" FontSize="16"/>
+                </Button>
+                <Button Command="{x:Bind ViewModel.ExportContextFileCommand}"
+                        ToolTipService.ToolTip="Exportar contexto atual para arquivo (.json)">
+                    <FontIcon Glyph="&#xE898;" FontSize="16"/>
+                </Button>
+                <Button Command="{x:Bind ViewModel.SaveWorkCommand}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Salvar tags, contexto e cache na pasta padrão">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE74E;" FontSize="16"/>
+                        <TextBlock Text="Salvar"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
 
-				<Button Command="{x:Bind ViewModel.ImportContextFileCommand}"
-                ToolTipService.ToolTip="Importar arquivo de contexto (.json)">
-					<FontIcon Glyph="&#xE896;" FontSize="16"/>
-				</Button>
+            <TextBlock Grid.Column="2" 
+                       Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
+                       VerticalAlignment="Center"
+                       Margin="16,0,0,0"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-				<Button Command="{x:Bind ViewModel.ExportContextFileCommand}"
-                ToolTipService.ToolTip="Exportar contexto atual para arquivo (.json)">
-					<FontIcon Glyph="&#xE898;" FontSize="16"/>
-				</Button>
+            <ProgressRing Grid.Column="3" 
+                          IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" 
+                          Width="20" Height="20" 
+                          Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"/>
+        </Grid>
 
-				<Button Command="{x:Bind ViewModel.SaveWorkCommand}"
-                Style="{StaticResource AccentButtonStyle}"
-                ToolTipService.ToolTip="Salvar tags, contexto e cache na pasta padrão">
-					<StackPanel Orientation="Horizontal" Spacing="8">
-						<FontIcon Glyph="&#xE74E;" FontSize="16"/>
-						<TextBlock Text="Salvar"/>
-					</StackPanel>
-				</Button>
-			</StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="450" MinWidth="250"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="350" MinWidth="250"/>
+            </Grid.ColumnDefinitions>
 
-			<TextBlock Grid.Column="2" 
-                Text="{x:Bind ViewModel.FileExplorer.CurrentPath, Mode=OneWay}"
-                VerticalAlignment="Center"
-                Margin="16,0,0,0"
-                TextTrimming="CharacterEllipsis"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            <views:FileExplorerView Grid.Column="0"
+                                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
+                                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
+                                    FileSelected="OnFileExplorer_FileSelected"/>
 
-			<ProgressRing Grid.Column="3" 
-                  IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" 
-                  Width="20" Height="20" 
-                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"/>
-		</Grid>
-		
-		<Grid Grid.Row="1">
-			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="450" MinWidth="250"/>
-				<ColumnDefinition Width="12"/>
-				<ColumnDefinition Width="*"/>
-				<ColumnDefinition Width="12"/>
-				<ColumnDefinition Width="350" MinWidth="250"/>
-			</Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="1" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
+            <controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
-			<views:FileExplorerView Grid.Column="0"
-                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
-                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
-                    FileSelected="OnFileExplorer_FileSelected"/>
-
-			<TextBlock Grid.Column="1" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
-			<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
-
-			<Pivot Grid.Column="2">
-
-				<PivotItem Header="Arquivo Atual" Margin="0">
-					<views:FileContentView 
+            <Pivot Grid.Column="2">
+                <PivotItem Header="Arquivo Atual" Margin="0">
+                    <views:FileContentView 
                            ContentViewModel="{x:Bind ViewModel.FileContent}"
                            AnalyzeCommand="{x:Bind ViewModel.AnalyzeContextCommand}"
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
-				</PivotItem>
+                </PivotItem>
 
-				<PivotItem Header="Aplicar IA" Margin="0">
-					<views:AiChangesView ViewModel="{x:Bind ViewModel.AiChanges}" />
-				</PivotItem>
+                <PivotItem Header="Aplicar IA" Margin="0">
+                    <views:AiChangesView ViewModel="{x:Bind ViewModel.AiChanges}" />
+                </PivotItem>
 
-				<PivotItem Header="Pré-Prompt Global" Margin="0">
-					<views:PrePromptView 
+                <PivotItem Header="Visualizar Grafo" Margin="0">
+                    <views:GraphVisualizationView ViewModel="{x:Bind ViewModel.GraphVisualization}" />
+                </PivotItem>
+                <PivotItem Header="Pré-Prompt Global" Margin="0">
+                    <views:PrePromptView 
                            ViewModel="{x:Bind ViewModel.PrePrompt}"/>
-				</PivotItem>
-				
+                </PivotItem>
+            </Pivot>
 
-			</Pivot>
+            <TextBlock Grid.Column="3" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
+            <controls:GridSplitter Grid.Column="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
-			<TextBlock Grid.Column="3" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
-			<controls:GridSplitter Grid.Column="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
-
-			<views:ContextAnalysisView Grid.Column="4" 
+            <views:ContextAnalysisView Grid.Column="4" 
                                        ContextViewModel="{x:Bind ViewModel.ContextAnalysis}"/>
-		</Grid>
+        </Grid>
 
-		<Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-			<TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+        <Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                        FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-		</Grid>
-	</Grid>
+        </Grid>
+    </Grid>
 </Window>
