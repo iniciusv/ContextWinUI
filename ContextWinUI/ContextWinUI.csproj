@@ -54,6 +54,9 @@
     <Page Update="Features\GraphView\CodeViewerControl.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Update="Features\GraphView\Comparer\SnippetComparisonView.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Features\GraphView\SnippetAnalysisView.xaml">
       <SubType>Designer</SubType>
     </Page>
