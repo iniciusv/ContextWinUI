@@ -16,6 +16,7 @@ public interface IProjectSessionManager
 	string? CurrentProjectPath { get; }
 	bool IsProjectLoaded { get; }
 	System.Collections.Concurrent.ConcurrentDictionary<string, string> TagColors { get; }
+	string? ActiveContextFilePath { get; }
 
 	event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	event EventHandler<string>? StatusChanged;
@@ -24,4 +25,6 @@ public interface IProjectSessionManager
 	Task OpenProjectAsync(string path);
 	Task SaveSessionAsync();
 	void CloseProject();
+	Task LoadContextFromFileAsync(string filePath);
+	Task ExportContextAsAsync(string filePath);
 }

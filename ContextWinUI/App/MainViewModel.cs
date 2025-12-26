@@ -6,8 +6,10 @@ using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.Storage.Pickers;
 
 namespace ContextWinUI.ViewModels; // Ou namespace ContextWinUI.App, dependendo da sua preferência
 
@@ -87,6 +89,91 @@ public partial class MainViewModel : ObservableObject
 
 		RegisterEvents();
 	}
+
+	[RelayCommand]
+	private async Task ImportContextFileAsync()
+	{
+		if (!SessionManager.IsProjectLoaded)
+		{
+			StatusMessage = "Abra um projeto primeiro.";
+			return;
+		}
+
+		var openPicker = new FileOpenPicker();
+
+		// Inicialização de janela para WinUI 3
+		if (App.MainWindow != null)
+		{
+			var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+			WinRT.Interop.InitializeWithWindow.Initialize(openPicker, hWnd);
+		}
+
+		openPicker.ViewMode = PickerViewMode.List;
+		openPicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+		openPicker.FileTypeFilter.Add(".json");
+
+		var file = await openPicker.PickSingleFileAsync();
+		if (file != null)
+		{
+			IsLoading = true;
+			try
+			{
+				await SessionManager.LoadContextFromFileAsync(file.Path);
+				StatusMessage = $"Contexto importado: {file.Name}";
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Erro ao importar: {ex.Message}";
+			}
+			finally
+			{
+				IsLoading = false;
+			}
+		}
+	}
+
+	[RelayCommand]
+	private async Task ExportContextFileAsync()
+	{
+		if (!SessionManager.IsProjectLoaded)
+		{
+			StatusMessage = "Abra um projeto primeiro.";
+			return;
+		}
+
+		var savePicker = new FileSavePicker();
+
+		if (App.MainWindow != null)
+		{
+			var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+			WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hWnd);
+		}
+
+		savePicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+		savePicker.FileTypeChoices.Add("JSON Context", new List<string>() { ".json" });
+		savePicker.SuggestedFileName = "contexto_exportado";
+
+		var file = await savePicker.PickSaveFileAsync();
+		if (file != null)
+		{
+			IsLoading = true;
+			try
+			{
+				// Chama o método que criamos na interface IProjectSessionManager
+				await SessionManager.ExportContextAsAsync(file.Path);
+				StatusMessage = $"Contexto exportado para: {file.Name}";
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Erro ao exportar: {ex.Message}";
+			}
+			finally
+			{
+				IsLoading = false;
+			}
+		}
+	}
+
 
 	private void RegisterEvents()
 	{

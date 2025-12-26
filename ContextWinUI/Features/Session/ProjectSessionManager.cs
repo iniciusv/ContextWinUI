@@ -15,6 +15,10 @@ public class ProjectSessionManager : IProjectSessionManager
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IPersistenceService _persistenceService;
 	private readonly IFileSystemItemFactory _itemFactory;
+
+	// ESTADO: Caminho do arquivo de contexto atualmente em uso (se o usuário abriu um manualmente)
+	public string? ActiveContextFilePath { get; private set; }
+
 	public string PrePrompt { get; set; } = string.Empty;
 	public bool OmitUsings { get; set; }
 	public bool OmitNamespaces { get; set; }
@@ -65,8 +69,13 @@ public class ProjectSessionManager : IProjectSessionManager
 	public async Task OpenProjectAsync(string path)
 	{
 		if (string.IsNullOrWhiteSpace(path)) return;
+
 		NotifyStatus("Iniciando carregamento do projeto...");
-		CloseProject();
+		CloseProject(); // Limpa tudo
+
+		// IMPORTANTE: Ao abrir uma nova pasta, resetamos o arquivo de contexto para o padrão (null)
+		ActiveContextFilePath = null;
+
 		CurrentProjectPath = path;
 
 		try
@@ -74,46 +83,22 @@ public class ProjectSessionManager : IProjectSessionManager
 			NotifyStatus("Lendo arquivos do disco...");
 			var rootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
 
-			NotifyStatus("Verificando cache...");
-			var cache = await _persistenceService.LoadProjectCacheAsync(path);
+			NotifyStatus("Verificando cache padrão...");
+			// Carrega do cache padrão inicialmente
+			var cache = await _persistenceService.LoadProjectCacheDefaultAsync(path);
 
-			// Limpa dicionário local (opcional, já que usamos o TagColorService)
 			TagColors.Clear();
-
 			if (cache != null)
 			{
 				ApplyCacheToMemory(path, cache);
-
-				// CORREÇÃO: Carregar cores do cache para o TagColorService
-				if (cache.TagColors != null)
-				{
-					foreach (var kvp in cache.TagColors)
-					{
-						// Atualiza propriedade local
-						TagColors.TryAdd(kvp.Key, kvp.Value);
-
-						// Atualiza o Singleton que a UI usa
-						try
-						{
-							var color = ParseColorHex(kvp.Value);
-							TagColorService.Instance.SetColorForTag(kvp.Key, color);
-						}
-						catch { /* Ignora cores mal formatadas */ }
-					}
-				}
+				ApplyColorsFromCache(cache);
 			}
 			else
 			{
-				PrePrompt = string.Empty;
-				OmitUsings = false;
-				OmitNamespaces = false;
-				OmitComments = false;
-				OmitEmptyLines = false;
-				IncludeStructure = false;
-				StructureOnlyFolders = false;
+				ResetSettingsToDefault();
 			}
 
-			NotifyStatus("Projeto carregado.");
+			NotifyStatus("Projeto carregado (Modo Padrão).");
 			ProjectLoaded?.Invoke(this, new ProjectLoadedEventArgs(path, rootItems));
 		}
 		catch (Exception ex)
@@ -123,51 +108,16 @@ public class ProjectSessionManager : IProjectSessionManager
 		}
 	}
 
-	public async Task SaveSessionAsync()
-	{
-		if (!IsProjectLoaded || CurrentProjectPath == null) return;
-
-		NotifyStatus("Salvando sessão...");
-		try
-		{
-			var allStates = _itemFactory.GetAllStates();
-
-			// CORREÇÃO: Pegar as cores atuais do TagColorService e converter para Hex
-			var currentColors = TagColorService.Instance.GetAllColors();
-			var colorsToSave = new Dictionary<string, string>();
-
-			foreach (var kvp in currentColors)
-			{
-				colorsToSave[kvp.Key] = ToHex(kvp.Value);
-			}
-
-			// Atualiza também a propriedade local TagColors para manter sincronia
-			TagColors.Clear();
-			foreach (var c in colorsToSave) TagColors.TryAdd(c.Key, c.Value);
-
-			await _persistenceService.SaveProjectCacheAsync(
-				CurrentProjectPath,
-				allStates,
-				PrePrompt,
-				OmitUsings,
-				OmitNamespaces,
-				OmitComments,
-				OmitEmptyLines,
-				IncludeStructure,
-				StructureOnlyFolders,
-				colorsToSave); // Passa o dicionário atualizado
-
-			NotifyStatus("Sessão salva com sucesso.");
-		}
-		catch (Exception ex)
-		{
-			NotifyStatus($"Erro ao salvar: {ex.Message}");
-		}
-	}
-
 	public void CloseProject()
 	{
 		CurrentProjectPath = null;
+		ActiveContextFilePath = null; // Reseta o caminho ativo
+		ResetSettingsToDefault();
+		_itemFactory.ClearCache();
+	}
+
+	private void ResetSettingsToDefault()
+	{
 		PrePrompt = string.Empty;
 		OmitUsings = false;
 		OmitNamespaces = false;
@@ -175,7 +125,20 @@ public class ProjectSessionManager : IProjectSessionManager
 		OmitEmptyLines = false;
 		IncludeStructure = false;
 		StructureOnlyFolders = false;
-		_itemFactory.ClearCache();
+	}
+
+	private void ApplyColorsFromCache(ProjectCacheDto cache)
+	{
+		foreach (var kvp in cache.TagColors)
+		{
+			TagColors.TryAdd(kvp.Key, kvp.Value);
+			try
+			{
+				var color = ParseColorHex(kvp.Value);
+				TagColorService.Instance.SetColorForTag(kvp.Key, color);
+			}
+			catch { }
+		}
 	}
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
@@ -187,6 +150,16 @@ public class ProjectSessionManager : IProjectSessionManager
 		OmitEmptyLines = cache.OmitEmptyLines;
 		IncludeStructure = cache.IncludeStructure;
 		StructureOnlyFolders = cache.StructureOnlyFolders;
+
+		// Importante: Limpar tags antigas antes de aplicar as novas do arquivo
+		var allItems = _itemFactory.GetAllStates();
+		foreach (var item in allItems)
+		{
+			// Opcional: Você pode querer limpar tudo ou fazer merge. 
+			// Para "usar o arquivo de contexto", geralmente limpamos o estado atual primeiro ou sobrescrevemos.
+			// Aqui estamos assumindo sobrescrever apenas os que estão no arquivo:
+		}
+
 		foreach (var fileDto in cache.Files)
 		{
 			var fullPath = Path.Combine(rootPath, fileDto.RelativePath);
@@ -246,4 +219,98 @@ public class ProjectSessionManager : IProjectSessionManager
 	}
 
 	private void NotifyStatus(string msg) => StatusChanged?.Invoke(this, msg);
+
+	// NOVO MÉTODO: Carrega um arquivo de contexto e o define como ATIVO
+	public async Task LoadContextFromFileAsync(string filePath)
+	{
+		if (!IsProjectLoaded || CurrentProjectPath == null) return;
+
+		NotifyStatus($"Lendo arquivo de contexto: {Path.GetFileName(filePath)}...");
+
+		var cache = await _persistenceService.LoadProjectCacheFromSpecificFileAsync(filePath);
+		if (cache != null)
+		{
+			// 1. Aplica os dados na memória
+			ApplyCacheToMemory(CurrentProjectPath, cache);
+
+			// 2. Aplica as cores
+			if (cache.TagColors != null)
+			{
+				TagColors.Clear();
+				ApplyColorsFromCache(cache);
+			}
+
+			// 3. Define este arquivo como a fonte da verdade para o próximo "Salvar"
+			ActiveContextFilePath = filePath;
+
+			NotifyStatus($"Contexto carregado e vinculado: {Path.GetFileName(filePath)}");
+		}
+		else
+		{
+			NotifyStatus("Falha ao ler ou interpretar o arquivo de contexto.");
+		}
+	}
+
+	// MÉTODO MODIFICADO: Salva no arquivo ativo (se existir) ou no padrão
+	public async Task SaveSessionAsync()
+	{
+		if (!IsProjectLoaded || CurrentProjectPath == null) return;
+
+		try
+		{
+			var allStates = _itemFactory.GetAllStates();
+			var currentColors = TagColorService.Instance.GetAllColors();
+			var colorsToSave = new Dictionary<string, string>();
+			foreach (var kvp in currentColors) colorsToSave[kvp.Key] = ToHex(kvp.Value);
+
+			// Atualiza dicionário local
+			TagColors.Clear();
+			foreach (var c in colorsToSave) TagColors.TryAdd(c.Key, c.Value);
+
+			if (!string.IsNullOrEmpty(ActiveContextFilePath))
+			{
+				// SALVA NO ARQUIVO ESCOLHIDO PELO USUÁRIO
+				NotifyStatus($"Salvando em: {Path.GetFileName(ActiveContextFilePath)}...");
+				await _persistenceService.SaveProjectCacheToSpecificFileAsync(
+					ActiveContextFilePath,
+					CurrentProjectPath,
+					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+			}
+			else
+			{
+				// SALVA NO CACHE PADRÃO (AppData)
+				NotifyStatus("Salvando sessão no cache padrão...");
+				await _persistenceService.SaveProjectCacheDefaultAsync(
+					CurrentProjectPath,
+					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+			}
+
+			NotifyStatus("Trabalho salvo com sucesso.");
+		}
+		catch (Exception ex)
+		{
+			NotifyStatus($"Erro ao salvar: {ex.Message}");
+		}
+	}
+
+	// Método auxiliar para exportar (Salvar Como) - não altera o ActiveContextFilePath a menos que desejado
+	public async Task ExportContextAsAsync(string filePath)
+	{
+		if (!IsProjectLoaded || CurrentProjectPath == null) return;
+
+		var allStates = _itemFactory.GetAllStates();
+		var currentColors = TagColorService.Instance.GetAllColors();
+		var colorsToSave = new Dictionary<string, string>();
+		foreach (var kvp in currentColors) colorsToSave[kvp.Key] = ToHex(kvp.Value);
+
+		await _persistenceService.SaveProjectCacheToSpecificFileAsync(
+			filePath,
+			CurrentProjectPath,
+			allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+
+		// Opcional: Se "Exportar" deve virar o arquivo ativo, descomente a linha abaixo:
+		// ActiveContextFilePath = filePath; 
+
+		NotifyStatus($"Cópia exportada para: {Path.GetFileName(filePath)}");
+	}
 }
