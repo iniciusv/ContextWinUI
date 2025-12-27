@@ -48,8 +48,6 @@ public partial class MainViewModel : ObservableObject
 		IGitService gitService = new GitService();
 		ISelectionIOService selectionIOService = new SelectionIOService();
 		ITagManagementUiService tagService = new TagManagementUiService();
-		IClipboardService clipboardService = new ClipboardService();
-		ICodeConsolidationService consolidationService = new CodeConsolidationService();
 
 		// 2. Gestão de Sessão e Busca
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);

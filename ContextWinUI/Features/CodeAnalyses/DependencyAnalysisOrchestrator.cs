@@ -44,7 +44,8 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		// Se já tiver filhos, não faz nada (evita reprocessamento desnecessário)
 		if (item.Children.Any()) return;
 
-		var dispatcher = DispatcherQueue.GetForCurrentThread();
+		var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()	 ?? App.MainWindow.DispatcherQueue;
+
 
 		// ---------------------------------------------------------
 		// ETAPA 1: FAST TRACK (Análise Sintática Pura)
@@ -106,6 +107,10 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				{
 					foreach (var child in tempChildren) item.Children.Add(child);
 					if (tempChildren.Any()) item.IsExpanded = true;
+
+					// IMPORTANTE: Notificar que as propriedades de visibilidade mudaram
+					item.NotifyViewUpdate(nameof(item.DeepAnalyzeVisibility));
+					item.NotifyViewUpdate(nameof(item.MethodFlowVisibility));
 				}
 			});
 		}
@@ -171,15 +176,39 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		if (typeNodes.Count > 0)
 		{
 			var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types", FileSystemItemType.LogicalGroup, "\uE943");
-			typesGroup.SharedState.Name = "Tipos";
+			typesGroup.SharedState.Name = "Estrutura e Tipos Usados";
 
 			foreach (var node in typeNodes)
 			{
+				// 1. Adiciona a própria classe (a declaração)
 				var typeItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Class, "\uE943");
-				typeItem.SharedState.Name = node.Name;
-				// Tipos também podem ter assinatura se você quiser rastrear uso de tipos futuramente
+				typeItem.SharedState.Name = node.Name + " (Definição)";
 				typeItem.MethodSignature = node.Id;
 				typesGroup.Children.Add(typeItem);
+
+				// 2. Busca as dependências desta classe no Grafo
+				if (graph.Nodes.TryGetValue(node.Id, out var classNodeInGraph))
+				{
+					// Filtra links de tipos usados, herança ou interfaces
+					var dependencies = classNodeInGraph.OutgoingLinks
+						.Where(l => l.Type == LinkType.UsesType || l.Type == LinkType.Inherits || l.Type == LinkType.Implements)
+						.GroupBy(l => l.TargetId) // Evita duplicados
+						.Select(g => g.First());
+
+					foreach (var link in dependencies)
+					{
+						if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
+						{
+							// Adiciona o tipo usado como um filho ou item da lista
+							var depItem = _itemFactory.CreateWrapper($"{targetNode.FilePath}::{targetNode.Id}", FileSystemItemType.Dependency, "\uE972");
+							depItem.SharedState.Name = targetNode.Name; // Ex: "IProjectSessionManager"
+							depItem.MethodSignature = targetNode.Id;
+
+							// Você pode adicionar direto no grupo ou dentro do item da classe
+							typesGroup.Children.Add(depItem);
+						}
+					}
+				}
 			}
 			finalChildren.Add(typesGroup);
 		}

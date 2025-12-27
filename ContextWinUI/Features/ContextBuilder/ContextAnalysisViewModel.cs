@@ -112,46 +112,17 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	{
 		try
 		{
-			// Roda o processamento pesado (Roslyn/Busca no Grafo) em outra thread
+			// Apenas joga para o background a parte pesada (análise)
 			await Task.Run(async () =>
 			{
-				// Aqui o Orchestrator vai tentar popular 'node.Children'.
-				// COMO node.Children é uma ObservableCollection ligada à UI, 
-				// o Orchestrator PRECISA ser Thread-Safe ou precisamos de um truque.
-
-				// TRUQUE DE PERFORMANCE:
-				// Vamos pedir para o Orchestrator preparar os itens, mas o Orchestrator atual
-				// adiciona direto na coleção. Para não refatorar o Orchestrator inteiro agora,
-				// vamos usar o Dispatcher DENTRO da chamada se necessário, ou garantir
-				// que a coleção Children suporte acesso de background (WinUI 3 geralmente suporta, mas falha às vezes).
-
-				// A abordagem mais segura sem refatorar o Orchestrator inteiro é:
-				// Garantir que a busca do grafo (pesada) ocorra antes, e a adição visual depois.
-
-				// Como o Orchestrator atual mistura os dois, vamos envolver a chamada inteira
-				// em um try/catch e torcer para o WinUI lidar com o binding, 
-				// OU (Recomendado) -> Alterar levemente o Orchestrator para usar Dispatcher.
-
-				// Mas para resolver seu freeze AGORA:
-				// O simples fato de usarmos Task.Run aqui já tira a carga da CPU da UI Thread.
-				// O único risco é "Cross-Thread Exception" ao adicionar filhos.
-				// Se der erro, usamos _dispatcherQueue.TryEnqueue.
-
-				// Vamos assumir que precisamos voltar para a UI para tocar nos Children:
-
-				_dispatcherQueue.TryEnqueue(async () =>
-				{
-					// Voltamos para a UI Thread só para preencher os dados, 
-					// MAS garantindo que GetOrIndexProjectAsync (que é chamado dentro)
-					// já retornou do background e está cacheado.
-					await _analysisOrchestrator.EnrichFileNodeAsync(node, _sessionManager.CurrentProjectPath!);
-					RegisterItemRecursively(node);
-				});
+				// O Orquestrador agora é responsável por usar o dispatcher 
+				// apenas quando for tocar na coleção Children (UI)
+				await _analysisOrchestrator.EnrichFileNodeAsync(node, _sessionManager.CurrentProjectPath!);
 			});
 		}
 		catch (Exception ex)
 		{
-			_dispatcherQueue.TryEnqueue(() => OnStatusChanged($"Erro background: {ex.Message}"));
+			OnStatusChanged($"Erro background: {ex.Message}");
 		}
 	}
 

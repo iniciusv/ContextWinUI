@@ -1,4 +1,4 @@
-﻿// ==================== ContextWinUI\Core\Models\FileSystemItem.cs ====================
+// ==================== ContextWinUI\Core\Models\FileSystemItem.cs ====================
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
@@ -148,8 +148,29 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 		}
 	}
 
+	public void NotifyViewUpdate(string propertyName)
+	{
+		OnPropertyChanged(new PropertyChangedEventArgs(propertyName));
+	}
+
 	public void Dispose()
 	{
 		SharedState.PropertyChanged -= OnSharedStateChanged;
 	}
+	// O toolkit gera este método automaticamente para nós
+// Dentro de FileSystemItem.cs
+protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+{
+    base.OnPropertyChanged(e);
+
+    // Verifica se a propriedade que mudou foi o IsChecked
+    if (e.PropertyName == nameof(IsChecked))
+    {
+        // Propaga para os filhos
+        foreach (var child in Children)
+        {
+            child.IsChecked = this.IsChecked;
+        }
+    }
+}
 }
