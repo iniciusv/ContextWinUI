@@ -96,14 +96,6 @@
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
                 </PivotItem>
 
-                <PivotItem Header="Aplicar IA" Margin="0">
-                    <views:AiChangesView ViewModel="{x:Bind ViewModel.AiChanges}" />
-                </PivotItem>
-
-                <PivotItem Header="Visualizar Grafo" Margin="0">
-                    <graph:GraphVisualizationView ViewModel="{x:Bind ViewModel.GraphVisualization}" />
-                </PivotItem>
-
                 <PivotItem Header="Pré-Prompt Global" Margin="0">
                     <views:PrePromptView 
                            ViewModel="{x:Bind ViewModel.PrePrompt}"/>

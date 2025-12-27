@@ -51,22 +51,7 @@
     <Page Update="Features\ContextBuilder\ContextGitView.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Features\GraphView\CodeViewerControl.xaml">
-      <SubType>Designer</SubType>
-    </Page>
     <Page Update="Features\GraphView\Comparer\SnippetComparisonView.xaml">
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Update="Features\GraphView\SnippetAnalysisView.xaml">
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Update="Features\GraphView\GraphLegendControl.xaml">
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Update="Features\Parser\AiControlPanel.xaml">
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Update="Features\Parser\AiDiffViewer.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Views\Components\TagChipsControl.xaml">

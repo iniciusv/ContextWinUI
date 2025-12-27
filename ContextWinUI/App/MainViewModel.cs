@@ -27,8 +27,6 @@ public partial class MainViewModel : ObservableObject
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
 	public FileContentViewModel FileContent { get; }
-	public AiChangesViewModel AiChanges { get; }
-	public GraphVisualizationViewModel GraphVisualization { get; }
 	private readonly SemanticIndexService _semanticIndexService;
 	public IProjectSessionManager SessionManager { get; }
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
@@ -64,7 +62,6 @@ public partial class MainViewModel : ObservableObject
 		ISnippetFileRelationService relationService = new SnippetFileRelationService(syntaxService, diffEngine, similarityEngine);
 
 		// 4. Orquestradores
-		AiChanges = new AiChangesViewModel(fileSystemService, SessionManager, _semanticIndexService);
 		var dependencyTrackerService = new DependencyTrackerService();
 		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
 			_semanticIndexService,
@@ -86,15 +83,6 @@ public partial class MainViewModel : ObservableObject
 		ContextAnalysis = new ContextAnalysisViewModel(itemFactory, orchestrator, SessionManager, gitService, tagService, sharedSelectionVM);
 		FileContent = new FileContentViewModel(fileSystemService);
 
-		// Injeção de dependências completa para a Visualização e Consolidação
-		GraphVisualization = new GraphVisualizationViewModel(
-			this,
-			syntaxService,
-			clipboardService,
-			relationService,
-			fileSystemService,
-			consolidationService // Novo serviço injetado
-		);
 
 		PrePrompt = new PrePromptViewModel(SessionManager);
 
@@ -263,7 +251,6 @@ public partial class MainViewModel : ObservableObject
 				{
 					StatusMessage = "Grafo de dependências pronto.";
 					// Notifica a aba de visualização que o grafo pode ter mudado (opcional, pois ela reage a seleção de arquivo)
-					GraphVisualization.UpdateVisualization();
 				});
 			}
 			catch (Exception ex)
