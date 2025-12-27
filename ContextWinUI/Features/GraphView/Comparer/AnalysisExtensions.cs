@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using ContextWinUI.Core.Models;
 using Microsoft.CodeAnalysis;
-namespace ContextWinUI.Features.GraphView.Comparer;
+namespace ContextWinUI.Features.GraphView;
+
 
 
 public static class AnalysisExtensions

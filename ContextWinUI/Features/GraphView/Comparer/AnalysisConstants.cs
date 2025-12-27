@@ -1,4 +1,5 @@
-namespace ContextWinUI.Features.GraphView.Comparer;
+namespace ContextWinUI.Features.GraphView;
+
 
 public static class AnalysisConstants
 {

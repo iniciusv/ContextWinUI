@@ -1,9 +1,8 @@
 using ContextWinUI.Features.GraphView;
-using ContextWinUI.Features.GraphView.Comparer;
 using Microsoft.CodeAnalysis;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphView.Comparer;
+namespace ContextWinUI.Features.GraphView;
 public class EnhancedRoslynSyntaxAnalysisService : RoslynSyntaxAnalysisService
 {
 	private readonly ISnippetFileRelationService _relationService;

@@ -1,15 +1,15 @@
-using ContextWinUI.Features.GraphView.Comparer;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace ContextWinUI.Features.GraphView;
+
 public class SyntaxTreeDiffer : IRoslynTreeDiffer
 {
 	public SyntaxTreeComparison Compare(SyntaxNode originalRoot, SyntaxNode modifiedRoot)
 	{
-		// 1. Mapeia todos os nós de ambas as árvores para dicionários baseados em Hash Otimizado
-		// Isso permite busca O(1) para verificar se um nó existe na outra árvore.
+
 		var originalNodesMap = originalRoot.DescendantNodesAndSelf()
 			.Where(n => !IsWhitespaceOrTrivia(n))
 			.ToLookup(n => n.GetOptimizedNodeHash());
@@ -20,7 +20,7 @@ public class SyntaxTreeDiffer : IRoslynTreeDiffer
 
 		var result = new SyntaxTreeComparison();
 
-		// 2. Encontrar nós ADICIONADOS (existem na modificada, mas não na original)
+
 		foreach (var modNode in modifiedRoot.DescendantNodesAndSelf())
 		{
 			if (IsWhitespaceOrTrivia(modNode)) continue;
@@ -106,13 +106,6 @@ public class SyntaxTreeDiffer : IRoslynTreeDiffer
 	private string DetermineNodeChangeType(SyntaxNode original, SyntaxNode modified)
 	{
 		if (original.RawKind != modified.RawKind) return "KindMismatch";
-
-		// Compara os identificadores se existirem (ex: mudou nome da variável)
-		var origName = (original as MemberDeclarationSyntax)?.ToString() ?? "";
-		var modName = (modified as MemberDeclarationSyntax)?.ToString() ?? "";
-
-		if (origName != modName) return "IdentifierChanged";
-
-		return "InternalStructureChanged";
+		return original.ToString() != modified.ToString() ? "ContentChanged" : "InternalStructureChanged";
 	}
 }

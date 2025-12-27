@@ -2,21 +2,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Models;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading.Tasks;
 using Windows.UI;
+namespace ContextWinUI.Features.GraphView;
 
-public interface ISnippetFileRelationService
-{
-	Task<ComparisonResult> CompareSnippetWithFileAsync(
-		string snippet,
-		string fileContent,
-		string filePath);
-
-	Task<MatchAnalysis> FindBestMatchInFileAsync(
-		string snippet,
-		string fileContent,
-		string filePath);
-}
 
 public enum ChangeType
 {

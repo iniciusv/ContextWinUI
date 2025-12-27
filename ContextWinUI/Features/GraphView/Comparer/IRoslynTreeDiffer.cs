@@ -1,6 +1,6 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 
-namespace ContextWinUI.Features.GraphView.Comparer;
+namespace ContextWinUI.Features.GraphView;
 
 public interface IRoslynTreeDiffer
 {

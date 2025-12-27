@@ -1,6 +1,7 @@
 // ARQUIVO: MainViewModel.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
@@ -22,21 +23,14 @@ namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	// ViewModels Filhos
 	public FileExplorerViewModel FileExplorer { get; }
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
 	public FileContentViewModel FileContent { get; }
 	public AiChangesViewModel AiChanges { get; }
-
-	// NOVO: ViewModel da Visualização do Grafo
 	public GraphVisualizationViewModel GraphVisualization { get; }
-
-	// Serviços
 	private readonly SemanticIndexService _semanticIndexService;
 	public IProjectSessionManager SessionManager { get; }
-
-	// Atalho para Seleção
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
 
 	[ObservableProperty]
@@ -49,23 +43,28 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
-		// 1. Instanciação dos Serviços Básicos
+		// 1. Serviços de Infraestrutura
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
 		IGitService gitService = new GitService();
 		ISelectionIOService selectionIOService = new SelectionIOService();
 		ITagManagementUiService tagService = new TagManagementUiService();
+		IClipboardService clipboardService = new ClipboardService();
+		ICodeConsolidationService consolidationService = new CodeConsolidationService();
 
+		// 2. Gestão de Sessão e Busca
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 		_semanticIndexService = new SemanticIndexService();
 
+		// 3. Motores de Análise e Diff (Novos)
 		ISyntaxAnalysisService syntaxService = new RoslynSyntaxAnalysisService();
-		IClipboardService clipboardService = new ClipboardService();
+		ITokenDiffEngine diffEngine = new TokenDiffEngine();
+		ITextSimilarityEngine similarityEngine = new LevenshteinEngine(); // Motor de fuzzy string
+		ISnippetFileRelationService relationService = new SnippetFileRelationService(syntaxService, diffEngine, similarityEngine);
 
-		// 2. Instanciação de ViewModels Independentes ou de Dependência Circular
+		// 4. Orquestradores
 		AiChanges = new AiChangesViewModel(fileSystemService, SessionManager, _semanticIndexService);
-
 		var dependencyTrackerService = new DependencyTrackerService();
 		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
 			_semanticIndexService,
@@ -74,6 +73,7 @@ public partial class MainViewModel : ObservableObject
 			fileSystemService
 		);
 
+		// 5. ViewModels Compartilhados
 		var sharedSelectionVM = new ContextSelectionViewModel(
 			itemFactory,
 			selectionIOService,
@@ -81,39 +81,26 @@ public partial class MainViewModel : ObservableObject
 			SessionManager
 		);
 
-		// 3. Instanciação dos ViewModels Principais
-		FileExplorer = new FileExplorerViewModel(
-				SessionManager,
-				tagService,
-				fileSystemService,
-				sharedSelectionVM,
-				itemFactory
-			);
-
-		ContextAnalysis = new ContextAnalysisViewModel(
-			itemFactory,
-			orchestrator,
-			SessionManager,
-			gitService,
-			tagService,
-			sharedSelectionVM
-		);
-
-		// --- PONTO CRÍTICO DE CORREÇÃO ---
-		// O FileContentViewModel DEVE ser instanciado ANTES do GraphVisualizationViewModel
+		// 6. Inicialização dos ViewModels de Feature
+		FileExplorer = new FileExplorerViewModel(SessionManager, tagService, fileSystemService, sharedSelectionVM, itemFactory);
+		ContextAnalysis = new ContextAnalysisViewModel(itemFactory, orchestrator, SessionManager, gitService, tagService, sharedSelectionVM);
 		FileContent = new FileContentViewModel(fileSystemService);
 
-		// Agora podemos instanciar o GraphVisualization, pois ele acessa this.FileContent no construtor
-		GraphVisualization = new GraphVisualizationViewModel(this, syntaxService, clipboardService);
-		// ---------------------------------
+		// Injeção de dependências completa para a Visualização e Consolidação
+		GraphVisualization = new GraphVisualizationViewModel(
+			this,
+			syntaxService,
+			clipboardService,
+			relationService,
+			fileSystemService,
+			consolidationService // Novo serviço injetado
+		);
 
 		PrePrompt = new PrePromptViewModel(SessionManager);
 
-		// 4. Registro de Eventos
 		RegisterEvents();
 	}
 
-	// Restante dos métodos (Commandos, Eventos, etc) permanece igual...
 
 	[RelayCommand]
 	private async Task ImportContextFileAsync()

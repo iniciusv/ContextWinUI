@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphView.Comparer;
+namespace ContextWinUI.Features.GraphView;
 
 public class SyntaxTreeComparison
 {

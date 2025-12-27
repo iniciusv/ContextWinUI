@@ -1,12 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using ContextWinUI.ViewModels;
 
 namespace ContextWinUI.Features.GraphView;
 
 public sealed partial class GraphVisualizationView : UserControl
 {
-	// Dependency Property para receber o ViewModel do XAML Pai (MainWindow)
 	public static readonly DependencyProperty ViewModelProperty =
 		DependencyProperty.Register(
 			nameof(ViewModel),
@@ -25,4 +23,15 @@ public sealed partial class GraphVisualizationView : UserControl
 		this.InitializeComponent();
 	}
 
+	private void ActionButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is Button btn && btn.DataContext is ContextActionViewModel actionVm)
+		{
+			// Define qual a ação escolhida para este bloco específico
+			actionVm.SelectedAction = btn.Content.ToString() ?? "V";
+
+			// Força o ViewModel a atualizar a string do código unificado
+			ViewModel?.RefreshUnifiedView();
+		}
+	}
 }
