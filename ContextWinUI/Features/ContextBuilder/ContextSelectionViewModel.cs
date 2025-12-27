@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Models;
@@ -12,7 +12,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
-namespace ContextWinUI.ViewModels;
+namespace ContextWinUI.Features.ContextBuilder;
+
 
 public partial class ContextSelectionViewModel : ObservableObject
 {
@@ -62,6 +63,7 @@ public partial class ContextSelectionViewModel : ObservableObject
 		if (target != null) SelectedItemsList.Remove(target);
 	}
 
+	public Visibility IsListEmptyVisibility =>	SelectedItemsList.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
 
 	[RelayCommand]
@@ -166,6 +168,33 @@ public partial class ContextSelectionViewModel : ObservableObject
 		finally
 		{
 			IsCopying = false;
+		}
+	}
+
+	// Exemplo de como coletar todos os itens para a aba de Seleção
+	public void RefreshSelectedItems(IEnumerable<FileSystemItem> rootItems)
+	{
+		var allChecked = new List<FileSystemItem>();
+		foreach (var root in rootItems)
+		{
+			CollectCheckedRecursive(root, allChecked);
+		}
+
+		// Atualiza a lista da UI (SelectedItemsList)
+		SelectedItemsList.Clear();
+		foreach (var item in allChecked) SelectedItemsList.Add(item);
+	}
+
+	private void CollectCheckedRecursive(FileSystemItem item, List<FileSystemItem> result)
+	{
+		if (item.IsChecked)
+		{
+			result.Add(item);
+		}
+
+		foreach (var child in item.Children)
+		{
+			CollectCheckedRecursive(child, result);
 		}
 	}
 }

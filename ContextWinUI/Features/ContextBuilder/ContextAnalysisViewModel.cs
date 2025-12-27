@@ -237,7 +237,6 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		// SelectionVM.Clear(); 
 	}
 
-	// --- Helpers ---
 
 	private IEnumerable<FileSystemItem> GetMarkedItemsRecursively(FileSystemItem root)
 	{
@@ -256,9 +255,14 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		foreach (var child in item.Children) RegisterItemRecursively(child);
 	}
 
+
 	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		// Se precisar reagir a check/uncheck específicos dentro da árvore de análise
+		if (e.PropertyName == nameof(FileSystemItem.IsChecked))
+		{
+			// Sempre que um checkbox mudar na árvore, atualizamos a lista de Seleção
+			SelectionVM.RefreshSelectedItems(TreeVM.Items);
+		}
 	}
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);

@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
@@ -7,6 +7,7 @@ using ContextWinUI.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -62,6 +63,26 @@ namespace ContextWinUI.Features.ContextBuilder
 			item.IsExpanded = true;
 
 			StructureUpdated?.Invoke(this, item);
+		}
+
+		[RelayCommand]
+		private async Task AnalyzeAllCheckedSubtypesAsync(FileSystemItem groupItem)
+		{
+			if (groupItem == null || groupItem.Children.Count == 0) return;
+
+			// Filtra apenas os itens que estão marcados e possuem assinatura de método/tipo
+			var itemsToAnalyze = groupItem.Children
+				.Where(c => c.IsChecked && !string.IsNullOrEmpty(c.MethodSignature))
+				.ToList();
+
+			foreach (var item in itemsToAnalyze)
+			{
+				// Se for uma dependência ou classe, usamos o fluxo de enriquecimento de fluxo/membros
+				await _analysisOrchestrator.EnrichMethodFlowAsync(item, _sessionManager.CurrentProjectPath);
+			}
+
+			groupItem.IsExpanded = true;
+			StructureUpdated?.Invoke(this, groupItem);
 		}
 
 		[RelayCommand] private void ExpandAll() { foreach (var item in Items) item.SetExpansionRecursively(true); }

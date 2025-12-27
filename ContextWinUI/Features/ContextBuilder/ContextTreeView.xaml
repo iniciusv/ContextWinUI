@@ -31,22 +31,23 @@
     <DataTemplate x:DataType="models:FileSystemItem">
         <TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}" 
                       IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
-                      Margin="-26,0,0,0"> 
-            
-            <Grid Height="24" Margin="-18,0,0,0"> 
+                      Margin="-26,0,0,0">
+
+						<Grid Height="24" Margin="-18,0,0,0">
                 
                 <Grid.ContextFlyout>
                     <Flyout Opening="OnTagMenuOpening" />
                 </Grid.ContextFlyout>
                 
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="Auto"/>
+							</Grid.ColumnDefinitions>
 
                 <CheckBox Grid.Column="0" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
                           MinWidth="0" Margin="8,0,4,0" VerticalAlignment="Center"/>
@@ -63,13 +64,21 @@
                         Click="OnMethodFlowClick" 
                         Visibility="{x:Bind MethodFlowVisibility, Mode=OneWay}"/>
                 
-                <Button Grid.Column="5" Content="+" 
-                        FontSize="12" Width="24" Height="24" Margin="4,0,0,0" Padding="0"
-                        Click="OnDeepAnalyzeClick"
-                        Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"/>
-            </Grid>
-            
-        </TreeViewItem>
+							<Button Grid.Column="5" Content="+" 
+            FontSize="12" Width="24" Height="24" Margin="4,0,0,0" Padding="0"
+            Click="OnDeepAnalyzeClick"
+            Visibility="{x:Bind DeepAnalyzeVisibility, Mode=OneWay}"/>
+
+							<Button Grid.Column="6" 
+            ToolTipService.ToolTip="Analisar todos marcados"
+            FontSize="10" Width="24" Height="24" Margin="4,0,0,0" Padding="0"
+            Click="OnAnalyzeAllCheckedClick"
+            Visibility="{x:Bind GroupAnalyzeVisibility, Mode=OneWay}">
+								<FontIcon Glyph="&#xE8D1;" FontSize="12"/>
+							</Button>
+						</Grid>
+
+					</TreeViewItem>
     </DataTemplate>
 </TreeView.ItemTemplate>
 		</TreeView>

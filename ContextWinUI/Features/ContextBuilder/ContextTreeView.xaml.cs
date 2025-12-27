@@ -1,4 +1,4 @@
-﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Helpers;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.ContextBuilder;
@@ -49,7 +49,17 @@ namespace ContextWinUI.Views.Components
 			}
 		}
 
-		// --- ADICIONE ESTES MÉTODOS ---
+
+		private void OnAnalyzeAllCheckedClick(object sender, RoutedEventArgs e)
+		{
+			if (sender is Button btn && btn.DataContext is FileSystemItem groupItem)
+			{
+				if (ViewModel.AnalyzeAllCheckedSubtypesCommand.CanExecute(groupItem))
+				{
+					ViewModel.AnalyzeAllCheckedSubtypesCommand.Execute(groupItem);
+				}
+			}
+		}
 
 		private void OnDeepAnalyzeClick(object sender, RoutedEventArgs e)
 		{

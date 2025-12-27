@@ -2,13 +2,16 @@
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using Windows.UI;
 
 namespace ContextWinUI.Models;
 
@@ -65,7 +68,28 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 
 	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
 	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
-	public Visibility DeepAnalyzeVisibility => CanDeepAnalyze ? Visibility.Visible : Visibility.Collapsed;
+	public Visibility DeepAnalyzeVisibility =>
+		(Type == FileSystemItemType.File || Type == FileSystemItemType.Dependency || Type == FileSystemItemType.Class)
+		? Visibility.Visible : Visibility.Collapsed;
+
+	// Adicione também uma visibilidade para o botão de grupo
+	public Visibility GroupAnalyzeVisibility =>
+		(Type == FileSystemItemType.LogicalGroup && Name.Contains("Estrutura"))
+		? Visibility.Visible : Visibility.Collapsed;
+
+	// Define o recuo visual: se for arquivo = 0, se for subitem = 24px
+	public Thickness SelectionMargin =>
+		(Type == FileSystemItemType.File) ? new Thickness(0) : new Thickness(24, 2, 0, 2);
+
+	// Define uma cor de fundo sutil para subitens
+	public Brush SelectionBackground =>
+		(Type == FileSystemItemType.File)
+			? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent)
+			: (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+
+	// Propriedade para ajudar na UI do ListView
+	public Visibility IsSubItemVisibility =>
+		(Type != FileSystemItemType.File) ? Visibility.Visible : Visibility.Collapsed;
 	public bool CanAnalyzeMethodFlow => Type == FileSystemItemType.Method && !string.IsNullOrEmpty(FullPath);
 	public Visibility MethodFlowVisibility => CanAnalyzeMethodFlow ? Visibility.Visible : Visibility.Collapsed;
 

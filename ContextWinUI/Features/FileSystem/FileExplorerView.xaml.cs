@@ -1,4 +1,5 @@
-﻿using ContextWinUI.Core.Helpers;
+using ContextWinUI.Core.Helpers;
+using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;

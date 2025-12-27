@@ -1,4 +1,4 @@
-﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Helpers;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.ContextBuilder;
@@ -10,58 +10,60 @@ using Microsoft.UI.Xaml.Media;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ContextWinUI.Views.Components
+namespace ContextWinUI.Features.ContextBuilder;
+
+
+public sealed partial class ContextSelectionView : UserControl
 {
-	public sealed partial class ContextSelectionView : UserControl
+	public static readonly DependencyProperty ViewModelProperty =
+		DependencyProperty.Register(nameof(ViewModel), typeof(ContextSelectionViewModel), typeof(ContextSelectionView), new PropertyMetadata(null));
+	public ContextSelectionView()
 	{
-		public static readonly DependencyProperty ViewModelProperty =
-			DependencyProperty.Register(nameof(ViewModel), typeof(ContextSelectionViewModel), typeof(ContextSelectionView), new PropertyMetadata(null));
+		this.InitializeComponent();
+		this.DataContext = this;
+	}
 
-		public ContextSelectionViewModel ViewModel
+	public ContextSelectionViewModel ViewModel
+	{
+		get => (ContextSelectionViewModel)GetValue(ViewModelProperty);
+		set => SetValue(ViewModelProperty, value);
+	}
+
+	private ITagManagementUiService TagService => ((App.MainWindow.ViewModel).ContextAnalysis).TagService;
+
+
+
+	private void OnListViewItemClick(object sender, ItemClickEventArgs e)
+	{
+		if (e.ClickedItem is FileSystemItem item)
 		{
-			get => (ContextSelectionViewModel)GetValue(ViewModelProperty);
-			set => SetValue(ViewModelProperty, value);
+			App.MainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
 		}
+	}
 
-		private ITagManagementUiService TagService => ((App.MainWindow.ViewModel).ContextAnalysis).TagService;
-
-		public ContextSelectionView()
+	private void OnTagMenuOpening(object sender, object e)
+	{
+		if (sender is Flyout flyout && flyout.Target.DataContext is FileSystemItem item)
 		{
-			this.InitializeComponent();
+			var listView = FindParent<ListView>((DependencyObject)flyout.Target);
+
+			List<FileSystemItem> targetItems;
+			if (listView != null && listView.SelectedItems.Contains(item))
+				targetItems = listView.SelectedItems.Cast<FileSystemItem>().ToList();
+			else
+				targetItems = new List<FileSystemItem> { item };
+
+			flyout.Content = TagMenuBuilder.BuildContent(
+				targetItems, TagService, this.XamlRoot, () => flyout.Hide());
 		}
+	}
 
-		private void OnListViewItemClick(object sender, ItemClickEventArgs e)
-		{
-			if (e.ClickedItem is FileSystemItem item)
-			{
-				App.MainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
-			}
-		}
-
-		private void OnTagMenuOpening(object sender, object e)
-		{
-			if (sender is Flyout flyout && flyout.Target.DataContext is FileSystemItem item)
-			{
-				var listView = FindParent<ListView>((DependencyObject)flyout.Target);
-
-				List<FileSystemItem> targetItems;
-				if (listView != null && listView.SelectedItems.Contains(item))
-					targetItems = listView.SelectedItems.Cast<FileSystemItem>().ToList();
-				else
-					targetItems = new List<FileSystemItem> { item };
-
-				flyout.Content = TagMenuBuilder.BuildContent(
-					targetItems, TagService, this.XamlRoot, () => flyout.Hide());
-			}
-		}
-
-		private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
-		{
-			if (child == null) return null;
-			var parent = VisualTreeHelper.GetParent(child);
-			if (parent == null) return null;
-			if (parent is T typedParent) return typedParent;
-			return FindParent<T>(parent);
-		}
+	private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+	{
+		if (child == null) return null;
+		var parent = VisualTreeHelper.GetParent(child);
+		if (parent == null) return null;
+		if (parent is T typedParent) return typedParent;
+		return FindParent<T>(parent);
 	}
 }

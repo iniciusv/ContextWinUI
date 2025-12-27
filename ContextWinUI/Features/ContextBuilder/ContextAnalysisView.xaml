@@ -2,7 +2,8 @@
     x:Class="ContextWinUI.Views.ContextAnalysisView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:components="using:ContextWinUI.Views.Components">
+xmlns:components="using:ContextWinUI.Views.Components"
+    xmlns:contextBuilder="using:ContextWinUI.Features.ContextBuilder">
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<Grid.RowDefinitions>
@@ -45,8 +46,8 @@
 				<components:ContextTreeView ViewModel="{x:Bind ContextViewModel.TreeVM, Mode=OneWay}" />
 			</PivotItem>
 			<PivotItem Header="Seleção">
-				<components:ContextSelectionView ViewModel="{x:Bind ContextViewModel.SelectionVM, Mode=OneWay}" />
-			</PivotItem>
+				<contextBuilder:ContextSelectionView ViewModel="{x:Bind ContextViewModel.SelectionVM, Mode=OneWay}" />
+		</PivotItem>
 			<PivotItem Header="Git">
 				<components:ContextGitView ViewModel="{x:Bind ContextViewModel.GitVM, Mode=OneWay}" />
 			</PivotItem>
