@@ -80,7 +80,7 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		{
 			foreach (FileSystemItem item in e.NewItems)
 			{
-				if (!item.IsCodeFile) continue;
+				//if (!item.IsCodeFile) continue;
 				if (TreeVM.Items.Any(x => x.FullPath == item.FullPath)) continue;
 
 				// 1. Cria o nó visual IMEDIATAMENTE (vazio)
@@ -108,21 +108,32 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsVisible = TreeVM.Items.Count > 0;
 	}
 
+	// ARQUIVO: ContextAnalysisViewModel.cs
+
 	private async Task EnrichNodeInBackgroundAsync(FileSystemItem node)
 	{
 		try
 		{
-			// Apenas joga para o background a parte pesada (análise)
+			// 1. O trabalho pesado acontece no background
 			await Task.Run(async () =>
 			{
-				// O Orquestrador agora é responsável por usar o dispatcher 
-				// apenas quando for tocar na coleção Children (UI)
 				await _analysisOrchestrator.EnrichFileNodeAsync(node, _sessionManager.CurrentProjectPath!);
+			});
+
+			// 2. CORREÇÃO CRÍTICA:
+			// Assim que a tarefa termina, voltamos para a Thread Principal para "amarrar" os eventos nos filhos que acabaram de nascer.
+			_dispatcherQueue.TryEnqueue(() =>
+			{
+				// Isso vai varrer todos os filhos novos e conectar o PropertyChanged neles
+				RegisterItemRecursively(node);
+
+				// Log de debug opcional para você ver se funcionou
+				System.Diagnostics.Debug.WriteLine($"Node {node.Name} enriquecido. Filhos registrados: {node.Children.Count}");
 			});
 		}
 		catch (Exception ex)
 		{
-			OnStatusChanged($"Erro background: {ex.Message}");
+			_dispatcherQueue.TryEnqueue(() => OnStatusChanged($"Erro background: {ex.Message}"));
 		}
 	}
 
@@ -247,20 +258,71 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		}
 	}
 
+	// --- INÍCIO DA SUBSTITUIÇÃO EM ContextAnalysisViewModel.cs ---
+
+	// 1. Método recursivo aprimorado para ouvir quando filhos são adicionados
 	private void RegisterItemRecursively(FileSystemItem item)
 	{
+		// Remove listeners antigos para segurança (evita duplicação)
 		item.PropertyChanged -= OnItemPropertyChanged;
+		item.Children.CollectionChanged -= OnChildrenCollectionChanged;
+
+		// Adiciona o listener para capturar o CheckBox (IsChecked)
 		item.PropertyChanged += OnItemPropertyChanged;
 
-		foreach (var child in item.Children) RegisterItemRecursively(child);
+		// Adiciona o listener para saber se NOVOS filhos nasceram (IMPORTANTE!)
+		item.Children.CollectionChanged += OnChildrenCollectionChanged;
+
+		// Aplica a mesma lógica para os filhos que já existem agora
+		foreach (var child in item.Children)
+		{
+			RegisterItemRecursively(child);
+		}
 	}
 
+	// 2. Novo método para lidar com filhos adicionados dinamicamente (pela análise)
+	private void OnChildrenCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	{
+		// Se novos itens foram adicionados à lista Children...
+		if (e.NewItems != null)
+		{
+			foreach (FileSystemItem newItem in e.NewItems)
+			{
+				// ...registramos eles imediatamente para ouvir seus clicks!
+				RegisterItemRecursively(newItem);
+			}
+		}
+
+		// Boa prática: limpar listeners de itens removidos
+		if (e.OldItems != null)
+		{
+			foreach (FileSystemItem oldItem in e.OldItems)
+			{
+				oldItem.PropertyChanged -= OnItemPropertyChanged;
+				oldItem.Children.CollectionChanged -= OnChildrenCollectionChanged;
+			}
+		}
+	}
+
+	// --- FIM DA SUBSTITUIÇÃO ---
+
+	// NOVO MÉTODO: Limpeza de eventos para evitar memory leaks
+	private void UnregisterItemRecursively(FileSystemItem item)
+	{
+		item.PropertyChanged -= OnItemPropertyChanged;
+		item.Children.CollectionChanged -= OnChildrenCollectionChanged;
+
+		foreach (var child in item.Children)
+		{
+			UnregisterItemRecursively(child);
+		}
+	}
 
 	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
+		// Quando qualquer item (pai ou filho) for marcado/desmarcado, atualiza a lista de seleção
 		if (e.PropertyName == nameof(FileSystemItem.IsChecked))
 		{
-			// Sempre que um checkbox mudar na árvore, atualizamos a lista de Seleção
 			SelectionVM.RefreshSelectedItems(TreeVM.Items);
 		}
 	}

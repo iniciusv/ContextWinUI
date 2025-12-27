@@ -25,6 +25,11 @@ public partial class ContextSelectionViewModel : ObservableObject
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> selectedItemsList = new();
 
+	public ObservableCollection<FileSystemItem> DisplayedItems { get; } = new();
+
+	[ObservableProperty]
+	private bool hideSubItems;
+
 	[ObservableProperty]
 	private bool isCopying;
 
@@ -32,20 +37,26 @@ public partial class ContextSelectionViewModel : ObservableObject
 	private int selectedFilesCount;
 
 	public ContextSelectionViewModel(
-			IFileSystemItemFactory itemFactory,
-			ISelectionIOService ioService,
-			IDependencyAnalysisOrchestrator orchestrator,
-			IProjectSessionManager sessionManager)
+				IFileSystemItemFactory itemFactory,
+				ISelectionIOService ioService,
+				IDependencyAnalysisOrchestrator orchestrator,
+				IProjectSessionManager sessionManager)
 	{
 		_itemFactory = itemFactory;
 		_ioService = ioService;
 		_orchestrator = orchestrator;
 		_sessionManager = sessionManager;
+
+		// Quando a lista original mudar, atualizamos a lista de exibição
 		SelectedItemsList.CollectionChanged += (s, e) =>
 		{
 			SelectedFilesCount = SelectedItemsList.Count;
 			CopySelectedFilesCommand.NotifyCanExecuteChanged();
+			UpdateDisplayedItems(); // <--- ATUALIZA A VISUALIZAÇÃO
 		};
+
+		// Inicializa a lista de exibição
+		UpdateDisplayedItems();
 	}
 
 
@@ -195,6 +206,28 @@ public partial class ContextSelectionViewModel : ObservableObject
 		foreach (var child in item.Children)
 		{
 			CollectCheckedRecursive(child, result);
+		}
+	}
+	partial void OnHideSubItemsChanged(bool value)
+	{
+		UpdateDisplayedItems();
+	}
+
+	private void UpdateDisplayedItems()
+	{
+		DisplayedItems.Clear();
+
+		IEnumerable<FileSystemItem> items = SelectedItemsList;
+
+		if (HideSubItems)
+		{
+			// Filtra mantendo apenas Arquivos e Diretórios (remove métodos, classes, etc.)
+			items = items.Where(x => x.Type == FileSystemItemType.File || x.Type == FileSystemItemType.Directory);
+		}
+
+		foreach (var item in items)
+		{
+			DisplayedItems.Add(item);
 		}
 	}
 }

@@ -16,6 +16,7 @@
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
 
 		<CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent" IsOpen="True">
@@ -30,12 +31,11 @@
                    FontSize="12" Margin="16,4,16,8"/>
 
 		<ListView Grid.Row="2" 
-                  ItemsSource="{x:Bind ViewModel.SelectedItemsList, Mode=OneWay}" 
+                  ItemsSource="{x:Bind ViewModel.DisplayedItems, Mode=OneWay}" 
                   SelectionMode="Extended"
                   IsItemClickEnabled="True"
                   ItemClick="OnListViewItemClick"
                   Padding="0,0,0,12">
-
 			<ListView.ItemContainerStyle>
 				<Style TargetType="ListViewItem">
 					<Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -43,29 +43,24 @@
 					<Setter Property="MinHeight" Value="32"/>
 				</Style>
 			</ListView.ItemContainerStyle>
-
 			<ListView.ItemTemplate>
 				<DataTemplate x:DataType="models:FileSystemItem">
 					<Grid Margin="{x:Bind SelectionMargin, Mode=OneWay}" 
                           Background="{x:Bind SelectionBackground, Mode=OneWay}"
                           Padding="12,4" 
                           CornerRadius="4">
-
 						<Grid.ContextFlyout>
 							<Flyout Opening="OnTagMenuOpening" />
 						</Grid.ContextFlyout>
-
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="Auto"/>
 							<ColumnDefinition Width="*"/>
 							<ColumnDefinition Width="Auto"/>
 						</Grid.ColumnDefinitions>
-
 						<CheckBox Grid.Column="0" 
                                   IsChecked="{x:Bind IsChecked, Mode=TwoWay}" 
                                   MinWidth="0" Margin="0,0,12,0" 
                                   VerticalAlignment="Center"/>
-
 						<StackPanel Grid.Column="1" VerticalAlignment="Center">
 							<StackPanel Orientation="Horizontal" Spacing="8">
 								<FontIcon Glyph="{x:Bind Icon}" FontSize="12" 
@@ -73,13 +68,11 @@
 								<TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="13"/>
 								<components:TagChipsControl TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}"/>
 							</StackPanel>
-
 							<TextBlock Text="{x:Bind FullPath}" 
                                        FontSize="10" 
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
                                        TextTrimming="CharacterEllipsis"/>
 						</StackPanel>
-
 						<TextBlock Grid.Column="2" Text="{x:Bind Type}" 
                                    FontSize="10" Margin="8,0,0,0" 
                                    VerticalAlignment="Center" Opacity="0.5"/>
@@ -93,5 +86,11 @@
 			<FontIcon Glyph="&#xE916;" FontSize="32" Foreground="{ThemeResource TextFillColorDisabledBrush}"/>
 			<TextBlock Text="Nenhum item no contexto" Foreground="{ThemeResource TextFillColorDisabledBrush}"/>
 		</StackPanel>
+
+		<Grid Grid.Row="3" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+			<CheckBox Content="Ocultar subitens (métodos, classes)" 
+                      IsChecked="{x:Bind ViewModel.HideSubItems, Mode=TwoWay}"
+                      ToolTipService.ToolTip="Exibe apenas os arquivos na lista, mas mantém os subitens selecionados para a cópia."/>
+		</Grid>
 	</Grid>
 </UserControl>
