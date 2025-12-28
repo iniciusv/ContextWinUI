@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Models;
+using ContextWinUI.Features.Parser;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Windows.UI;
@@ -26,11 +27,12 @@ public class TokenChange
 
 public class ScopeMatch
 {
-	public SymbolNode FileScope { get; set; }
+	public SymbolNode? FileScope { get; set; }
 	public SymbolNode SnippetScope { get; set; }
 	public double SimilarityScore { get; set; }
 	public List<TokenChange> TokenChanges { get; set; } = new();
 	public bool IsPartialMatch { get; set; }
+	public MatchType MatchType { get; set; }
 }
 
 public class ComparisonResult

@@ -82,10 +82,15 @@ public partial class MainViewModel : ObservableObject
 		FileExplorer = new FileExplorerViewModel(SessionManager, tagService, fileSystemService, sharedSelectionVM, itemFactory);
 		ContextAnalysis = new ContextAnalysisViewModel(itemFactory, orchestrator, SessionManager, gitService, tagService, sharedSelectionVM);
 		FileContent = new FileContentViewModel(fileSystemService);
-
-
 		PrePrompt = new PrePromptViewModel(SessionManager);
-		ParserEditor = new ParserEditorViewModel(_semanticIndexService, fileSystemService);
+
+		// --- ALTERAÇÃO AQUI ---
+		// Injetando os serviços de análise criados na etapa 3
+		ParserEditor = new ParserEditorViewModel(
+			_semanticIndexService,
+			fileSystemService,
+			relationService
+		);
 
 		RegisterEvents();
 	}

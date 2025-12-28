@@ -1,7 +1,8 @@
 using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Models;
-using ContextWinUI.Features.GraphView;
-using ContextWinUI.Helpers;
+using ContextWinUI.Features.Parser;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,6 +65,36 @@ public class SnippetFileRelationService : ISnippetFileRelationService
 			SuggestedChanges = GenerateChangeSuggestions(scopeMatches)
 		};
 	}
+	public async Task<string?> ExtractMatchingSymbolFromSnippetAsync(string snippetCode, SymbolNode targetNode)
+	{
+		return await Task.Run(() =>
+		{
+			var tree = CSharpSyntaxTree.ParseText(snippetCode);
+			var root = tree.GetRoot();
+
+			// Tenta encontrar um método com o mesmo nome e parâmetros similares
+			if (targetNode.Type == SymbolType.Method)
+			{
+				var method = root.DescendantNodes()
+								 .OfType<MethodDeclarationSyntax>()
+								 .FirstOrDefault(m => m.Identifier.Text == targetNode.Name);
+
+				return method?.ToFullString();
+			}
+
+			// Lógica similar para Propriedades, Classes, etc.
+			if (targetNode.Type == SymbolType.Class)
+			{
+				var classNode = root.DescendantNodes()
+								   .OfType<ClassDeclarationSyntax>()
+								   .FirstOrDefault(c => c.Identifier.Text == targetNode.Name);
+				return classNode?.ToFullString();
+			}
+
+			// Fallback: Retorna o snippet inteiro se for muito pequeno ou não estruturado
+			return snippetCode;
+		});
+	}
 
 	private bool AreTokensSimilar(SymbolNode t1, SymbolNode t2)
 	{
@@ -85,23 +116,45 @@ public class SnippetFileRelationService : ISnippetFileRelationService
 	{
 		var matches = new List<ScopeMatch>();
 
+		// Lista para controlar quais escopos do arquivo já foram "reivindicados" por um escopo do snippet
+		var matchedFileScopeIds = new HashSet<string>();
+
 		foreach (var sScope in snippetScopes)
 		{
-			// Tenta encontrar o melhor candidato no arquivo para este escopo do snippet
+			// Tenta encontrar o melhor candidato no arquivo (Lógica existente sua)
 			var bestMatch = fileScopes
-				.Select(fScope => new ScopeMatch
+				.Where(fScope => !matchedFileScopeIds.Contains(fScope.Id)) // Garante que não mapeamos 2 snippets para o mesmo método
+				.Select(fScope => new
 				{
 					FileScope = fScope,
-					SnippetScope = sScope,
-					// Cálculo inicial baseado apenas no nome e tipo do escopo
-					SimilarityScore = CalculateInitialScopeScore(fScope, sScope)
+					Score = CalculateInitialScopeScore(fScope, sScope)
 				})
-				.OrderByDescending(m => m.SimilarityScore)
+				.OrderByDescending(x => x.Score)
 				.FirstOrDefault();
 
-			if (bestMatch != null && bestMatch.SimilarityScore > 0.2) // Threshold mínimo de pareamento
+			if (bestMatch != null && bestMatch.Score > 0.4) // Aumentei um pouco o threshold para segurança
 			{
-				matches.Add(bestMatch);
+				// CENÁRIO 1: MODIFICAÇÃO (Existe no snippet e no arquivo)
+				matches.Add(new ScopeMatch
+				{
+					FileScope = bestMatch.FileScope,
+					SnippetScope = sScope,
+					SimilarityScore = bestMatch.Score,
+					MatchType = MatchType.Modification // <--- Novo Enum
+				});
+				matchedFileScopeIds.Add(bestMatch.FileScope.Id);
+			}
+			else
+			{
+				// CENÁRIO 2: INSERÇÃO (Existe no snippet, mas não no arquivo)
+				// Sua implementação anterior ignorava isso, agora guardamos.
+				matches.Add(new ScopeMatch
+				{
+					FileScope = null,
+					SnippetScope = sScope,
+					SimilarityScore = 0,
+					MatchType = MatchType.Insertion // <--- Novo Enum
+				});
 			}
 		}
 
@@ -144,4 +197,5 @@ public class SnippetFileRelationService : ISnippetFileRelationService
 	private string? FindBestMatchLocation(List<ScopeMatch> m, string c) => null;
 	private List<TokenChange> FindUnmatchedTokens(List<SymbolNode> ft, List<SymbolNode> st, List<ScopeMatch> sm) => new List<TokenChange>();
 	private List<string> GenerateChangeSuggestions(List<ScopeMatch> sm) => new List<string>();
+
 }
