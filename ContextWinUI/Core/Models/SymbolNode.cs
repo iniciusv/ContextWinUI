@@ -5,7 +5,26 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Core.Models;
-public record SymbolLink(string TargetId, LinkType Type, int Start, int Length);
+
+public record SymbolLink
+{
+	public string TargetId { get; set; } = string.Empty;
+	public LinkType Type { get; set; }
+	public int Start { get; set; }
+	public int Length { get; set; }
+
+	// Construtor padrão necessário para serialização/XAML
+	public SymbolLink() { }
+
+	// Construtor para compatibilidade com o resto do código (GraphBuilderWalker)
+	public SymbolLink(string targetId, LinkType type, int start, int length)
+	{
+		TargetId = targetId;
+		Type = type;
+		Start = start;
+		Length = length;
+	}
+}
 
 public class SymbolNode
 {

@@ -16,14 +16,14 @@ public sealed partial class MainWindow : Window
 		InitializeComponent();
 		ViewModel = new MainViewModel();
 
-		Title = "Context WinUI - Explorador de CÛdigo";
+		Title = "Context WinUI - Explorador de C√≥digo";
 
 		if (Content is FrameworkElement fe)
 		{
 			fe.Loaded += (s, e) => { this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700)); };
 		}
 
-		// Conecta o evento de preview da An·lise com o ViewModel de Conte˙do
+		// Conecta o evento de preview da An√°lise com o ViewModel de Conte√∫do
 		ViewModel.ContextAnalysis.FileSelectedForPreview += async (s, item) =>
 		{
 			await ViewModel.FileContent.LoadFileAsync(item);
@@ -36,11 +36,12 @@ public sealed partial class MainWindow : Window
 		ViewModel.OnFileSelected(item);
 	}
 
-	// --- CORRE«√O AQUI ---
+	// --- CORRE√á√ÉO AQUI ---
 	// Usamos o ExecuteAsync do comando gerado pelo RelayCommand
 	[RelayCommand]
 	private async Task AnalyzeContextAsync()
 	{
 		await ViewModel.AnalyzeContextCommand.ExecuteAsync(null);
 	}
+
 }

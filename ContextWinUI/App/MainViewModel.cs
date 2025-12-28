@@ -6,6 +6,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.GraphView;
+using ContextWinUI.Features.Parser;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
@@ -30,6 +31,7 @@ public partial class MainViewModel : ObservableObject
 	private readonly SemanticIndexService _semanticIndexService;
 	public IProjectSessionManager SessionManager { get; }
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
+	public ParserEditorViewModel ParserEditor { get; }
 
 	[ObservableProperty]
 	private string statusMessage = "Pronto";
@@ -83,6 +85,7 @@ public partial class MainViewModel : ObservableObject
 
 
 		PrePrompt = new PrePromptViewModel(SessionManager);
+		ParserEditor = new ParserEditorViewModel(_semanticIndexService, fileSystemService);
 
 		RegisterEvents();
 	}
@@ -171,6 +174,49 @@ public partial class MainViewModel : ObservableObject
 		}
 	}
 
+	[RelayCommand]
+	private async Task OpenInParserAsync()
+	{
+		// 1. Tenta pegar o arquivo que está aberto no visualizador (Prioridade)
+		var item = FileContent.SelectedItem;
+
+		// 2. Se não tiver nada aberto, tenta pegar o primeiro marcado no Explorer
+		if (item == null)
+		{
+			// CORREÇÃO: Usar GetCheckedFiles() em vez de SelectedItems
+			var checkedItems = FileExplorer.SelectionViewModel.GetCheckedFiles();
+			item = checkedItems.FirstOrDefault();
+		}
+
+		// 3. Verifica se encontrou algo e se é código
+		if (item != null && item.IsCodeFile)
+		{
+			await ParserEditor.LoadFileAsync(item.FullPath);
+			StatusMessage = $"Enviado para o Parser: {item.Name}";
+
+			// Opcional: Se você tiver controle de abas na View, 
+			// precisaria de uma propriedade aqui para mudar o SelectedIndex do Pivot/TabControl
+		}
+		else
+		{
+			StatusMessage = "Selecione um arquivo de código válido para editar.";
+		}
+	}
+
+	public async void OnFileSelected(FileSystemItem item)
+	{
+		if (item != null && item.IsCodeFile)
+		{
+			// 1. Carrega na aba de Leitura (existente)
+			_ = FileContent.LoadFileAsync(item);
+
+			// 2. Carrega na aba de Refatoração Inteligente (NOVO)
+			// Isso garante que o Parser tenha o arquivo e o grafo de dependências atualizado
+			await ParserEditor.LoadFileAsync(item.FullPath);
+		}
+	}
+
+
 	private void RegisterEvents()
 	{
 		SessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
@@ -189,13 +235,6 @@ public partial class MainViewModel : ObservableObject
 		};
 	}
 
-	public void OnFileSelected(FileSystemItem item)
-	{
-		if (item != null && item.IsCodeFile)
-		{
-			_ = FileContent.LoadFileAsync(item);
-		}
-	}
 
 	[RelayCommand]
 	private async Task AnalyzeContextAsync()

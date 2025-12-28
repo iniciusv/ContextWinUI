@@ -9,11 +9,13 @@
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<ScrollViewer x:Name="EditorScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Visible"
                       ZoomMode="Enabled"
                       MinZoomFactor="0.5"
                       MaxZoomFactor="4.0"
-                      HorizontalContentAlignment="Left">
+                      HorizontalContentAlignment="Left"
+                      VerticalContentAlignment="Top">
+
 			<Grid Margin="0,0,20,20">
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="Auto" MinWidth="40"/>
@@ -40,12 +42,16 @@
                              AcceptsReturn="True"
                              BorderThickness="0"
                              HorizontalAlignment="Stretch"
-                             VerticalAlignment="Stretch"
+                             VerticalAlignment="Top"
+                             MinHeight="400"
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" 
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              TextWrapping="NoWrap"
                              TextChanged="CodeEditor_TextChanged"
-                             KeyDown="CodeEditor_KeyDown"/>
+                             KeyDown="CodeEditor_KeyDown"
+                             BringIntoViewRequested="CodeEditor_BringIntoViewRequested"
+                             Padding="0,4,0,4"
+                             Background="Transparent"/>
 			</Grid>
 		</ScrollViewer>
 	</Grid>
