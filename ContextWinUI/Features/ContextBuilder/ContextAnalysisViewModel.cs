@@ -20,6 +20,8 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IDependencyAnalysisOrchestrator _analysisOrchestrator;
 	private readonly IProjectSessionManager _sessionManager;
+	private readonly IFileSelectionService _fileSelectionService; // Nova dependência
+
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
 	public ContextTreeViewModel TreeVM { get; }
@@ -32,10 +34,8 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	[ObservableProperty] private bool canGoBack;
 	[ObservableProperty] private FileSystemItem? selectedPreviewItem;
 
-	// Contagem para UI
 	public int SelectedCount => SelectionVM.SelectedItemsList.Count;
 
-	public event EventHandler<FileSystemItem>? FileSelectedForPreview;
 	public event EventHandler<string>? StatusChanged;
 
 	private readonly Stack<List<FileSystemItem>> _historyStack = new();
@@ -46,26 +46,22 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IProjectSessionManager sessionManager,
 		IGitService gitService,
 		ITagManagementUiService tagService,
-		ContextSelectionViewModel selectionVM)
+		ContextSelectionViewModel selectionVM,
+		IFileSelectionService fileSelectionService)
 	{
 		_itemFactory = itemFactory;
 		_analysisOrchestrator = analysisOrchestrator;
 		_sessionManager = sessionManager;
+		_fileSelectionService = fileSelectionService;
 		TagService = tagService;
 		SelectionVM = selectionVM;
 
-		// ViewModels Filhos
 		TreeVM = new ContextTreeViewModel(itemFactory, analysisOrchestrator, sessionManager);
 		GitVM = new ContextGitViewModel(gitService, itemFactory, sessionManager);
 
-		// --- MÁGICA REATIVA AQUI ---
-		// Escuta alterações na lista de seleção para atualizar a árvore em tempo real
 		SelectionVM.SelectedItemsList.CollectionChanged += OnSelectionChanged;
-
-		// Atualiza contagem quando a lista muda
 		SelectionVM.SelectedItemsList.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
 
-		// Propaga eventos da árvore (ex: expandir nós)
 		TreeVM.StructureUpdated += (s, parentItem) => RegisterItemRecursively(parentItem);
 	}
 
@@ -176,24 +172,27 @@ public partial class ContextAnalysisViewModel : ObservableObject
 	public void SelectFileForPreview(FileSystemItem item)
 	{
 		SelectedPreviewItem = item;
-
-		// Lógica para extrair caminho físico caso seja um nó lógico (ex: File.cs::Method)
 		string realPath = item.FullPath;
+
+		// Lógica para tratar métodos (ex: "Arquivo.cs::MetodoA")
 		if (item.FullPath.Contains("::"))
 			realPath = item.FullPath.Substring(0, item.FullPath.IndexOf("::"));
 
 		if (!string.IsNullOrEmpty(realPath) && System.IO.File.Exists(realPath))
 		{
-			// Se não for um arquivo puro (ex: é um método), cria um wrapper temporário para o visualizador de código
+			FileSystemItem itemToSend;
+
 			if (item.Type != FileSystemItemType.File)
 			{
-				var tempItem = _itemFactory.CreateWrapper(realPath, FileSystemItemType.File);
-				FileSelectedForPreview?.Invoke(this, tempItem);
+				itemToSend = _itemFactory.CreateWrapper(realPath, FileSystemItemType.File);
 			}
 			else
 			{
-				FileSelectedForPreview?.Invoke(this, item);
+				itemToSend = item;
 			}
+
+			// AQUI ESTÁ A MUDANÇA: Usamos o serviço global
+			_fileSelectionService.SetSelection(itemToSend);
 		}
 	}
 

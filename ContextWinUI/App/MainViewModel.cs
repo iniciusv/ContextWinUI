@@ -82,7 +82,7 @@ public partial class MainViewModel : ObservableObject
 		// 5. Instanciação das ViewModels Filhas
 		// Passamos o _fileSelectionService para quem precisa reagir à seleção
 		FileExplorer = new FileExplorerViewModel(SessionManager, tagService, fileSystemService, sharedSelectionVM, itemFactory);
-		ContextAnalysis = new ContextAnalysisViewModel(itemFactory, orchestrator, SessionManager, gitService, tagService, sharedSelectionVM);
+		ContextAnalysis = new ContextAnalysisViewModel(itemFactory,orchestrator,SessionManager,gitService,tagService,sharedSelectionVM,_fileSelectionService);
 
 		// FileContent agora recebe o serviço de seleção
 		FileContent = new FileContentViewModel(fileSystemService, _fileSelectionService);
