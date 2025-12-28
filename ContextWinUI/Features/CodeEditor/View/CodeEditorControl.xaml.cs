@@ -1,20 +1,18 @@
-using ContextWinUI.Core.Models;
-using ContextWinUI.Features.CodeEditor;
-using ContextWinUI.Helpers;
-using ContextWinUI.Services;
-using Microsoft.UI;
+// ARQUIVO: CodeEditorControl.xaml.cs
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.System;
-using Windows.UI;
+using ContextWinUI.Services;
+using ContextWinUI.Helpers;
+using ContextWinUI.Features.CodeEditor;
+using Microsoft.UI;
 
 namespace ContextWinUI.Views.Components;
 
@@ -28,26 +26,11 @@ public sealed partial class CodeEditorControl : UserControl
 	public event EventHandler? SaveRequested;
 	public event EventHandler<int>? CaretPositionChanged;
 
-	private readonly SemanticHighlightService _semanticHighlightService;
-
 	public static readonly DependencyProperty TextProperty =
 		DependencyProperty.Register(nameof(Text), typeof(string), typeof(CodeEditorControl), new PropertyMetadata(string.Empty, OnTextChanged));
 
 	public static readonly DependencyProperty FileExtensionProperty =
 		DependencyProperty.Register(nameof(FileExtension), typeof(string), typeof(CodeEditorControl), new PropertyMetadata(".txt"));
-
-	public ObservableCollection<SymbolNode> ContextNodes
-	{
-		get => (ObservableCollection<SymbolNode>)GetValue(ContextNodesProperty);
-		set => SetValue(ContextNodesProperty, value);
-	}
-
-	public static readonly DependencyProperty ContextNodesProperty =
-		DependencyProperty.Register(
-			nameof(ContextNodes),
-			typeof(ObservableCollection<SymbolNode>),
-			typeof(CodeEditorControl),
-			new PropertyMetadata(null, OnContextNodesChanged));
 
 	public string Text
 	{
@@ -66,27 +49,11 @@ public sealed partial class CodeEditorControl : UserControl
 		this.InitializeComponent();
 		_fastEditorService = new FastEditorHighlightService();
 		_regexHighlightService = new RegexHighlightService();
-		_semanticHighlightService = new SemanticHighlightService();
+
 		ApplyThemeAttributes(CodeEditor);
 
 		CodeEditor.SelectionChanged += CodeEditor_SelectionChanged;
 		this.ActualThemeChanged += (s, e) => ApplyThemeAttributes(CodeEditor);
-	}
-
-	private static void OnContextNodesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-	{
-		var control = (CodeEditorControl)d;
-		if (e.NewValue is ObservableCollection<SymbolNode> newList)
-		{
-			newList.CollectionChanged -= control.OnContextNodesCollectionChanged; // Remove anterior para evitar duplicação
-			newList.CollectionChanged += control.OnContextNodesCollectionChanged;
-			control.RequestEditorHighlighting();
-		}
-	}
-
-	private void OnContextNodesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
-	{
-		RequestEditorHighlighting();
 	}
 
 	private void CodeEditor_BringIntoViewRequested(UIElement sender, BringIntoViewRequestedEventArgs args)
@@ -107,8 +74,6 @@ public sealed partial class CodeEditorControl : UserControl
 			_isInternalUpdate = false;
 
 			CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentText);
-
-			// Normalização crucial
 			string normalized = currentText.Replace("\r", "\r\n");
 			Text = normalized;
 
@@ -136,9 +101,8 @@ public sealed partial class CodeEditorControl : UserControl
 		if (control._isInternalUpdate) return;
 
 		var newText = e.NewValue as string ?? string.Empty;
-		control.CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentEditorText);
 
-		// Normalização para comparação
+		control.CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentEditorText);
 		string currentEditorTextNormalized = currentEditorText.Replace("\r", "\r\n");
 
 		if (currentEditorTextNormalized != newText)
@@ -156,8 +120,6 @@ public sealed partial class CodeEditorControl : UserControl
 		if (_isInternalUpdate) return;
 
 		CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentText);
-
-		// Normalização forçada: O Editor usa \r, o Roslyn quer \r\n
 		string normalizedText = currentText.Replace("\r", "\r\n");
 
 		_isInternalUpdate = true;
@@ -177,14 +139,10 @@ public sealed partial class CodeEditorControl : UserControl
 		string currentText = Text;
 		string ext = FileExtension?.ToLower() ?? ".txt";
 		bool isDark = ThemeHelper.IsDarkTheme();
-		var currentContexts = ContextNodes?.ToList();
 
-		// OTIMIZAÇÃO 1: Aumentamos o delay para 250ms (Debounce)
-		// Isso evita que o highlight rode a cada letra digitada rapidamente, travando a UI.
 		_ = Task.Delay(250, token).ContinueWith(async _ =>
 		{
 			if (token.IsCancellationRequested) return;
-
 			try
 			{
 				List<HighlightSpan> syntaxSpans;
@@ -194,54 +152,39 @@ public sealed partial class CodeEditorControl : UserControl
 				else
 					syntaxSpans = await _regexHighlightService.CalculateHighlightsAsync(currentText, ext, ThemeHelper.GetCurrentThemeStyle());
 
-				List<HighlightSpan> contextSpans = new();
-				if (currentContexts != null && currentContexts.Any())
-				{
-					contextSpans = _semanticHighlightService.CalculateContextHighlights(currentContexts, isDark);
-				}
-
 				if (token.IsCancellationRequested) return;
 
 				DispatcherQueue.TryEnqueue(() =>
 				{
 					if (token.IsCancellationRequested) return;
-					ApplyHybridHighlights(syntaxSpans, contextSpans);
+					ApplyHighlights(syntaxSpans);
 				});
 			}
 			catch { }
 		}, TaskScheduler.Default);
 	}
 
-	private void ApplyHybridHighlights(List<HighlightSpan> syntaxSpans, List<HighlightSpan> contextSpans)
+	private void ApplyHighlights(List<HighlightSpan> syntaxSpans)
 	{
 		if (CodeEditor == null || CodeEditor.Document == null) return;
 
 		try
 		{
-			CodeEditor.Document.BatchDisplayUpdates(); // Congela a pintura visual
-
+			CodeEditor.Document.BatchDisplayUpdates();
 			CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string editorText);
+
 			if (string.IsNullOrEmpty(editorText)) return;
 
 			int editorLength = editorText.Length;
-
-			// OTIMIZAÇÃO 2: Criamos UM objeto de Range e o reutilizamos.
-			// Chamar GetRange() milhares de vezes em um loop é o que causa o lag.
 			var reuseRange = CodeEditor.Document.GetRange(0, 0);
-
-			// 1. Reseta a cor de tudo de uma vez (Rápido)
 			reuseRange.SetRange(0, editorLength);
+
 			var defaultFg = ThemeHelper.IsDarkTheme() ? Colors.White : Colors.Black;
+
+			// Reset base style
 			reuseRange.CharacterFormat.BackgroundColor = Colors.Transparent;
 			reuseRange.CharacterFormat.ForegroundColor = defaultFg;
 
-			// 2. Aplica Highlights de Contexto
-			foreach (var span in contextSpans)
-			{
-				ApplySpanOptimized(reuseRange, span, editorText, editorLength, isBackground: true);
-			}
-
-			// 3. Aplica Highlights de Sintaxe
 			foreach (var span in syntaxSpans)
 			{
 				ApplySpanOptimized(reuseRange, span, editorText, editorLength, isBackground: false);
@@ -257,7 +200,6 @@ public sealed partial class CodeEditorControl : UserControl
 		}
 	}
 
-	// OTIMIZAÇÃO 3: Método helper que recebe o range já instanciado
 	private void ApplySpanOptimized(Microsoft.UI.Text.ITextRange range, HighlightSpan span, string editorText, int editorLength, bool isBackground)
 	{
 		int visualStart = MapRoslynToVisualIndices(span.Start, editorText);
@@ -269,9 +211,7 @@ public sealed partial class CodeEditorControl : UserControl
 
 		if (safeEnd > safeStart)
 		{
-			// Apenas movemos os ponteiros do objeto Range existente. Isso é muito leve.
 			range.SetRange(safeStart, safeEnd);
-
 			if (isBackground)
 				range.CharacterFormat.BackgroundColor = span.Color;
 			else
@@ -283,13 +223,12 @@ public sealed partial class CodeEditorControl : UserControl
 	{
 		int currentRoslynCount = 0;
 		int len = editorText.Length;
-
 		for (int i = 0; i < len; i++)
 		{
 			if (currentRoslynCount >= roslynIndex) return i;
 
 			if (editorText[i] == '\r')
-				currentRoslynCount += 2; // O Roslyn conta \r\n (2 chars), o editor tem apenas \r
+				currentRoslynCount += 2;
 			else
 				currentRoslynCount += 1;
 		}
@@ -303,12 +242,10 @@ public sealed partial class CodeEditorControl : UserControl
 			LineNumbersDisplay.Text = "1";
 			return;
 		}
-		int lineCount = content.Count(c => c == '\n') + 1;
 
-		// Otimização simples de string se o arquivo for muito grande
+		int lineCount = content.Count(c => c == '\n') + 1;
 		if (lineCount > 2000)
 		{
-			// Evita travar gerando string gigante para arquivos enormes
 			LineNumbersDisplay.Text = "1...";
 			return;
 		}
@@ -322,6 +259,7 @@ public sealed partial class CodeEditorControl : UserControl
 	{
 		var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
 		bool isCtrlPressed = (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
 		if (isCtrlPressed && e.Key == VirtualKey.S)
 		{
 			SaveRequested?.Invoke(this, EventArgs.Empty);

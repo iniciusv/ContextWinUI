@@ -5,8 +5,6 @@ using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
-using ContextWinUI.Features.GraphView;
-using ContextWinUI.Features.Parser;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
@@ -31,7 +29,6 @@ public partial class MainViewModel : ObservableObject
 	private readonly SemanticIndexService _semanticIndexService;
 	public IProjectSessionManager SessionManager { get; }
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
-	public ParserEditorViewModel ParserEditor { get; }
 
 	[ObservableProperty]
 	private string statusMessage = "Pronto";
@@ -55,11 +52,8 @@ public partial class MainViewModel : ObservableObject
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 		_semanticIndexService = new SemanticIndexService();
 
-		// 3. Motores de Análise e Diff (Novos)
-		ISyntaxAnalysisService syntaxService = new RoslynSyntaxAnalysisService();
-		ITokenDiffEngine diffEngine = new TokenDiffEngine();
 		ITextSimilarityEngine similarityEngine = new LevenshteinEngine(); // Motor de fuzzy string
-		ISnippetFileRelationService relationService = new SnippetFileRelationService(syntaxService, diffEngine, similarityEngine);
+
 
 		// 4. Orquestradores
 		var dependencyTrackerService = new DependencyTrackerService();
@@ -84,13 +78,6 @@ public partial class MainViewModel : ObservableObject
 		FileContent = new FileContentViewModel(fileSystemService);
 		PrePrompt = new PrePromptViewModel(SessionManager);
 
-		// --- ALTERAÇÃO AQUI ---
-		// Injetando os serviços de análise criados na etapa 3
-		ParserEditor = new ParserEditorViewModel(
-			_semanticIndexService,
-			fileSystemService,
-			relationService
-		);
 
 		RegisterEvents();
 	}
@@ -193,15 +180,6 @@ public partial class MainViewModel : ObservableObject
 			item = checkedItems.FirstOrDefault();
 		}
 
-		// 3. Verifica se encontrou algo e se é código
-		if (item != null && item.IsCodeFile)
-		{
-			await ParserEditor.LoadFileAsync(item.FullPath);
-			StatusMessage = $"Enviado para o Parser: {item.Name}";
-
-			// Opcional: Se você tiver controle de abas na View, 
-			// precisaria de uma propriedade aqui para mudar o SelectedIndex do Pivot/TabControl
-		}
 		else
 		{
 			StatusMessage = "Selecione um arquivo de código válido para editar.";
@@ -215,9 +193,6 @@ public partial class MainViewModel : ObservableObject
 			// 1. Carrega na aba de Leitura (existente)
 			_ = FileContent.LoadFileAsync(item);
 
-			// 2. Carrega na aba de Refatoração Inteligente (NOVO)
-			// Isso garante que o Parser tenha o arquivo e o grafo de dependências atualizado
-			await ParserEditor.LoadFileAsync(item.FullPath);
 		}
 	}
 

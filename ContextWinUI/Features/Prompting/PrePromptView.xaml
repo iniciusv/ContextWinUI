@@ -38,13 +38,13 @@
 		</StackPanel>
 
 		<TextBox Grid.Row="3"
-                 Margin="16,0,16,16"
-                 Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                 AcceptsReturn="True"
-                 TextWrapping="Wrap"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 PlaceholderText="Instruções globais..."
-                 FontFamily="Consolas, Courier New"
-                 CornerRadius="4" BorderThickness="0"/>
+			 Margin="16,0,16,16"
+			 Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+			 AcceptsReturn="True"
+			 TextWrapping="Wrap"
+			 ScrollViewer.VerticalScrollBarVisibility="Auto"
+			 PlaceholderText="Instruções globais..."
+			 FontFamily="Consolas, Courier New"
+			 CornerRadius="4" BorderThickness="0"/>
 	</Grid>
 </UserControl>

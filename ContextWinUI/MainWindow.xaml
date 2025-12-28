@@ -93,9 +93,6 @@
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 				</PivotItem>
 
-				<PivotItem Header="Refatoração Inteligente" Margin="0">
-					<parser:ParserEditorView />
-				</PivotItem>
 
 				<PivotItem Header="Pré-Prompt Global" Margin="0">
 					<views:PrePromptView 

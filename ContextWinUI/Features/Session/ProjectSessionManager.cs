@@ -32,6 +32,7 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	public event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	public event EventHandler<string>? StatusChanged;
+	public event EventHandler? ContextRestored;
 	public ConcurrentDictionary<string, string> TagColors { get; } = new();
 
 	public ProjectSessionManager(IFileSystemService fileSystemService, IPersistenceService persistenceService, IFileSystemItemFactory itemFactory)
@@ -284,22 +285,23 @@ public class ProjectSessionManager : IProjectSessionManager
 		NotifyStatus($"Lendo arquivo de contexto: {Path.GetFileName(filePath)}...");
 
 		var cache = await _persistenceService.LoadProjectCacheFromSpecificFileAsync(filePath);
+
 		if (cache != null)
 		{
-			// 1. Aplica os dados na memória
+			// 1. Atualiza os dados na memória
 			ApplyCacheToMemory(CurrentProjectPath, cache);
 
-			// 2. Aplica as cores
 			if (cache.TagColors != null)
 			{
 				TagColors.Clear();
 				ApplyColorsFromCache(cache);
 			}
 
-			// 3. Define este arquivo como a fonte da verdade para o próximo "Salvar"
 			ActiveContextFilePath = filePath;
-
 			NotifyStatus($"Contexto carregado e vinculado: {Path.GetFileName(filePath)}");
+
+			// 2. ADICIONE ESTA LINHA: Avisa quem estiver ouvindo que o contexto mudou!
+			ContextRestored?.Invoke(this, EventArgs.Empty);
 		}
 		else
 		{
