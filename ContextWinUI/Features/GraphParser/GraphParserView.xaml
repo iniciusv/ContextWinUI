@@ -1,0 +1,131 @@
+<UserControl
+    x:Class="ContextWinUI.Features.GraphParser.Views.GraphParserView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:ContextWinUI.Features.GraphParser.Models"
+    xmlns:components="using:ContextWinUI.Views.Components"
+    xmlns:converters="using:ContextWinUI.Converters"
+    mc:Ignorable="d">
+
+	<UserControl.Resources>
+		<converters:BoolToVisibilityConverter x:Key="VisibleIfTrue" />
+
+		<converters:BoolToVisibilityConverter x:Key="CollapsedIfTrue" Invert="True"/>
+	</UserControl.Resources>
+
+	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<Grid Grid.Row="0" Padding="16,12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+			<StackPanel Spacing="4">
+				<StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+					<FontIcon Glyph="&#xE8F4;" FontSize="16" Foreground="{ThemeResource SystemAccentColor}"/>
+					<TextBlock Text="Parser de Contexto" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+				</StackPanel>
+
+				<StackPanel Orientation="Horizontal" Spacing="8">
+					<TextBlock Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}" 
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                               FontSize="12"/>
+					<TextBlock Text="•" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12"/>
+					<TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12">
+                        <Run Text="{x:Bind ViewModel.Blocks.Count, Mode=OneWay}"/>
+                        <Run Text="blocos identificados"/>
+					</TextBlock>
+				</StackPanel>
+			</StackPanel>
+		</Grid>
+
+		<Grid Grid.Row="1">
+
+			<ScrollViewer Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
+                          Padding="0,0,12,0" VerticalScrollBarVisibility="Auto">
+				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="16">
+					<ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="models:CodeBlockItem">
+							<Grid Margin="0,0,0,24" CornerRadius="8" 
+                                  BorderThickness="1" 
+                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                                  Background="{ThemeResource LayerFillColorAltBrush}">
+
+								<Grid.RowDefinitions>
+									<RowDefinition Height="Auto"/>
+									<RowDefinition Height="Auto"/>
+								</Grid.RowDefinitions>
+
+								<Grid Grid.Row="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
+                                      Padding="12,8" CornerRadius="8,8,0,0" 
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                                      BorderThickness="0,0,0,1">
+									<Grid.ColumnDefinitions>
+										<ColumnDefinition Width="Auto"/>
+										<ColumnDefinition Width="*"/>
+										<ColumnDefinition Width="Auto"/>
+									</Grid.ColumnDefinitions>
+
+									<Ellipse Width="24" Height="24" Fill="{x:Bind HeaderBrush}" Opacity="0.1" VerticalAlignment="Center"/>
+									<FontIcon Glyph="{x:Bind Icon}" Foreground="{x:Bind HeaderBrush}" FontSize="12" 
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0"/>
+
+									<StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+										<TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+										<TextBlock Text="{x:Bind TypeDescription}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+									</StackPanel>
+
+									<Border Grid.Column="2" Background="{ThemeResource LayerFillColorDefaultBrush}" 
+                                            CornerRadius="4" Padding="8,2" VerticalAlignment="Center"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+										<TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" FontFamily="Consolas">
+                                            <Run Text="Ln"/>
+                                            <Run Text="{x:Bind StartLine}"/>
+                                            <Run Text="-"/>
+                                            <Run Text="{x:Bind EndLine}"/>
+										</TextBlock>
+									</Border>
+								</Grid>
+
+								<components:CodeEditorControl Grid.Row="1"
+                                                              Text="{x:Bind Content}"
+                                                              FileExtension="{x:Bind FileExtension}"
+                                                              MinHeight="40"
+                                                              Margin="1"
+                                                              CornerRadius="0,0,8,8"/>
+							</Grid>
+						</DataTemplate>
+					</ItemsControl.ItemTemplate>
+				</ItemsControl>
+			</ScrollViewer>
+
+			<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+				<Grid Width="80" Height="80" CornerRadius="40" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+					<FontIcon Glyph="&#xE9CE;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+				</Grid>
+				<StackPanel HorizontalAlignment="Center">
+					<TextBlock Text="Nenhum código analisado" 
+                               Style="{StaticResource SubtitleTextBlockStyle}" 
+                               HorizontalAlignment="Center"/>
+					<TextBlock Text="Selecione um arquivo C# válido na árvore para ver sua estrutura." 
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="300" TextAlignment="Center" Margin="0,4,0,0"/>
+				</StackPanel>
+			</StackPanel>
+
+			<Grid Background="{ThemeResource LayerFillColorDefaultBrush}" Opacity="0.8"
+                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+				<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+					<ProgressRing IsActive="True" Width="40" Height="40"/>
+					<TextBlock Text="Processando grafo..." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				</StackPanel>
+			</Grid>
+
+		</Grid>
+	</Grid>
+</UserControl>

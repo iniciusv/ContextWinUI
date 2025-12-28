@@ -6,6 +6,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
+using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
@@ -35,6 +36,8 @@ public partial class MainViewModel : ObservableObject
 	public IProjectSessionManager SessionManager { get; }
 
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
+	[ObservableProperty]
+	private GraphParserViewModel graphParser;
 
 	[ObservableProperty]
 	private string statusMessage = "Pronto";
@@ -47,7 +50,7 @@ public partial class MainViewModel : ObservableObject
 	// CONSTRUTOR COMPLETO
 	public MainViewModel()
 	{
-		// 1. Instanciação dos Serviços Básicos
+		// 1. Primeiro cria os serviços básicos
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
@@ -55,10 +58,10 @@ public partial class MainViewModel : ObservableObject
 		ISelectionIOService selectionIOService = new SelectionIOService();
 		ITagManagementUiService tagService = new TagManagementUiService();
 
-		// 2. Instanciação do Novo Serviço de Seleção (Volátil)
+		// 2. Inicializa os campos da classe (MUITO IMPORTANTE)
 		_fileSelectionService = new FileSelectionService();
+		_semanticIndexService = new SemanticIndexService();
 
-		// 3. Instanciação dos Gerenciadores de Estado Persistente
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 		_semanticIndexService = new SemanticIndexService();
 		ITextSimilarityEngine similarityEngine = new LevenshteinEngine();
@@ -89,7 +92,10 @@ public partial class MainViewModel : ObservableObject
 
 		PrePrompt = new PrePromptViewModel(SessionManager);
 
+
+
 		RegisterEvents();
+		GraphParser = new GraphParserViewModel(_fileSelectionService, _semanticIndexService, fileSystemService);
 	}
 
 

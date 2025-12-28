@@ -7,8 +7,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:views="using:ContextWinUI.Views"
-    xmlns:graph="using:ContextWinUI.Features.GraphView"
-    xmlns:parser="using:ContextWinUI.Features.Parser"
+    xmlns:graph="using:ContextWinUI.Features.GraphView" 
+    xmlns:parser="using:ContextWinUI.Features.GraphParser.Views"
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
 
@@ -93,6 +93,9 @@
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 				</PivotItem>
 
+				<PivotItem Header="Parser de Blocos" Margin="0">
+					<parser:GraphParserView ViewModel="{x:Bind ViewModel.GraphParser, Mode=OneWay}" />
+				</PivotItem>
 
 				<PivotItem Header="Pré-Prompt Global" Margin="0">
 					<views:PrePromptView 
