@@ -40,4 +40,22 @@ public partial class CodeBlockItem : ObservableObject
 		SymbolType.Property => new SolidColorBrush(Microsoft.UI.Colors.SlateGray),
 		_ => new SolidColorBrush(Microsoft.UI.Colors.Gray)
 	};
+
+	public SegmentType SegmentType { get; set; }
+
+	// Nível de profundidade (0 = raiz, 1 = dentro do namespace, 2 = dentro da classe)
+	// Útil para desenhar margem na UI
+	public int DepthLevel { get; set; }
+
+	// Helper para saber se é um bloco de "código real" ou apenas estrutura/espaço
+	public bool IsStructural => SegmentType == SegmentType.ClassHeader ||
+								SegmentType == SegmentType.NamespaceDecl ||
+								SegmentType == SegmentType.CloseBrace ||
+								SegmentType == SegmentType.Trivia;
+
+	public bool IsGranular => SegmentType == SegmentType.Method ||
+							  SegmentType == SegmentType.Property ||
+							  SegmentType == SegmentType.Field ||
+							  SegmentType == SegmentType.Constructor ||
+							  SegmentType == SegmentType.Enum;
 }

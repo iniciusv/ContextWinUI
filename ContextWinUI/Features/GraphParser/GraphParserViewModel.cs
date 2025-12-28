@@ -1,11 +1,14 @@
-// ARQUIVO: ContextWinUI/Features/GraphParser/ViewModels/GraphParserViewModel.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Models;
-using Microsoft.UI.Xaml; // <--- ADICIONE ISSO
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -22,23 +25,14 @@ public partial class GraphParserViewModel : ObservableObject
 	[ObservableProperty]
 	private ObservableCollection<CodeBlockItem> blocks = new();
 
-	// Notifica as propriedades de visualização quando IsEmpty mudar
 	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(ListVisibility))]
-	[NotifyPropertyChangedFor(nameof(EmptyStateVisibility))]
 	private bool isEmpty = true;
 
 	[ObservableProperty]
 	private string currentFileName = "Nenhum arquivo";
 
 	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(LoadingVisibility))]
 	private bool isLoading;
-
-	// Propriedades de Visibilidade (Remove a necessidade de Converters no XAML)
-	public Visibility ListVisibility => (!IsEmpty && !IsLoading) ? Visibility.Visible : Visibility.Collapsed;
-	public Visibility EmptyStateVisibility => (IsEmpty && !IsLoading) ? Visibility.Visible : Visibility.Collapsed;
-	public Visibility LoadingVisibility => IsLoading ? Visibility.Visible : Visibility.Collapsed;
 
 	public GraphParserViewModel(
 		IFileSelectionService selectionService,
@@ -53,8 +47,6 @@ public partial class GraphParserViewModel : ObservableObject
 		{
 			_selectionService.SelectionChanged += OnSelectionChanged;
 		}
-
-		// REMOVIDO: LoadDummyData();
 	}
 
 	private async void OnSelectionChanged(object? sender, FileSystemItem? item)
@@ -63,128 +55,192 @@ public partial class GraphParserViewModel : ObservableObject
 		{
 			Blocks.Clear();
 			IsEmpty = true;
-			CurrentFileName = "Nenhum arquivo de código selecionado";
+			CurrentFileName = "Nenhum arquivo selecionado";
 			return;
 		}
-
 		await LoadBlocksAsync(item);
 	}
 
 	private async Task LoadBlocksAsync(FileSystemItem item)
 	{
 		IsLoading = true;
-		// Força atualização imediata da UI para esconder a lista antiga
-		OnPropertyChanged(nameof(ListVisibility));
-		OnPropertyChanged(nameof(EmptyStateVisibility));
-
 		IsEmpty = false;
 		CurrentFileName = item.Name;
 		Blocks.Clear();
 
 		try
 		{
-			var graph = _indexService.GetCurrentGraph();
-			var normalizedPath = Path.GetFullPath(item.FullPath).ToLowerInvariant();
 			var fileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
+			if (string.IsNullOrEmpty(fileContent)) return;
 
-			if (graph != null && graph.FileIndex.TryGetValue(normalizedPath, out var nodes) && !string.IsNullOrEmpty(fileContent))
+			// 1. Parse do SyntaxTree
+			var tree = CSharpSyntaxTree.ParseText(fileContent);
+			var root = await tree.GetRootAsync();
+
+			// 2. Segmentação Recursiva
+			var segments = new List<CodeBlockItem>();
+			FlattenNode(root, fileContent, 0, segments);
+
+			// 3. Popula a lista observável
+			foreach (var seg in segments)
 			{
-				var relevantNodes = nodes
-					.Where(n => IsVisualBlock(n.Type))
-					.OrderBy(n => n.StartPosition)
-					.ToList();
-
-				if (relevantNodes.Any())
-				{
-					foreach (var node in relevantNodes)
-					{
-						if (node.StartPosition < 0 || node.StartPosition + node.Length > fileContent.Length)
-							continue;
-
-						string snippet = fileContent.Substring(node.StartPosition, node.Length);
-
-						int startLine = CountLines(fileContent, 0, node.StartPosition) + 1;
-						int lineCount = CountLines(snippet, 0, snippet.Length);
-
-						Blocks.Add(new CodeBlockItem
-						{
-							Id = node.Id,
-							Name = node.Name,
-							SymbolType = node.Type,
-							TypeDescription = node.Type.ToString(),
-							Content = snippet,
-							FileExtension = Path.GetExtension(item.FullPath),
-							Icon = GetIconForType(node.Type),
-							StartLine = startLine,
-							EndLine = startLine + lineCount
-						});
-					}
-				}
-				else
-				{
-					AddFullFileBlock(fileContent, item.Name, item.FullPath);
-				}
-			}
-			else
-			{
-				AddFullFileBlock(fileContent ?? "", item.Name, item.FullPath);
+				seg.FileExtension = Path.GetExtension(item.FullPath);
+				Blocks.Add(seg);
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			IsEmpty = true;
+			Blocks.Add(new CodeBlockItem { Name = "Erro", Content = ex.Message, SegmentType = SegmentType.Trivia });
 		}
 		finally
 		{
 			IsLoading = false;
-			if (Blocks.Count == 0) IsEmpty = true;
+			IsEmpty = Blocks.Count == 0;
 		}
 	}
 
-	// ... (Mantenha AddFullFileBlock, IsVisualBlock, GetIconForType, CountLines iguais ao anterior) ...
-	private void AddFullFileBlock(string content, string name, string path)
+	// --- CORE DO PARSER ---
+
+	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
 	{
-		Blocks.Add(new CodeBlockItem
+		// Pega todos os filhos que são "interessantes" (Métodos, Props) OU "containers" (Classes, Namespaces)
+		// Isso garante que não vamos ignorar uma Classe só porque ela não é um "Método"
+		var childrenToProcess = node.ChildNodes()
+			.Where(n => IsInterestingNode(n) || IsContainerNode(n))
+			.OrderBy(n => n.SpanStart)
+			.ToList();
+
+		int cursor = node.SpanStart;
+		if (node is CompilationUnitSyntax) cursor = 0;
+
+		foreach (var child in childrenToProcess)
 		{
+			// 1. Gaps antes do filho (Comentários, Declaração de Classe, Chaves Abertas)
+			if (child.SpanStart > cursor)
+			{
+				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
+				if (!string.IsNullOrEmpty(gapText))
+				{
+					resultList.Add(CreateSegment(node, gapText, depth, true));
+				}
+			}
+
+			// 2. Processar o Filho
+			if (IsContainerNode(child))
+			{
+				// RECURSÃO: Se é Classe ou Namespace, mergulha nele
+				FlattenNode(child, fullText, depth + 1, resultList);
+			}
+			else
+			{
+				// FOLHA: Se é Método/Propriedade, adiciona o bloco inteiro
+				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
+				resultList.Add(CreateSegment(child, childText, depth + 1, false));
+			}
+
+			cursor = child.Span.End;
+		}
+
+		// 3. Sobra final (Chaves de fechamento })
+		if (cursor < node.Span.End)
+		{
+			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
+			if (!string.IsNullOrEmpty(tailText))
+			{
+				resultList.Add(CreateSegment(node, tailText, depth, true));
+			}
+		}
+
+		// Caso especial para fim de arquivo
+		if (node is CompilationUnitSyntax && cursor < fullText.Length)
+		{
+			var finalTrivia = fullText.Substring(cursor);
+			if (!string.IsNullOrEmpty(finalTrivia))
+			{
+				resultList.Add(new CodeBlockItem
+				{
+					Name = "End of File",
+					Content = finalTrivia,
+					SegmentType = SegmentType.Trivia
+				});
+			}
+		}
+	}
+
+	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap)
+	{
+		var type = IdentifySegmentType(node, isGap, content);
+
+		// Ajuste fino para nome
+		string name = isGap
+			? (content.Trim() == "}" ? "Fechamento de Escopo" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
+			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
+
+		return new CodeBlockItem
+		{
+			Id = Guid.NewGuid().ToString(),
 			Name = name,
-			SymbolType = SymbolType.Class,
-			TypeDescription = "Arquivo Completo",
 			Content = content,
-			FileExtension = Path.GetExtension(path),
-			Icon = "\uE9F3",
-			StartLine = 1,
-			EndLine = CountLines(content, 0, content.Length) + 1
-		});
+			DepthLevel = depth,
+			SegmentType = type,
+			TypeDescription = type.ToString(),
+			StartLine = CountLines(content) // Simplificado
+		};
 	}
 
-	private bool IsVisualBlock(SymbolType type) => type switch
+	private string GetMemberName(MemberDeclarationSyntax member)
 	{
-		SymbolType.Class => true,
-		SymbolType.Interface => true,
-		SymbolType.Method => true,
-		SymbolType.Constructor => true,
-		SymbolType.Property => true,
-		_ => false
-	};
+		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
+		if (member is PropertyDeclarationSyntax p) return p.Identifier.Text;
+		if (member is ClassDeclarationSyntax c) return c.Identifier.Text;
+		if (member is InterfaceDeclarationSyntax i) return i.Identifier.Text;
+		if (member is NamespaceDeclarationSyntax n) return n.Name.ToString();
+		if (member is FileScopedNamespaceDeclarationSyntax fn) return fn.Name.ToString();
+		return member.GetType().Name.Replace("DeclarationSyntax", "");
+	}
 
-	private string GetIconForType(SymbolType type) => type switch
+	private bool IsContainerNode(SyntaxNode node)
 	{
-		SymbolType.Method => "\uEA86",
-		SymbolType.Constructor => "\uEA86",
-		SymbolType.Class => "\uE943",
-		SymbolType.Interface => "\uE943",
-		SymbolType.Property => "\uE8A5",
-		_ => "\uE74C"
-	};
+		return node is ClassDeclarationSyntax ||
+			   node is NamespaceDeclarationSyntax ||
+			   node is FileScopedNamespaceDeclarationSyntax ||
+			   node is StructDeclarationSyntax ||
+			   node is InterfaceDeclarationSyntax;
+	}
 
-	private int CountLines(string text, int start, int length)
+	private bool IsInterestingNode(SyntaxNode node)
 	{
-		int count = 0;
-		int end = start + length;
-		for (int i = start; i < end; i++)
+		return node is MethodDeclarationSyntax ||
+			   node is ConstructorDeclarationSyntax ||
+			   node is PropertyDeclarationSyntax ||
+			   node is FieldDeclarationSyntax ||
+			   node is EnumDeclarationSyntax ||
+			   node is UsingDirectiveSyntax;
+	}
+
+	private SegmentType IdentifySegmentType(SyntaxNode node, bool isGap, string content)
+	{
+		if (string.IsNullOrWhiteSpace(content)) return SegmentType.Trivia;
+		if (content.Trim() == "}") return SegmentType.CloseBrace;
+
+		if (isGap)
 		{
-			if (text[i] == '\n') count++;
+			if (node is ClassDeclarationSyntax) return SegmentType.ClassHeader;
+			if (node is NamespaceDeclarationSyntax) return SegmentType.NamespaceDecl;
+			return SegmentType.Gap;
 		}
-		return count;
+
+		return node switch
+		{
+			MethodDeclarationSyntax => SegmentType.Method,
+			ConstructorDeclarationSyntax => SegmentType.Constructor,
+			PropertyDeclarationSyntax => SegmentType.Property,
+			FieldDeclarationSyntax => SegmentType.Field,
+			EnumDeclarationSyntax => SegmentType.Enum,
+			UsingDirectiveSyntax => SegmentType.FileHeader,
+			_ => SegmentType.Gap
+		};
 	}
+
+	private int CountLines(string text) => text.Count(c => c == '\n') + 1;
 }
