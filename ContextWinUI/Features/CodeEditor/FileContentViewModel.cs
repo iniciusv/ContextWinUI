@@ -1,10 +1,11 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using System;
+using System.ComponentModel.Design;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -13,7 +14,11 @@ namespace ContextWinUI.ViewModels;
 public partial class FileContentViewModel : ObservableObject
 {
 	private readonly IFileSystemService _fileSystemService;
+	// Não precisamos guardar o _fileSelectionService em campo privado se só usarmos no construtor para assinar o evento
 
+	// PROPRIEDADES COMPLETAS
+	// SelectedItem ainda existe para o XAML fazer o bind (ex: mostrar o nome do arquivo no header),
+	// mas agora ele é alimentado passivamente pelo evento.
 	[ObservableProperty]
 	[NotifyCanExecuteChangedFor(nameof(SaveContentCommand))]
 	private FileSystemItem? selectedItem;
@@ -26,20 +31,39 @@ public partial class FileContentViewModel : ObservableObject
 
 	public event EventHandler<string>? StatusChanged;
 
-	public FileContentViewModel(IFileSystemService fileSystemService)
+	// CONSTRUTOR COMPLETO
+	public FileContentViewModel(IFileSystemService fileSystemService, IFileSelectionService selectionService)
 	{
 		_fileSystemService = fileSystemService;
+
+		// Assinamos o evento global de seleção.
+		// Assim que o MainViewModel (ou qualquer outro lugar) mudar a seleção, nós carregamos o arquivo.
+		selectionService.SelectionChanged += async (s, newItem) =>
+		{
+			if (newItem != null && newItem.IsCodeFile)
+			{
+				await LoadFileAsync(newItem);
+			}
+			else
+			{
+				// Limpa a tela se selecionar uma pasta ou nada
+				SelectedItem = null;
+				FileContent = string.Empty;
+			}
+		};
 	}
 
+	// O método LoadFileAsync permanece público, mas agora é usado principalmente internamente pelo evento acima
 	public async Task LoadFileAsync(FileSystemItem item)
 	{
 		if (item == null || !item.IsCodeFile)
 		{
 			FileContent = string.Empty;
+			SelectedItem = null;
 			return;
 		}
 
-		SelectedItem = item;
+		SelectedItem = item; // Atualiza a propriedade para a View
 		IsLoading = true;
 
 		try
@@ -57,6 +81,7 @@ public partial class FileContentViewModel : ObservableObject
 			IsLoading = false;
 		}
 	}
+
 
 	[RelayCommand(CanExecute = nameof(CanSave))]
 	private async Task SaveContentAsync()

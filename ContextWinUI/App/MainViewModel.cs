@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Helpers;
@@ -22,12 +23,17 @@ namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
+	// PROPRIEDADES COMPLETAS
 	public FileExplorerViewModel FileExplorer { get; }
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
 	public FileContentViewModel FileContent { get; }
+
 	private readonly SemanticIndexService _semanticIndexService;
+	private readonly IFileSelectionService _fileSelectionService; // Nova dependência privada
+
 	public IProjectSessionManager SessionManager { get; }
+
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
 
 	[ObservableProperty]
@@ -38,9 +44,10 @@ public partial class MainViewModel : ObservableObject
 
 	private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
+	// CONSTRUTOR COMPLETO
 	public MainViewModel()
 	{
-		// 1. Serviços de Infraestrutura
+		// 1. Instanciação dos Serviços Básicos
 		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
 		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
 		IPersistenceService persistenceService = new PersistenceService();
@@ -48,15 +55,16 @@ public partial class MainViewModel : ObservableObject
 		ISelectionIOService selectionIOService = new SelectionIOService();
 		ITagManagementUiService tagService = new TagManagementUiService();
 
-		// 2. Gestão de Sessão e Busca
+		// 2. Instanciação do Novo Serviço de Seleção (Volátil)
+		_fileSelectionService = new FileSelectionService();
+
+		// 3. Instanciação dos Gerenciadores de Estado Persistente
 		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
 		_semanticIndexService = new SemanticIndexService();
-
-		ITextSimilarityEngine similarityEngine = new LevenshteinEngine(); // Motor de fuzzy string
-
-
-		// 4. Orquestradores
+		ITextSimilarityEngine similarityEngine = new LevenshteinEngine();
 		var dependencyTrackerService = new DependencyTrackerService();
+
+		// 4. Orquestração
 		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
 			_semanticIndexService,
 			dependencyTrackerService,
@@ -64,7 +72,6 @@ public partial class MainViewModel : ObservableObject
 			fileSystemService
 		);
 
-		// 5. ViewModels Compartilhados
 		var sharedSelectionVM = new ContextSelectionViewModel(
 			itemFactory,
 			selectionIOService,
@@ -72,12 +79,15 @@ public partial class MainViewModel : ObservableObject
 			SessionManager
 		);
 
-		// 6. Inicialização dos ViewModels de Feature
+		// 5. Instanciação das ViewModels Filhas
+		// Passamos o _fileSelectionService para quem precisa reagir à seleção
 		FileExplorer = new FileExplorerViewModel(SessionManager, tagService, fileSystemService, sharedSelectionVM, itemFactory);
 		ContextAnalysis = new ContextAnalysisViewModel(itemFactory, orchestrator, SessionManager, gitService, tagService, sharedSelectionVM);
-		FileContent = new FileContentViewModel(fileSystemService);
-		PrePrompt = new PrePromptViewModel(SessionManager);
 
+		// FileContent agora recebe o serviço de seleção
+		FileContent = new FileContentViewModel(fileSystemService, _fileSelectionService);
+
+		PrePrompt = new PrePromptViewModel(SessionManager);
 
 		RegisterEvents();
 	}
@@ -186,14 +196,10 @@ public partial class MainViewModel : ObservableObject
 		}
 	}
 
-	public async void OnFileSelected(FileSystemItem item)
+	public void OnFileSelected(FileSystemItem item)
 	{
-		if (item != null && item.IsCodeFile)
-		{
-			// 1. Carrega na aba de Leitura (existente)
-			_ = FileContent.LoadFileAsync(item);
-
-		}
+		// "Alguém clicou num arquivo. Não sei quem se importa, mas aqui está."
+		_fileSelectionService.SetSelection(item);
 	}
 
 
