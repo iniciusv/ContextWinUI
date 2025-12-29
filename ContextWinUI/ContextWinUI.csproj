@@ -52,6 +52,9 @@
     <Page Update="Features\ContextBuilder\ContextGitView.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Update="Features\GraphParser\FileSegmentsView.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Features\GraphParser\SegmentCodeViewer.xaml">
       <SubType>Designer</SubType>
     </Page>

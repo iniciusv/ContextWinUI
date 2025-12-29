@@ -4,15 +4,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:models="using:ContextWinUI.Features.GraphParser.Models"
-    xmlns:components="using:ContextWinUI.Views.Components"
+    xmlns:vm="using:ContextWinUI.Features.GraphParser.ViewModels"
+    xmlns:views="using:ContextWinUI.Features.GraphParser.Views"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
-	xmlns:localComp="using:ContextWinUI.Features.GraphParser.Views.Components"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
-		<converters:BoolToVisibilityConverter x:Key="VisibleIfTrue" TrueValue="Visible" FalseValue="Collapsed"/>
-		<converters:BoolToVisibilityConverter x:Key="CollapsedIfTrue" TrueValue="Collapsed" FalseValue="Visible"/>
+		<converters:BoolToVisibilityConverter x:Key="ReverseBoolToVis" TrueValue="Collapsed" FalseValue="Visible"/>
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
@@ -23,73 +21,89 @@
 
 		<Grid Grid.Row="0" Padding="12,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-			<StackPanel Orientation="Horizontal" Spacing="8">
-				<FontIcon Glyph="&#xE8F4;" FontSize="14" Foreground="{ThemeResource SystemAccentColor}"/>
-				<TextBlock Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}" 
-                           Style="{StaticResource CaptionTextBlockStyle}" 
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-				<TextBlock Text="|" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-				<TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                    <Run Text="{x:Bind ViewModel.Blocks.Count, Mode=OneWay}"/>
-                    <Run Text="segmentos"/>
-				</TextBlock>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+			</Grid.ColumnDefinitions>
+
+			<StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="0,0,12,0">
+				<FontIcon Glyph="&#xE8F4;" FontSize="16" Foreground="{ThemeResource SystemAccentColor}"/>
+				<TextBlock Text="Editor Granular" Style="{StaticResource BodyStrongTextBlockStyle}"/>
 			</StackPanel>
+
+			<AutoSuggestBox Grid.Column="1"
+                PlaceholderText="Buscar no grafo (arquivos, classes, métodos)..."
+                QueryIcon="Find"
+                ItemsSource="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"
+                TextChanged="AutoSuggestBox_TextChanged"
+                SuggestionChosen="AutoSuggestBox_SuggestionChosen"
+                HorizontalAlignment="Stretch">
+				<AutoSuggestBox.ItemTemplate>
+					<DataTemplate>
+						<StackPanel Margin="8,4">
+							<TextBlock Text="{Binding Title}" 
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"/>
+							<TextBlock Text="{Binding Subtitle}" 
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           Opacity="0.8"/>
+							<TextBlock Text="{Binding FilePath}" 
+                           FontSize="10"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+						</StackPanel>
+					</DataTemplate>
+				</AutoSuggestBox.ItemTemplate>
+			</AutoSuggestBox>
 		</Grid>
 
 		<Grid Grid.Row="1">
-			<ScrollViewer Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
-                          Padding="0" VerticalScrollBarVisibility="Auto">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+			</Grid.RowDefinitions>
 
-				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="0">
-					<ItemsControl.ItemTemplate>
-						<DataTemplate x:DataType="models:CodeBlockItem">
+			<TabView Grid.Row="0"
+                     TabItemsSource="{x:Bind ViewModel.Tabs, Mode=OneWay}"
+                     SelectedItem="{x:Bind ViewModel.SelectedTab, Mode=TwoWay}"
+                     TabCloseRequested="TabView_TabCloseRequested"
+                     IsAddTabButtonVisible="False"
+                     Padding="0"
+                     VerticalAlignment="Top">
 
-							<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
-                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-                                  BorderThickness="0,0,0,1" 
-                                  Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+				<TabView.TabItemTemplate>
+					<DataTemplate x:DataType="vm:FileSegmentsViewModel">
+						<TabViewItem Header="{x:Bind FileName}">
+							<TabViewItem.IconSource>
+								<SymbolIconSource Symbol="Document"/>
+							</TabViewItem.IconSource>
+						</TabViewItem>
+					</DataTemplate>
+				</TabView.TabItemTemplate>
+			</TabView>
 
-								<Grid.ColumnDefinitions>
-									<ColumnDefinition Width="85"/>
-									<ColumnDefinition Width="*"/>
-								</Grid.ColumnDefinitions>
+			<ContentControl Grid.Row="1" 
+                        Content="{x:Bind ViewModel.SelectedTab, Mode=OneWay}"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch"
+                        Visibility="{x:Bind ViewModel.HasTabs, Mode=OneWay}">
+				<ContentControl.ContentTemplate>
+					<DataTemplate x:DataType="vm:FileSegmentsViewModel">
+						<views:FileSegmentsView DataContext="{Binding}"/>
+					</DataTemplate>
+				</ContentControl.ContentTemplate>
+			</ContentControl>
 
-								<Grid Grid.Column="0" Background="{ThemeResource LayerFillColorAltBrush}" 
-                                      Padding="8,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-                                      BorderThickness="0,0,1,0"
-                                      ToolTipService.ToolTip="{x:Bind Name}">
-
-									<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
-                                               Fill="{x:Bind HeaderBrush}" Margin="-8,0,0,0"/>
-
-									<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Opacity="0.9">
-										<FontIcon Glyph="{x:Bind Icon}" Foreground="{x:Bind HeaderBrush}" FontSize="10"/>
-										<TextBlock Text="{x:Bind TypeDescription}" FontSize="9" FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
-                                                   TextTrimming="CharacterEllipsis"/>
-									</StackPanel>
-								</Grid>
-
-								<localComp:SegmentCodeViewer Grid.Column="1"
-                             Text="{x:Bind Content, Mode=OneWay}" 
-                             FileExtension="{x:Bind FileExtension, Mode=OneWay}"
-                             VerticalAlignment="Stretch"
-                             HorizontalAlignment="Stretch"
-                             Margin="0"/>
-							</Grid>
-						</DataTemplate>
-					</ItemsControl.ItemTemplate>
-				</ItemsControl>
-			</ScrollViewer>
-
-			<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
-                        Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-				<TextBlock Text="Nenhum conteúdo granular" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-			</StackPanel>
-
-			<Grid Background="{ThemeResource LayerFillColorDefaultBrush}" Opacity="0.8"
-                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-				<ProgressRing IsActive="True" Width="30" Height="30"/>
+			<Grid Grid.Row="0" Grid.RowSpan="2" 
+                  Background="{ThemeResource LayerFillColorDefaultBrush}"
+                  Visibility="{x:Bind ViewModel.Tabs.Count, Mode=OneWay, Converter={StaticResource ReverseBoolToVis}}">
+				<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+					<FontIcon Glyph="&#xE8F4;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+					<TextBlock Text="Use a busca acima para abrir um arquivo" 
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				</StackPanel>
 			</Grid>
 		</Grid>
 	</Grid>

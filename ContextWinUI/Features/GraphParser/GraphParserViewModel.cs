@@ -1,12 +1,10 @@
+// ARQUIVO: GraphParserViewModel.cs (modificado)
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
-using ContextWinUI.Models;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using ContextWinUI.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,229 +16,320 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class GraphParserViewModel : ObservableObject
 {
-	private readonly IFileSelectionService _selectionService;
 	private readonly SemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
+	private string _rootPath;
 
 	[ObservableProperty]
-	private ObservableCollection<CodeBlockItem> blocks = new();
+	private ObservableCollection<FileSegmentsViewModel> tabs = new();
 
 	[ObservableProperty]
-	private bool isEmpty = true;
+	private FileSegmentsViewModel? selectedTab;
 
-	[ObservableProperty]
-	private string currentFileName = "Nenhum arquivo";
+	public bool HasTabs => Tabs.Any();
 
+	partial void OnTabsChanged(ObservableCollection<FileSegmentsViewModel> value)
+	{
+		OnPropertyChanged(nameof(HasTabs));
+	}
+
+	partial void OnSelectedTabChanged(FileSegmentsViewModel? value)
+	{
+		OnPropertyChanged(nameof(HasTabs));
+	}
+
+	// ADICIONE ESTA LINHA:
 	[ObservableProperty]
-	private bool isLoading;
+	private ObservableCollection<SearchSuggestion> searchSuggestions = new();
 
 	public GraphParserViewModel(
-		IFileSelectionService selectionService,
-		SemanticIndexService indexService,
-		IFileSystemService fileSystemService)
+	SemanticIndexService indexService,
+	IFileSystemService fileSystemService,
+	IProjectSessionManager sessionManager)
 	{
-		_selectionService = selectionService;
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
+		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 
-		if (_selectionService != null)
+		System.Diagnostics.Debug.WriteLine($"GraphParserViewModel criado. RootPath: {_rootPath}");
+
+		// Verifique se temos um projeto carregado
+		if (string.IsNullOrEmpty(_rootPath))
 		{
-			_selectionService.SelectionChanged += OnSelectionChanged;
+			System.Diagnostics.Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
 		}
+
+		// Subscreva ao evento de projeto carregado
+		sessionManager.ProjectLoaded += OnProjectLoaded;
 	}
 
-	private async void OnSelectionChanged(object? sender, FileSystemItem? item)
+	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
-		if (item == null || item.Type != FileSystemItemType.File)
-		{
-			Blocks.Clear();
-			IsEmpty = true;
-			CurrentFileName = "Nenhum arquivo selecionado";
-			return;
-		}
-		await LoadBlocksAsync(item);
+		_rootPath = e.RootPath;
+		System.Diagnostics.Debug.WriteLine($"Projeto carregado no GraphParserViewModel: {_rootPath}");
+
+		// Inicializa o grafo em background
+		_ = InitializeGraphAsync();
 	}
 
-	private async Task LoadBlocksAsync(FileSystemItem item)
+	private async Task InitializeGraphAsync()
 	{
-		IsLoading = true;
-		IsEmpty = false;
-		CurrentFileName = item.Name;
-		Blocks.Clear();
-
 		try
 		{
-			var fileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
-			if (string.IsNullOrEmpty(fileContent)) return;
-
-			// 1. Parse do SyntaxTree
-			var tree = CSharpSyntaxTree.ParseText(fileContent);
-			var root = await tree.GetRootAsync();
-
-			// 2. Segmentação Recursiva
-			var segments = new List<CodeBlockItem>();
-			FlattenNode(root, fileContent, 0, segments);
-
-			// 3. Popula a lista observável
-			foreach (var seg in segments)
+			if (!string.IsNullOrEmpty(_rootPath))
 			{
-				seg.FileExtension = Path.GetExtension(item.FullPath);
-				Blocks.Add(seg);
+				await _indexService.GetOrIndexProjectAsync(_rootPath);
+				System.Diagnostics.Debug.WriteLine("Grafo indexado e pronto para busca.");
 			}
 		}
 		catch (Exception ex)
 		{
-			Blocks.Add(new CodeBlockItem { Name = "Erro", Content = ex.Message, SegmentType = SegmentType.Trivia });
-		}
-		finally
-		{
-			IsLoading = false;
-			IsEmpty = Blocks.Count == 0;
+			System.Diagnostics.Debug.WriteLine($"Erro ao indexar grafo: {ex.Message}");
 		}
 	}
 
-	// --- CORE DO PARSER ---
-
-	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
+	[RelayCommand]
+	private void UpdateSearch(string query)
 	{
-		// Pega todos os filhos que são "interessantes" (Métodos, Props) OU "containers" (Classes, Namespaces)
-		// Isso garante que não vamos ignorar uma Classe só porque ela não é um "Método"
-		var childrenToProcess = node.ChildNodes()
-			.Where(n => IsInterestingNode(n) || IsContainerNode(n))
-			.OrderBy(n => n.SpanStart)
-			.ToList();
-
-		int cursor = node.SpanStart;
-		if (node is CompilationUnitSyntax) cursor = 0;
-
-		foreach (var child in childrenToProcess)
+		if (string.IsNullOrWhiteSpace(query) || string.IsNullOrEmpty(_rootPath))
 		{
-			// 1. Gaps antes do filho (Comentários, Declaração de Classe, Chaves Abertas)
-			if (child.SpanStart > cursor)
+			SearchSuggestions.Clear();
+			System.Diagnostics.Debug.WriteLine($"Busca ignorada. Query: '{query}', RootPath: '{_rootPath}'");
+			return;
+		}
+
+		try
+		{
+			System.Diagnostics.Debug.WriteLine($"Iniciando busca por: '{query}' em: {_rootPath}");
+
+			// Obtenha o grafo atual
+			var graph = _indexService.GetCurrentGraph();
+
+			if (graph == null || !graph.Nodes.Any())
 			{
-				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
-				if (!string.IsNullOrEmpty(gapText))
+				System.Diagnostics.Debug.WriteLine("Grafo vazio ou não disponível. Usando fallback.");
+				SearchInDirectoryAsSuggestions(query);
+				return;
+			}
+
+			System.Diagnostics.Debug.WriteLine($"Grafo obtido. Total de nós: {graph.Nodes.Count}");
+
+			var queryLower = query.ToLowerInvariant();
+			var suggestions = new List<SearchSuggestion>();
+
+			// Agrupa nós por arquivo
+			var nodesByFile = graph.Nodes
+				.Where(node => !string.IsNullOrEmpty(node.Value.FilePath) && File.Exists(node.Value.FilePath))
+				.GroupBy(node => node.Value.FilePath);
+
+			System.Diagnostics.Debug.WriteLine($"Arquivos únicos no grafo: {nodesByFile.Count()}");
+
+			foreach (var fileGroup in nodesByFile)
+			{
+				try
 				{
-					resultList.Add(CreateSegment(node, gapText, depth, true));
+					if (string.IsNullOrEmpty(fileGroup.Key))
+					{
+						System.Diagnostics.Debug.WriteLine("Arquivo com caminho vazio ignorado.");
+						continue;
+					}
+
+					var fileName = Path.GetFileName(fileGroup.Key);
+
+					// Debug: Log do arquivo sendo processado
+					System.Diagnostics.Debug.WriteLine($"Processando arquivo: {fileName}");
+
+					var matchingNodes = fileGroup
+						.Where(node =>
+							node.Value.Name.ToLowerInvariant().Contains(queryLower) ||
+							node.Value.Type.ToString().ToLowerInvariant().Contains(queryLower) ||
+							fileName.ToLowerInvariant().Contains(queryLower))
+						.ToList();
+
+					if (matchingNodes.Any())
+					{
+						string relativePath;
+
+						try
+						{
+							// Calcula caminho relativo com validação
+							if (string.IsNullOrEmpty(_rootPath))
+							{
+								System.Diagnostics.Debug.WriteLine($"ERRO: _rootPath está vazio ao processar {fileName}");
+								continue;
+							}
+
+							relativePath = Path.GetRelativePath(_rootPath, fileGroup.Key);
+							System.Diagnostics.Debug.WriteLine($"Caminho relativo calculado: {relativePath}");
+						}
+						catch (ArgumentException ex)
+						{
+							System.Diagnostics.Debug.WriteLine($"Erro ao calcular caminho relativo para {fileGroup.Key}: {ex.Message}");
+							// Fallback: usar caminho completo se relativo falhar
+							relativePath = fileGroup.Key;
+						}
+
+						var symbolsFound = string.Join(", ",
+							matchingNodes.Select(n => $"{n.Value.Type}: {n.Value.Name}").Take(3));
+
+						suggestions.Add(new SearchSuggestion
+						{
+							Title = fileName,
+							Subtitle = $"Encontrado: {symbolsFound}",
+							FilePath = relativePath,
+							Icon = "\uE943",
+							MatchCount = matchingNodes.Count
+						});
+					}
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine($"Erro ao processar arquivo {fileGroup.Key}: {ex.Message}");
 				}
 			}
 
-			// 2. Processar o Filho
-			if (IsContainerNode(child))
+			// Ordena por relevância
+			suggestions = suggestions
+				.OrderByDescending(s => s.MatchCount)
+				.ThenBy(s => s.Title)
+				.Take(15)
+				.ToList();
+
+			System.Diagnostics.Debug.WriteLine($"Sugestões encontradas: {suggestions.Count}");
+
+			// Atualiza a coleção
+			SearchSuggestions.Clear();
+			foreach (var suggestion in suggestions)
 			{
-				// RECURSÃO: Se é Classe ou Namespace, mergulha nele
-				FlattenNode(child, fullText, depth + 1, resultList);
-			}
-			else
-			{
-				// FOLHA: Se é Método/Propriedade, adiciona o bloco inteiro
-				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
-				resultList.Add(CreateSegment(child, childText, depth + 1, false));
+				SearchSuggestions.Add(suggestion);
 			}
 
-			cursor = child.Span.End;
-		}
-
-		// 3. Sobra final (Chaves de fechamento })
-		if (cursor < node.Span.End)
-		{
-			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
-			if (!string.IsNullOrEmpty(tailText))
+			// Se não encontrou nada no grafo, faz busca no diretório
+			if (!SearchSuggestions.Any())
 			{
-				resultList.Add(CreateSegment(node, tailText, depth, true));
+				System.Diagnostics.Debug.WriteLine("Nenhuma sugestão encontrada no grafo. Tentando busca por diretório...");
+				SearchInDirectoryAsSuggestions(query);
 			}
 		}
-
-		// Caso especial para fim de arquivo
-		if (node is CompilationUnitSyntax && cursor < fullText.Length)
+		catch (Exception ex)
 		{
-			var finalTrivia = fullText.Substring(cursor);
-			if (!string.IsNullOrEmpty(finalTrivia))
+			System.Diagnostics.Debug.WriteLine($"Erro na busca: {ex.Message}");
+			SearchInDirectoryAsSuggestions(query);
+		}
+	}
+
+	// Método de fallback que preenche SearchSuggestions com base na busca no diretório
+	private void SearchInDirectoryAsSuggestions(string query)
+	{
+		try
+		{
+			if (string.IsNullOrEmpty(_rootPath))
 			{
-				resultList.Add(new CodeBlockItem
+				System.Diagnostics.Debug.WriteLine("_rootPath está vazio. Não é possível buscar no diretório.");
+				SearchSuggestions.Clear();
+
+				// Adicione uma sugestão informativa
+				SearchSuggestions.Add(new SearchSuggestion
 				{
-					Name = "End of File",
-					Content = finalTrivia,
-					SegmentType = SegmentType.Trivia
+					Title = "Nenhum projeto carregado",
+					Subtitle = "Abra um projeto primeiro para usar a busca",
+					FilePath = string.Empty,
+					Icon = "\uE897", // Ícone de informação
+					MatchCount = 0
 				});
+				return;
+			}
+
+			if (!Directory.Exists(_rootPath))
+			{
+				System.Diagnostics.Debug.WriteLine($"Diretório não existe: {_rootPath}");
+				SearchSuggestions.Clear();
+				return;
+			}
+
+			System.Diagnostics.Debug.WriteLine($"Buscando no diretório: {_rootPath}");
+
+			var files = Directory.EnumerateFiles(_rootPath, "*.cs", SearchOption.AllDirectories)
+				.Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\"))
+				.Where(f => Path.GetFileName(f).Contains(query, StringComparison.OrdinalIgnoreCase))
+				.Take(15)
+				.Select(f =>
+				{
+					try
+					{
+						return new SearchSuggestion
+						{
+							Title = Path.GetFileName(f),
+							Subtitle = "Arquivo encontrado no diretório",
+							FilePath = Path.GetRelativePath(_rootPath, f),
+							Icon = "\uE943",
+							MatchCount = 1
+						};
+					}
+					catch (ArgumentException ex)
+					{
+						System.Diagnostics.Debug.WriteLine($"Erro ao criar sugestão para {f}: {ex.Message}");
+						return null;
+					}
+				})
+				.Where(s => s != null)
+				.ToList();
+
+			SearchSuggestions.Clear();
+			foreach (var suggestion in files)
+			{
+				SearchSuggestions.Add(suggestion);
 			}
 		}
-	}
-
-	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap)
-	{
-		var type = IdentifySegmentType(node, isGap, content);
-
-		// Ajuste fino para nome
-		string name = isGap
-			? (content.Trim() == "}" ? "Fechamento de Escopo" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
-			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
-
-		return new CodeBlockItem
+		catch (Exception ex)
 		{
-			Id = Guid.NewGuid().ToString(),
-			Name = name,
-			Content = content,
-			DepthLevel = depth,
-			SegmentType = type,
-			TypeDescription = type.ToString(),
-			StartLine = CountLines(content) // Simplificado
-		};
+			System.Diagnostics.Debug.WriteLine($"Erro na busca no diretório: {ex.Message}");
+			SearchSuggestions.Clear();
+		}
 	}
 
-	private string GetMemberName(MemberDeclarationSyntax member)
+	[RelayCommand]
+	private void OpenFile(object parameter)
 	{
-		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
-		if (member is PropertyDeclarationSyntax p) return p.Identifier.Text;
-		if (member is ClassDeclarationSyntax c) return c.Identifier.Text;
-		if (member is InterfaceDeclarationSyntax i) return i.Identifier.Text;
-		if (member is NamespaceDeclarationSyntax n) return n.Name.ToString();
-		if (member is FileScopedNamespaceDeclarationSyntax fn) return fn.Name.ToString();
-		return member.GetType().Name.Replace("DeclarationSyntax", "");
-	}
+		string? path = null;
 
-	private bool IsContainerNode(SyntaxNode node)
-	{
-		return node is ClassDeclarationSyntax ||
-			   node is NamespaceDeclarationSyntax ||
-			   node is FileScopedNamespaceDeclarationSyntax ||
-			   node is StructDeclarationSyntax ||
-			   node is InterfaceDeclarationSyntax;
-	}
-
-	private bool IsInterestingNode(SyntaxNode node)
-	{
-		return node is MethodDeclarationSyntax ||
-			   node is ConstructorDeclarationSyntax ||
-			   node is PropertyDeclarationSyntax ||
-			   node is FieldDeclarationSyntax ||
-			   node is EnumDeclarationSyntax ||
-			   node is UsingDirectiveSyntax;
-	}
-
-	private SegmentType IdentifySegmentType(SyntaxNode node, bool isGap, string content)
-	{
-		if (string.IsNullOrWhiteSpace(content)) return SegmentType.Trivia;
-		if (content.Trim() == "}") return SegmentType.CloseBrace;
-
-		if (isGap)
+		// O parâmetro pode ser tanto uma string quanto um SearchSuggestion
+		if (parameter is SearchSuggestion suggestion)
 		{
-			if (node is ClassDeclarationSyntax) return SegmentType.ClassHeader;
-			if (node is NamespaceDeclarationSyntax) return SegmentType.NamespaceDecl;
-			return SegmentType.Gap;
+			path = suggestion.FilePath;
+		}
+		else if (parameter is string filePathString)
+		{
+			path = filePathString;
+		}
+		else if (parameter is null)
+		{
+			return;
 		}
 
-		return node switch
+		if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_rootPath))
+			return;
+
+		string fullPath = Path.Combine(_rootPath, path);
+		var existingTab = Tabs.FirstOrDefault(t => t.FilePath == fullPath);
+
+		if (existingTab != null)
 		{
-			MethodDeclarationSyntax => SegmentType.Method,
-			ConstructorDeclarationSyntax => SegmentType.Constructor,
-			PropertyDeclarationSyntax => SegmentType.Property,
-			FieldDeclarationSyntax => SegmentType.Field,
-			EnumDeclarationSyntax => SegmentType.Enum,
-			UsingDirectiveSyntax => SegmentType.FileHeader,
-			_ => SegmentType.Gap
-		};
+			SelectedTab = existingTab;
+			return;
+		}
+
+		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService);
+		Tabs.Add(newTab);
+		SelectedTab = newTab;
 	}
 
-	private int CountLines(string text) => text.Count(c => c == '\n') + 1;
+	[RelayCommand]
+	private void CloseTab(FileSegmentsViewModel tab)
+	{
+		if (Tabs.Contains(tab))
+		{
+			Tabs.Remove(tab);
+		}
+	}
 }

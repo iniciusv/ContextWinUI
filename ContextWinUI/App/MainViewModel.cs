@@ -95,7 +95,7 @@ public partial class MainViewModel : ObservableObject
 
 
 		RegisterEvents();
-		GraphParser = new GraphParserViewModel(_fileSelectionService, _semanticIndexService, fileSystemService);
+		GraphParser = new GraphParserViewModel(_semanticIndexService,fileSystemService,SessionManager);
 	}
 
 

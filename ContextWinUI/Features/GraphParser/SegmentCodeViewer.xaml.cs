@@ -109,7 +109,6 @@ public sealed partial class SegmentCodeViewer : UserControl
 		{
 			control._isInternalUpdate = true;
 			control.CodeEditor.Document.SetText(Microsoft.UI.Text.TextSetOptions.None, newText);
-			// REMOVIDO: control.UpdateLineNumbers(newText);
 			control._isInternalUpdate = false;
 			control.RequestEditorHighlighting();
 		}
@@ -124,7 +123,6 @@ public sealed partial class SegmentCodeViewer : UserControl
 
 		_isInternalUpdate = true;
 		Text = normalizedText;
-		// REMOVIDO: UpdateLineNumbers(normalizedText);
 		_isInternalUpdate = false;
 
 		RequestEditorHighlighting();
