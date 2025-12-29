@@ -7,201 +7,165 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Helpers;
+
 public static class TreeSearchHelper
 {
-    /// <summary>
-    /// VERSÃO ASSÍNCRONA (Otimizada para grandes árvores com Dispatcher)
-    /// </summary>
-    public static async Task SearchAsync(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token, DispatcherQueue dispatcher)
-    {
-        if (items == null)
-            return;
-        if (token.IsCancellationRequested)
-            return;
-        // Reset Otimizado (Async)
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            await ResetVisibilityAsync(items, token, dispatcher);
-            return;
-        }
+	// Estrutura leve para guardar o estado calculado antes de aplicar na UI
+	private readonly record struct SearchResult(bool IsVisible, bool IsExpanded);
 
-        PerformSearch(items, searchText, token);
-    }
+	public static async Task SearchAsync(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token, DispatcherQueue dispatcher)
+	{
+		if (items == null)
+			return;
 
-    /// <summary>
-    /// VERSÃO SÍNCRONA (Compatibilidade para ContextAnalysisViewModel e listas pequenas)
-    /// </summary>
-    public static void Search(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token = default)
-    {
-        if (items == null)
-            return;
-        if (token.IsCancellationRequested)
-            return;
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            ResetVisibilitySync(items, token);
-            return;
-        }
+		if (token.IsCancellationRequested)
+			return;
 
-        PerformSearch(items, searchText, token);
-    }
+		if (string.IsNullOrWhiteSpace(searchText))
+		{
+			await ResetVisibilityAsync(items, token, dispatcher);
+			return;
+		}
 
-    private static void PerformSearch(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token)
-    {
-        string trimmedSearch = searchText.Trim();
-        bool isTagSearch = false;
-        string query = trimmedSearch;
-        // Lógica para detectar e limpar os prefixos de comando (+# e -#)
-        if (trimmedSearch.StartsWith("+#"))
-        {
-            isTagSearch = true;
-            // Remove os 2 primeiros caracteres (+#) e limpa espaços
-            query = trimmedSearch.Substring(2).Trim();
-        }
-        else if (trimmedSearch.StartsWith("-#"))
-        {
-            isTagSearch = true;
-            // Remove os 2 primeiros caracteres (-#) e limpa espaços
-            query = trimmedSearch.Substring(2).Trim();
-        }
-        else if (trimmedSearch.StartsWith("#"))
-        {
-            isTagSearch = true;
-            // Remove o primeiro caractere (#) e limpa espaços
-            query = trimmedSearch.Substring(1).Trim();
-        }
+		await PerformSearchAsync(items, searchText, token, dispatcher);
+	}
 
-        // Se o usuário digitou apenas "+#" ou "-#" sem texto depois, 
-        // podemos decidir mostrar tudo ou nada. 
-        // Aqui optei por interromper se a query ficou vazia para evitar travar a UI ou mostrar tudo errado.
-        if (isTagSearch && string.IsNullOrEmpty(query))
-        {
-            // Opcional: Se quiser mostrar tudo enquanto não tiver texto da tag:
-            // ResetVisibilitySync(items, token); 
-            return;
-        }
+	private static async Task PerformSearchAsync(IEnumerable<FileSystemItem> items, string searchText, CancellationToken token, DispatcherQueue dispatcher)
+	{
+		// 1. PREPARAÇÃO DA QUERY
+		string trimmedSearch = searchText.Trim();
+		bool isTagSearch = false;
+		string query = trimmedSearch;
 
-        foreach (var item in items)
-        {
-            if (token.IsCancellationRequested)
-                return;
-            SearchRecursive(item, query, isTagSearch, token);
-        }
-    }
+		if (trimmedSearch.StartsWith("+#"))
+		{
+			isTagSearch = true;
+			query = trimmedSearch.Substring(2).Trim();
+		}
+		else if (trimmedSearch.StartsWith("-#"))
+		{
+			isTagSearch = true;
+			query = trimmedSearch.Substring(2).Trim();
+		}
+		else if (trimmedSearch.StartsWith("#"))
+		{
+			isTagSearch = true;
+			query = trimmedSearch.Substring(1).Trim();
+		}
 
-	private static bool SearchRecursive(FileSystemItem item, string query, bool isTagSearch, CancellationToken token)
+		if (isTagSearch && string.IsNullOrEmpty(query)) return;
+
+		// 2. CÁLCULO PESADO (BACKGROUND THREAD)
+		// Isso roda fora da UI, então não trava o app enquanto processa milhares de arquivos.
+		await Task.Run(() =>
+		{
+			var resultsToApply = new Dictionary<FileSystemItem, SearchResult>();
+
+			foreach (var item in items)
+			{
+				if (token.IsCancellationRequested) return;
+				CalculateVisibilityRecursive(item, query, isTagSearch, token, resultsToApply);
+			}
+
+			if (token.IsCancellationRequested) return;
+
+			// 3. APLICAÇÃO NA UI (DISPATCHER)
+			// Agora voltamos para a thread principal apenas para aplicar os valores calculados.
+			dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, () =>
+			{
+				if (token.IsCancellationRequested) return;
+
+				// Otimização: Pausar layout updates se possível seria ideal, 
+				// mas aqui aplicamos apenas as mudanças necessárias.
+				foreach (var kvp in resultsToApply)
+				{
+					var item = kvp.Key;
+					var result = kvp.Value;
+
+					// Só notifica a UI se o valor realmente mudou para evitar repintura desnecessária
+					if (item.IsVisibleInSearch != result.IsVisible)
+						item.IsVisibleInSearch = result.IsVisible;
+
+					if (item.IsDirectory && item.IsExpanded != result.IsExpanded)
+						item.IsExpanded = result.IsExpanded;
+				}
+			});
+		});
+	}
+
+	// Método recursivo puro (apenas lógica, sem tocar em propriedades de UI)
+	private static bool CalculateVisibilityRecursive(FileSystemItem item, string query, bool isTagSearch, CancellationToken token, Dictionary<FileSystemItem, SearchResult> results)
 	{
 		if (token.IsCancellationRequested) return false;
 
-		// --- ALTERAÇÃO AQUI ---
-		// Se o item estiver marcado como ignorado no estado compartilhado:
+		// Se ignorado, já cortamos aqui
 		if (item.SharedState.IsIgnored)
 		{
-			item.IsVisibleInSearch = false;
-			item.IsExpanded = false; // Garante que não expanda automaticamente
-			return false; // Retorna false para que o pai não considere este item como um "filho correspondente"
+			results[item] = new SearchResult(false, false);
+			return false;
 		}
-		// ----------------------
 
+		// Verifica match no próprio item
 		bool isSelfMatch = false;
 		if (isTagSearch)
 			isSelfMatch = string.IsNullOrEmpty(query) ? item.SharedState.Tags.Any() : item.SharedState.Tags.Any(t => t.Contains(query, StringComparison.OrdinalIgnoreCase));
 		else
 			isSelfMatch = item.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
 
+		// Verifica filhos
 		bool hasMatchingChildren = false;
 		if (item.Children != null && item.Children.Any())
 		{
 			foreach (var child in item.Children)
 			{
-				if (token.IsCancellationRequested) return false;
-
-				// Como o filho ignorado retornará 'false' logo no início (bloco acima),
-				// hasMatchingChildren permanecerá 'false' se apenas itens ignorados existirem dentro.
-				if (SearchRecursive(child, query, isTagSearch, token))
+				if (CalculateVisibilityRecursive(child, query, isTagSearch, token, results))
 				{
 					hasMatchingChildren = true;
 				}
 			}
 		}
 
-		// Define a visibilidade: ou o próprio item bate com a busca, ou tem filhos visíveis
-		item.IsVisibleInSearch = isSelfMatch || hasMatchingChildren;
+		bool isVisible = isSelfMatch || hasMatchingChildren;
 
-		// Lógica de Expansão Automática
-		if (hasMatchingChildren)
-		{
-			item.IsExpanded = true; // Expande apenas se tiver filhos VÁLIDOS (não ignorados) que deram match
-		}
-		else if (item.IsDirectory)
-		{
-			item.IsExpanded = false; // Se for pasta e não tiver filhos correspondentes, mantém fechada
-		}
+		// Só expandimos se houver filhos correspondentes (para não expandir pastas vazias que coincidiram apenas no nome)
+		bool shouldExpand = hasMatchingChildren;
 
-		return item.IsVisibleInSearch;
+		results[item] = new SearchResult(isVisible, shouldExpand);
+		return isVisible;
 	}
+
+	// Mantido similar ao original, mas garantindo execução background
 	private static async Task ResetVisibilityAsync(IEnumerable<FileSystemItem> items, CancellationToken token, DispatcherQueue dispatcher)
-    {
-        // 1. Imediato: Fecha Raiz
-        foreach (var item in items)
-        {
-            if (token.IsCancellationRequested)
-                return;
-            item.IsVisibleInSearch = true;
-            if (item.IsDirectory)
-                item.IsExpanded = false;
-        }
+	{
+		await Task.Run(() =>
+		{
+			// Coletar todos os itens planos para evitar recursão na UI Thread dentro do Enqueue
+			var allItems = new List<FileSystemItem>();
+			CollectAllItems(items, allItems, token);
 
-        // 2. Background: Reseta filhos
-        await Task.Run(() =>
-        {
-            foreach (var item in items)
-            {
-                if (token.IsCancellationRequested)
-                    return;
-                if (item.Children != null && item.Children.Any())
-                {
-                    dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
-                    {
-                        if (!token.IsCancellationRequested)
-                            ResetVisibilitySyncRecursive(item.Children, token);
-                    });
-                }
-            }
-        });
-    }
+			dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+			{
+				foreach (var item in allItems)
+				{
+					if (token.IsCancellationRequested) return;
 
-    private static void ResetVisibilitySync(IEnumerable<FileSystemItem> items, CancellationToken token)
-    {
-        foreach (var item in items)
-        {
-            if (token.IsCancellationRequested)
-                return;
-            item.IsVisibleInSearch = true;
-            // Em listas pequenas (ContextAnalysis), expandir ou recolher é opcional.
-            // Aqui mantemos recolhido por padrão para limpeza.
-            // if (item.IsDirectory) item.IsExpanded = false; 
-            if (item.Children != null && item.Children.Any())
-            {
-                ResetVisibilitySync(item.Children, token);
-            }
-        }
-    }
+					if (!item.IsVisibleInSearch) item.IsVisibleInSearch = true;
+					if (item.IsDirectory && item.IsExpanded) item.IsExpanded = false;
+				}
+			});
+		});
+	}
 
-    // Auxiliar recursivo para o Reset Async e Sync
-    private static void ResetVisibilitySyncRecursive(IEnumerable<FileSystemItem> items, CancellationToken token)
-    {
-        foreach (var item in items)
-        {
-            if (token.IsCancellationRequested)
-                return;
-            item.IsVisibleInSearch = true;
-            if (item.IsDirectory)
-                item.IsExpanded = false;
-            if (item.Children != null && item.Children.Any())
-            {
-                ResetVisibilitySyncRecursive(item.Children, token);
-            }
-        }
-    }
+	private static void CollectAllItems(IEnumerable<FileSystemItem> items, List<FileSystemItem> collector, CancellationToken token)
+	{
+		foreach (var item in items)
+		{
+			if (token.IsCancellationRequested) return;
+			collector.Add(item);
+			if (item.Children != null && item.Children.Any())
+			{
+				CollectAllItems(item.Children, collector, token);
+			}
+		}
+	}
 }

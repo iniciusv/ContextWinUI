@@ -196,35 +196,40 @@ public partial class FileExplorerViewModel : ObservableObject
             IsLoading = false;
     }
 
-    [RelayCommand]
-    private async Task SearchAsync(string query)
-    {
-        if (_searchCts != null)
-        {
-            _searchCts.Cancel();
-            _searchCts.Dispose();
-        }
+	[RelayCommand]
+	private async Task SearchAsync(string query)
+	{
+		if (_searchCts != null)
+		{
+			_searchCts.Cancel();
+			_searchCts.Dispose();
+		}
 
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-        try
-        {
-            await Task.Delay(300, token); // Debounce
-            if (!token.IsCancellationRequested && RootItems != null)
-            {
-                await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
-            }
-        }
-        catch (TaskCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            OnStatusChanged($"Erro busca: {ex.Message}");
-        }
-    }
+		_searchCts = new CancellationTokenSource();
+		var token = _searchCts.Token;
 
-    private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+		try
+		{
+			// AUMENTADO DE 300 PARA 500ms para dar mais tempo de respiro em projetos grandes
+			await Task.Delay(500, token);
+
+			if (!token.IsCancellationRequested && RootItems != null)
+			{
+				// Agora o TreeSearchHelper gerencia o Task.Run internamente
+				await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
+			}
+		}
+		catch (TaskCanceledException)
+		{
+			// Busca cancelada, normal ao digitar rápido
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro busca: {ex.Message}");
+		}
+	}
+
+	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
     [RelayCommand]
     private void ExpandItem(FileSystemItem item)
     {
