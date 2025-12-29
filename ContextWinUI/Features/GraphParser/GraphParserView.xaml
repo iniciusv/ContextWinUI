@@ -7,6 +7,7 @@
     xmlns:models="using:ContextWinUI.Features.GraphParser.Models"
     xmlns:components="using:ContextWinUI.Views.Components"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
+	xmlns:localComp="using:ContextWinUI.Features.GraphParser.Views.Components"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
@@ -20,74 +21,61 @@
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
-		<Grid Grid.Row="0" Padding="16,12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
+		<Grid Grid.Row="0" Padding="12,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-			<StackPanel Spacing="4">
-				<StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-					<FontIcon Glyph="&#xE8F4;" FontSize="16" Foreground="{ThemeResource SystemAccentColor}"/>
-					<TextBlock Text="Parser Granular" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-				</StackPanel>
-
-				<StackPanel Orientation="Horizontal" Spacing="8">
-					<TextBlock Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}" 
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
-					<TextBlock Text="•" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12"/>
-					<TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12">
-                        <Run Text="{x:Bind ViewModel.Blocks.Count, Mode=OneWay}"/>
-                        <Run Text="segmentos totais"/>
-					</TextBlock>
-				</StackPanel>
+			<StackPanel Orientation="Horizontal" Spacing="8">
+				<FontIcon Glyph="&#xE8F4;" FontSize="14" Foreground="{ThemeResource SystemAccentColor}"/>
+				<TextBlock Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}" 
+                           Style="{StaticResource CaptionTextBlockStyle}" 
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				<TextBlock Text="|" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+				<TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    <Run Text="{x:Bind ViewModel.Blocks.Count, Mode=OneWay}"/>
+                    <Run Text="segmentos"/>
+				</TextBlock>
 			</StackPanel>
 		</Grid>
 
 		<Grid Grid.Row="1">
-
 			<ScrollViewer Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
-                          Padding="0,0,12,0" VerticalScrollBarVisibility="Auto">
+                          Padding="0" VerticalScrollBarVisibility="Auto">
 
-				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="16">
+				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="0">
 					<ItemsControl.ItemTemplate>
 						<DataTemplate x:DataType="models:CodeBlockItem">
 
 							<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
-                                  Margin="0,0,0,16" 
-                                  CornerRadius="8" 
-                                  BorderThickness="1" 
                                   BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-                                  Background="{ThemeResource LayerFillColorAltBrush}">
+                                  BorderThickness="0,0,0,1" 
+                                  Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
 
-								<Grid.RowDefinitions>
-									<RowDefinition Height="Auto"/>
-									<RowDefinition Height="Auto"/>
-								</Grid.RowDefinitions>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="85"/>
+									<ColumnDefinition Width="*"/>
+								</Grid.ColumnDefinitions>
 
-								<Grid Grid.Row="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
-                                      Padding="12,8" CornerRadius="8,8,0,0" 
-                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-									<Grid.ColumnDefinitions>
-										<ColumnDefinition Width="Auto"/>
-										<ColumnDefinition Width="*"/>
-										<ColumnDefinition Width="Auto"/>
-									</Grid.ColumnDefinitions>
+								<Grid Grid.Column="0" Background="{ThemeResource LayerFillColorAltBrush}" 
+                                      Padding="8,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                                      BorderThickness="0,0,1,0"
+                                      ToolTipService.ToolTip="{x:Bind Name}">
 
-									<Grid Width="24" Height="24" Margin="0,0,12,0">
-										<Ellipse Fill="{x:Bind HeaderBrush}" Opacity="0.15"/>
-										<FontIcon Glyph="{x:Bind Icon}" Foreground="{x:Bind HeaderBrush}" FontSize="12" 
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
-									</Grid>
+									<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
+                                               Fill="{x:Bind HeaderBrush}" Margin="-8,0,0,0"/>
 
-									<StackPanel Grid.Column="1" VerticalAlignment="Center">
-										<TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="14"/>
-										<TextBlock Text="{x:Bind TypeDescription}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+									<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Opacity="0.9">
+										<FontIcon Glyph="{x:Bind Icon}" Foreground="{x:Bind HeaderBrush}" FontSize="10"/>
+										<TextBlock Text="{x:Bind TypeDescription}" FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                                   TextTrimming="CharacterEllipsis"/>
 									</StackPanel>
 								</Grid>
 
-								<components:CodeEditorControl Grid.Row="1"
-                                                              Text="{x:Bind Content}"
-                                                              FileExtension="{x:Bind FileExtension}"
-                                                              MinHeight="40"
-                                                              Margin="1"
-                                                              CornerRadius="0,0,8,8"/>
+								<localComp:SegmentCodeViewer Grid.Column="1"
+                             Text="{x:Bind Content, Mode=OneWay}" 
+                             FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                             VerticalAlignment="Stretch"
+                             HorizontalAlignment="Stretch"
+                             Margin="0"/>
 							</Grid>
 						</DataTemplate>
 					</ItemsControl.ItemTemplate>
@@ -96,17 +84,13 @@
 
 			<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
                         Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-				<Grid Width="80" Height="80" CornerRadius="40" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-					<FontIcon Glyph="&#xE9CE;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-				</Grid>
-				<TextBlock Text="Nenhum código encontrado" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				<TextBlock Text="Nenhum conteúdo granular" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 			</StackPanel>
 
 			<Grid Background="{ThemeResource LayerFillColorDefaultBrush}" Opacity="0.8"
                   Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-				<ProgressRing IsActive="True" Width="40" Height="40"/>
+				<ProgressRing IsActive="True" Width="30" Height="30"/>
 			</Grid>
-
 		</Grid>
 	</Grid>
 </UserControl>
