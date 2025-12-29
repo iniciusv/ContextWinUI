@@ -36,9 +36,10 @@
 		</Grid>
 
 		<components:SearchBar Grid.Row="1" 
-                              SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
-                              SubmitCommand="{x:Bind ExplorerViewModel.SubmitSearchCommand}"
-                              Margin="16,0,16,8"/>
+                      SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
+                      SubmitCommand="{x:Bind ExplorerViewModel.SubmitSearchCommand}"
+                      AvailableTags="{x:Bind ExplorerViewModel.AllProjectTags, Mode=OneWay}" 
+                      Margin="16,0,16,8"/>
 
 		<Grid Grid.Row="2" Padding="16,8" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
 			<Grid.ColumnDefinitions>

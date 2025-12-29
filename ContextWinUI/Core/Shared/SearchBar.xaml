@@ -7,20 +7,16 @@
     mc:Ignorable="d">
 
 	<Grid>
-		<TextBox x:Name="SearchTextBox"
-                 PlaceholderText="Buscar... (+#tag ou -#tag para seleção)"
-                 TextChanged="OnTextChanged"
-                 KeyDown="OnKeyDown" 
-                 VerticalAlignment="Center">
-			<TextBox.Header>
-				<TextBlock Text=" " Height="0"/>
-			</TextBox.Header>
-		</TextBox>
-		<FontIcon Glyph="&#xE721;" 
-                  FontSize="12" 
-                  HorizontalAlignment="Right" 
-                  Margin="0,0,10,0" 
-                  IsHitTestVisible="False"
-                  Opacity="0.5"/>
+		<AutoSuggestBox x:Name="SearchBox"
+                        PlaceholderText="Buscar... (+#tag, -#tag ou []#tag)"
+                        TextChanged="OnTextChanged"
+                        QuerySubmitted="OnQuerySubmitted"
+                        SuggestionChosen="OnSuggestionChosen"
+                        VerticalAlignment="Center"
+                        UpdateTextOnSelect="False">
+			<AutoSuggestBox.QueryIcon>
+				<FontIcon Glyph="&#xE721;" FontSize="12"/>
+			</AutoSuggestBox.QueryIcon>
+		</AutoSuggestBox>
 	</Grid>
 </UserControl>

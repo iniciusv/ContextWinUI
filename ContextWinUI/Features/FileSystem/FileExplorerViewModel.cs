@@ -37,7 +37,10 @@ public partial class FileExplorerViewModel : ObservableObject
     private string currentPath = "Nenhum projeto carregado";
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<FileSystemItem>? FileSelected;
-    public FileExplorerViewModel(IProjectSessionManager sessionManager, ITagManagementUiService tagService, IFileSystemService fileSystemService, ContextSelectionViewModel sharedSelectionViewModel, IFileSystemItemFactory itemFactory)
+	[ObservableProperty]
+	private ObservableCollection<string> allProjectTags = new();
+
+	public FileExplorerViewModel(IProjectSessionManager sessionManager, ITagManagementUiService tagService, IFileSystemService fileSystemService, ContextSelectionViewModel sharedSelectionViewModel, IFileSystemItemFactory itemFactory)
     {
         _sessionManager = sessionManager;
         TagService = tagService;
@@ -47,39 +50,94 @@ public partial class FileExplorerViewModel : ObservableObject
         _sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
     }
 
-    private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
-    {
-        RootItems = e.RootItems;
-        CurrentPath = e.RootPath;
-        IsLoading = false;
-        // Limpa a seleção anterior ao carregar novo projeto
-        SelectionViewModel.Clear();
-        // Registra eventos de clique para cada item da árvore
-        foreach (var item in RootItems)
-        {
-            RegisterItemEvents(item);
-            // Se o item já vier marcado (do cache), avisa o SelectionViewModel
-            if (item.IsChecked)
-                SelectionViewModel.AddItem(item);
-        }
+	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
+	{
+		RootItems = e.RootItems;
+		CurrentPath = e.RootPath;
+		IsLoading = false;
 
-        OnStatusChanged("Projeto carregado com sucesso.");
-    }
+		SelectionViewModel.Clear();
+		foreach (var item in RootItems)
+		{
+			RegisterItemEvents(item);
+			if (item.IsChecked)
+				SelectionViewModel.AddItem(item);
+		}
 
-    private void RegisterItemEvents(FileSystemItem item)
-    {
-        item.PropertyChanged -= OnItemPropertyChanged;
-        item.PropertyChanged += OnItemPropertyChanged;
-        if (item.Children != null)
-        {
-            foreach (var child in item.Children)
-            {
-                RegisterItemEvents(child);
-            }
-        }
-    }
+		// ATUALIZAÇÃO CRÍTICA: Carrega as tags assim que o projeto abre
+		RefreshAllTags();
 
-    private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+		OnStatusChanged("Projeto carregado com sucesso.");
+	}
+
+	// Chame este método também sempre que adicionar uma nova tag via TagService
+	public void RefreshAllTags()
+	{
+		if (_itemFactory != null)
+		{
+			var uniqueTags = _itemFactory.GetAllStates()
+				.SelectMany(s => s.Tags)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.OrderBy(t => t)
+				.ToList();
+
+			AllProjectTags.Clear();
+			foreach (var tag in uniqueTags)
+			{
+				AllProjectTags.Add(tag);
+			}
+
+			// Debug para verificar se carregou
+			System.Diagnostics.Debug.WriteLine($"Tags carregadas: {AllProjectTags.Count}");
+		}
+	}
+
+
+	// EM: FileExplorerViewModel.cs
+
+	private void RegisterItemEvents(FileSystemItem item)
+	{
+		// Eventos existentes de PropertyChanged
+		item.PropertyChanged -= OnItemPropertyChanged;
+		item.PropertyChanged += OnItemPropertyChanged;
+
+		if (item.SharedState != null)
+		{
+			item.SharedState.Tags.CollectionChanged -= OnItemTagsChanged;
+			item.SharedState.Tags.CollectionChanged += OnItemTagsChanged;
+		}
+
+		if (item.Children != null)
+		{
+			foreach (var child in item.Children)
+			{
+				RegisterItemEvents(child);
+			}
+		}
+	}
+
+	private void OnItemTagsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+	{
+		// Se novos itens foram adicionados à lista de tags de um arquivo
+		if (e.NewItems != null)
+		{
+			foreach (string newTag in e.NewItems)
+			{
+				// Garante que a operação ocorra na Thread de UI
+				_dispatcherQueue.TryEnqueue(() =>
+				{
+					// Se a tag ainda não existe na lista mestra do autocompletar, adiciona
+					if (!AllProjectTags.Contains(newTag))
+					{
+						// Opcional: Manter ordenado se desejar
+						AllProjectTags.Add(newTag);
+					}
+				});
+			}
+		}
+	}
+
+	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(FileSystemItem.IsChecked) && sender is FileSystemItem item)
         {
@@ -339,59 +397,79 @@ public partial class FileExplorerViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task CreateNewItemAsync(object[] args)
-    {
-        // Args: [0] = FileSystemItem (pai ou irmão), [1] = bool isFolder, [2] = XamlRoot
-        if (args.Length < 3 || args[0] is not FileSystemItem targetItem || args[2] is not XamlRoot xamlRoot)
-            return;
-        bool isFolder = (bool)args[1];
-        // Determina onde criar: Se o alvo é pasta, cria dentro. Se é arquivo, cria na pasta pai.
-        FileSystemItem parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem);
-        if (parentFolder == null && targetItem.IsDirectory)
-            parentFolder = targetItem; // Fallback para raiz
-        if (parentFolder == null)
-            return;
-        // 1. Pedir o nome
-        var inputTextBox = new TextBox
-        {
-            PlaceholderText = isFolder ? "Nome da Pasta" : "Nome do Arquivo.txt"
-        };
-        var dialog = new ContentDialog
-        {
-            Title = isFolder ? "Nova Pasta" : "Novo Arquivo",
-            Content = inputTextBox,
-            PrimaryButtonText = "Criar",
-            CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = xamlRoot
-        };
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(inputTextBox.Text))
-            return;
-        string newName = inputTextBox.Text.Trim();
-        string newFullPath = Path.Combine(parentFolder.SharedState.FullPath, newName);
-        try
-        {
-            // 2. Criar no disco
-            if (isFolder)
-                await _fileSystemService.CreateDirectoryAsync(newFullPath);
-            else
-                await _fileSystemService.CreateFileAsync(newFullPath);
-            // 3. Atualizar a UI (CORRIGIDO AQUI)
-            // Usamos a instância injetada _itemFactory
-            var newItem = _itemFactory.CreateWrapper(newFullPath, isFolder ? FileSystemItemType.Directory : FileSystemItemType.File);
-            parentFolder.Children.Add(newItem);
-            parentFolder.IsExpanded = true;
-            OnStatusChanged($"Criado: {newName}");
-        }
-        catch (Exception ex)
-        {
-            OnStatusChanged($"Erro ao criar: {ex.Message}");
-        }
-    }
+	private async Task CreateNewItemAsync(object[] args)
+	{
+		// 1. Validação dos argumentos vindos do CommandParameter
+		if (args.Length < 3 || args[0] is not FileSystemItem targetItem || args[2] is not XamlRoot xamlRoot)
+			return;
 
-    // Comando para Deletar
-    [RelayCommand]
+		bool isFolder = (bool)args[1];
+
+		// 2. Determinar a pasta pai correta
+		FileSystemItem? parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem);
+
+		// Fallback: se não achou pai mas o target é diretório, usa ele
+		if (parentFolder == null && targetItem.IsDirectory)
+			parentFolder = targetItem;
+
+		if (parentFolder == null)
+			return;
+
+		// 3. Preparar e exibir o diálogo de entrada
+		var inputTextBox = new TextBox
+		{
+			PlaceholderText = isFolder ? "Nome da Pasta" : "Nome do Arquivo.txt"
+		};
+
+		var dialog = new ContentDialog
+		{
+			Title = isFolder ? "Nova Pasta" : "Novo Arquivo",
+			Content = inputTextBox,
+			PrimaryButtonText = "Criar",
+			CloseButtonText = "Cancelar",
+			DefaultButton = ContentDialogButton.Primary,
+			XamlRoot = xamlRoot
+		};
+
+		var result = await dialog.ShowAsync();
+
+		if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(inputTextBox.Text))
+			return;
+
+		string newName = inputTextBox.Text.Trim();
+		string newFullPath = Path.Combine(parentFolder.SharedState.FullPath, newName);
+
+		try
+		{
+			// 4. Criar fisicamente no disco
+			if (isFolder)
+				await _fileSystemService.CreateDirectoryAsync(newFullPath);
+			else
+				await _fileSystemService.CreateFileAsync(newFullPath);
+
+			// 5. Criar o wrapper visual (ViewModel)
+			var newItem = _itemFactory.CreateWrapper(newFullPath, isFolder ? FileSystemItemType.Directory : FileSystemItemType.File);
+
+			// ---------------------------------------------------------
+			// CORREÇÃO: Registrar eventos para o novo item imediatamente
+			// Isso conecta os listeners de Tags e Checked
+			// ---------------------------------------------------------
+			RegisterItemEvents(newItem);
+
+			// 6. Adicionar à árvore visual e expandir o pai
+			parentFolder.Children.Add(newItem);
+			parentFolder.IsExpanded = true;
+
+			OnStatusChanged($"Criado: {newName}");
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao criar: {ex.Message}");
+		}
+	}
+
+	// Comando para Deletar
+	[RelayCommand]
     private async Task DeleteItemAsync(object[] args)
     {
         // Args: [0] = FileSystemItem, [1] = XamlRoot
