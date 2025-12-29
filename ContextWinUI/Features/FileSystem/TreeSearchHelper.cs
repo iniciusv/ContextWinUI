@@ -102,17 +102,7 @@ namespace ContextWinUI.Helpers
 			});
 		}
 
-		/// <summary>
-		/// Lógica recursiva pura. Não toca em propriedades de UI, apenas preenche o dicionário de resultados.
-		/// </summary>
-		private static bool CalculateVisibilityRecursive(
-			FileSystemItem item,
-			string query,
-			bool isTagSearch,
-			bool isFolderTagSearch,
-			bool parentIsMatch, // Controla a "Cascata" de visibilidade para o modo []#
-			CancellationToken token,
-			Dictionary<FileSystemItem, SearchResult> results)
+		private static bool CalculateVisibilityRecursive(FileSystemItem item,string query,bool isTagSearch,bool isFolderTagSearch,bool parentIsMatch, CancellationToken token,Dictionary<FileSystemItem, SearchResult> results)
 		{
 			if (token.IsCancellationRequested) return false;
 
@@ -230,6 +220,66 @@ namespace ContextWinUI.Helpers
 					CollectAllItems(item.Children, collector, token);
 				}
 			}
+		}
+
+		public static async Task<(bool Success, int Count, string Tag, bool IsSelection)> TryExecuteCommandAsync(IEnumerable<FileSystemItem> items, string query)
+		{
+			if (string.IsNullOrWhiteSpace(query) || items == null)
+				return (false, 0, string.Empty, false);
+
+			string trimmedQuery = query.Trim();
+			bool? selectMode = null;
+			string tagToProcess = string.Empty;
+
+			// 1. Lógica de Interpretação (Parsing) movida para cá
+			if (trimmedQuery.StartsWith("+#"))
+			{
+				selectMode = true;
+				tagToProcess = trimmedQuery.Substring(2);
+			}
+			else if (trimmedQuery.StartsWith("-#"))
+			{
+				selectMode = false;
+				tagToProcess = trimmedQuery.Substring(2);
+			}
+
+			// Se não for um comando conhecido, retorna falso
+			if (!selectMode.HasValue || string.IsNullOrWhiteSpace(tagToProcess))
+			{
+				return (false, 0, string.Empty, false);
+			}
+
+			// 2. Execução (envolvida em Task.Run para não travar a UI)
+			int count = await Task.Run(() =>
+			{
+				return ModifySelectionByTagRecursive(items, tagToProcess, selectMode.Value);
+			});
+
+			return (true, count, tagToProcess, selectMode.Value);
+		}
+
+		private static int ModifySelectionByTagRecursive(IEnumerable<FileSystemItem> items, string tag, bool shouldSelect)
+		{
+			int count = 0;
+			foreach (var item in items)
+			{
+				bool hasTag = item.SharedState.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+
+				if (hasTag && item.IsCodeFile)
+				{
+					if (item.IsChecked != shouldSelect)
+					{
+						item.IsChecked = shouldSelect;
+						count++;
+					}
+				}
+
+				if (item.Children != null && item.Children.Any())
+				{
+					count += ModifySelectionByTagRecursive(item.Children, tag, shouldSelect);
+				}
+			}
+			return count;
 		}
 	}
 }

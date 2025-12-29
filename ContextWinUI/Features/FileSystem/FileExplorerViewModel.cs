@@ -318,12 +318,9 @@ public partial class FileExplorerViewModel : ObservableObject
     {
         foreach (var item in items)
         {
-            // Só marcamos se for arquivo de código (pastas não entram na seleção final)
             if (item.IsCodeFile)
             {
                 item.IsChecked = isChecked;
-            // A mágica reativa que criamos antes (OnItemPropertyChanged) 
-            // vai rodar automaticamente aqui e atualizar a SelectionViewModel
             }
 
             if (item.Children != null && item.Children.Any())
@@ -333,70 +330,43 @@ public partial class FileExplorerViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private void SubmitSearch(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return;
-        string trimmedQuery = query.Trim();
-        bool? selectMode = null;
-        string tagToProcess = string.Empty;
-        // Verifica a sintaxe
-        if (trimmedQuery.StartsWith("+#"))
-        {
-            selectMode = true;
-            tagToProcess = trimmedQuery.Substring(2);
-        }
-        else if (trimmedQuery.StartsWith("-#"))
-        {
-            selectMode = false;
-            tagToProcess = trimmedQuery.Substring(2);
-        }
+	// ARQUIVO: FileExplorerViewModel.cs
 
-        // Se detectou o comando de seleção por tag
-        if (selectMode.HasValue && !string.IsNullOrWhiteSpace(tagToProcess))
-        {
-            if (RootItems == null)
-                return;
-            int count = ModifySelectionByTagRecursive(RootItems, tagToProcess, selectMode.Value);
-            string action = selectMode.Value ? "selecionados" : "desselecionados";
-            OnStatusChanged($"{count} itens com a tag '{tagToProcess}' foram {action}.");
-        }
-        else
-        {
-        // Se apertou enter mas não é um comando especial, pode forçar uma busca ou fazer nada
-        // Neste caso, a busca já acontece no TextChanged, então não fazemos nada.
-        }
-    }
+	[RelayCommand]
+	private async Task SubmitSearch(string query)
+	{
+		if (RootItems == null) return;
 
-    private int ModifySelectionByTagRecursive(IEnumerable<FileSystemItem> items, string tag, bool shouldSelect)
-    {
-        int count = 0;
-        foreach (var item in items)
-        {
-            // Verifica se o item possui a tag (case insensitive)
-            bool hasTag = item.SharedState.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
-            if (hasTag && item.IsCodeFile)
-            {
-                // Só altera se o estado for diferente para evitar processamento desnecessário
-                if (item.IsChecked != shouldSelect)
-                {
-                    item.IsChecked = shouldSelect;
-                    count++;
-                }
-            }
+		IsLoading = true;
+		try
+		{
+			// Chama o Helper e "desconstrói" a tupla retornada nas variáveis
+			var (success, count, tag, isSelection) = await TreeSearchHelper.TryExecuteCommandAsync(RootItems, query);
 
-            // Recurso para filhos
-            if (item.Children != null && item.Children.Any())
-            {
-                count += ModifySelectionByTagRecursive(item.Children, tag, shouldSelect);
-            }
-        }
+			if (success)
+			{
+				// O comando foi reconhecido e executado
+				string action = isSelection ? "selecionados" : "desselecionados";
 
-        return count;
-    }
+				if (count > 0)
+					OnStatusChanged($"{count} itens com a tag '{tag}' foram {action}.");
+				else
+					OnStatusChanged($"Nenhum item encontrado com a tag '{tag}' para ser alterado.");
+			}
+			else
+			{
+				// Não era um comando de tag (ex: busca normal ou texto vazio)
+				// Aqui você pode colocar lógica futura ou apenas ignorar
+			}
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
 
-    [RelayCommand]
+
+	[RelayCommand]
 	private async Task CreateNewItemAsync(object[] args)
 	{
 		// 1. Validação dos argumentos vindos do CommandParameter
@@ -533,4 +503,30 @@ public partial class FileExplorerViewModel : ObservableObject
 
         return null;
     }
+
+
+
+	private static int ModifySelectionByTagRecursive(IEnumerable<FileSystemItem> items, string tag, bool shouldSelect)
+	{
+		int count = 0;
+		foreach (var item in items)
+		{
+			bool hasTag = item.SharedState.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+
+			if (hasTag && item.IsCodeFile)
+			{
+				if (item.IsChecked != shouldSelect)
+				{
+					item.IsChecked = shouldSelect;
+					count++;
+				}
+			}
+
+			if (item.Children != null && item.Children.Any())
+			{
+				count += ModifySelectionByTagRecursive(item.Children, tag, shouldSelect);
+			}
+		}
+		return count;
+	}
 }
