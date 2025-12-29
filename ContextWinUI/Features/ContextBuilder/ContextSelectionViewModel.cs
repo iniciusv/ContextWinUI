@@ -80,7 +80,13 @@ public partial class ContextSelectionViewModel : ObservableObject
 	[RelayCommand]
 	public void Clear()
 	{
-		foreach (var item in SelectedItemsList) item.IsChecked = false;
+		var items = SelectedItemsList.ToList();
+
+		foreach (var item in items)
+		{
+			item.IsChecked = false;
+		}
+
 		SelectedItemsList.Clear();
 	}
 
