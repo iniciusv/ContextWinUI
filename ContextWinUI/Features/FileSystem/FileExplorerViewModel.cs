@@ -5,99 +5,109 @@ using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
+using ContextWinUI.ViewModels.Helpers; // Namespace dos novos helpers
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels;
-public partial class FileExplorerViewModel : ObservableObject
-{
-    public readonly IProjectSessionManager _sessionManager;
-    private readonly IFileSystemService _fileSystemService;
-    private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
-    private CancellationTokenSource? _searchCts;
-    private FileSystemItem? _selectedItem;
-    private readonly IFileSystemItemFactory _itemFactory;
-    public ITagManagementUiService TagService { get; }
-    public ContextSelectionViewModel SelectionViewModel { get; }
 
-    [ObservableProperty]
-    private ObservableCollection<FileSystemItem> rootItems = new();
-    [ObservableProperty]
-    private bool isLoading;
-    [ObservableProperty]
-    private string currentPath = "Nenhum projeto carregado";
-    public event EventHandler<string>? StatusChanged;
-    public event EventHandler<FileSystemItem>? FileSelected;
+public partial class FileExplorerViewModel : ObservableObject, IDisposable
+{
+	// Services
+	public readonly IProjectSessionManager _sessionManager;
+	private readonly IFileSystemService _fileSystemService;
+	private readonly IFileSystemItemFactory _itemFactory;
+	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+	// Helpers (Composição)
+	private readonly FileExplorerTreeManager _treeManager;
+	private readonly FileExplorerOperations _operationsManager;
+
+	// State
+	private CancellationTokenSource? _searchCts;
+	private FileSystemItem? _selectedItem;
+
+	// Public Properties
+	public ITagManagementUiService TagService { get; }
+	public ContextSelectionViewModel SelectionViewModel { get; }
+
+	[ObservableProperty]
+	private ObservableCollection<FileSystemItem> rootItems = new();
+
+	[ObservableProperty]
+	private bool isLoading;
+
+	[ObservableProperty]
+	private string currentPath = "Nenhum projeto carregado";
+
 	[ObservableProperty]
 	private ObservableCollection<string> allProjectTags = new();
 
-	public FileExplorerViewModel(IProjectSessionManager sessionManager, ITagManagementUiService tagService, IFileSystemService fileSystemService, ContextSelectionViewModel sharedSelectionViewModel, IFileSystemItemFactory itemFactory)
-    {
-        _sessionManager = sessionManager;
-        TagService = tagService;
-        _fileSystemService = fileSystemService;
-        SelectionViewModel = sharedSelectionViewModel;
-        _sessionManager.ProjectLoaded += OnProjectLoaded;
-        _sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
-    }
+	// Events
+	public event EventHandler<string>? StatusChanged;
+	public event EventHandler<FileSystemItem>? FileSelected;
+
+	public FileExplorerViewModel(
+		IProjectSessionManager sessionManager,
+		ITagManagementUiService tagService,
+		IFileSystemService fileSystemService,
+		ContextSelectionViewModel sharedSelectionViewModel,
+		IFileSystemItemFactory itemFactory)
+	{
+		_sessionManager = sessionManager;
+		TagService = tagService;
+		_fileSystemService = fileSystemService;
+		SelectionViewModel = sharedSelectionViewModel;
+		_itemFactory = itemFactory;
+
+		// Inicializa Helpers
+		_treeManager = new FileExplorerTreeManager();
+		_operationsManager = new FileExplorerOperations(
+			fileSystemService,
+			itemFactory,
+			msg => OnStatusChanged(msg),
+			item => RegisterItemEvents(item) // Callback para registrar eventos em novos itens
+		);
+
+		_sessionManager.ProjectLoaded += OnProjectLoaded;
+		_sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
+	}
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
+		// Limpeza de eventos anteriores para evitar memory leaks
+		UnregisterEventsRecursively(RootItems);
+
 		RootItems = e.RootItems;
 		CurrentPath = e.RootPath;
 		IsLoading = false;
 
 		SelectionViewModel.Clear();
+
+		// Otimização: Fazer registro em background se a árvore for muito grande, 
+		// mas eventos de UI geralmente precisam ser na thread principal.
 		foreach (var item in RootItems)
 		{
 			RegisterItemEvents(item);
-			if (item.IsChecked)
-				SelectionViewModel.AddItem(item);
+			if (item.IsChecked) SelectionViewModel.AddItem(item);
 		}
 
-		// ATUALIZAÇÃO CRÍTICA: Carrega as tags assim que o projeto abre
 		RefreshAllTags();
-
 		OnStatusChanged("Projeto carregado com sucesso.");
 	}
 
-	// Chame este método também sempre que adicionar uma nova tag via TagService
-	public void RefreshAllTags()
-	{
-		if (_itemFactory != null)
-		{
-			var uniqueTags = _itemFactory.GetAllStates()
-				.SelectMany(s => s.Tags)
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.OrderBy(t => t)
-				.ToList();
-
-			AllProjectTags.Clear();
-			foreach (var tag in uniqueTags)
-			{
-				AllProjectTags.Add(tag);
-			}
-
-			// Debug para verificar se carregou
-			System.Diagnostics.Debug.WriteLine($"Tags carregadas: {AllProjectTags.Count}");
-		}
-	}
-
-
-	// EM: FileExplorerViewModel.cs
-
+	// --- Gerenciamento de Eventos (Ponto Crítico de Performance) ---
 	private void RegisterItemEvents(FileSystemItem item)
 	{
-		// Eventos existentes de PropertyChanged
+		// Remove antes de adicionar para garantir que não haja duplicatas
 		item.PropertyChanged -= OnItemPropertyChanged;
 		item.PropertyChanged += OnItemPropertyChanged;
 
@@ -116,143 +126,80 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
-	private void OnItemTagsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+	private void UnregisterEventsRecursively(IEnumerable<FileSystemItem> items)
 	{
-		// Se novos itens foram adicionados à lista de tags de um arquivo
-		if (e.NewItems != null)
+		if (items == null) return;
+		foreach (var item in items)
 		{
-			foreach (string newTag in e.NewItems)
-			{
-				// Garante que a operação ocorra na Thread de UI
-				_dispatcherQueue.TryEnqueue(() =>
-				{
-					// Se a tag ainda não existe na lista mestra do autocompletar, adiciona
-					if (!AllProjectTags.Contains(newTag))
-					{
-						// Opcional: Manter ordenado se desejar
-						AllProjectTags.Add(newTag);
-					}
-				});
-			}
+			item.PropertyChanged -= OnItemPropertyChanged;
+			if (item.SharedState != null)
+				item.SharedState.Tags.CollectionChanged -= OnItemTagsChanged;
+
+			if (item.Children != null)
+				UnregisterEventsRecursively(item.Children);
 		}
 	}
 
 	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(FileSystemItem.IsChecked) && sender is FileSystemItem item)
-        {
-            if (item.IsChecked)
-                SelectionViewModel.AddItem(item);
-            else
-                SelectionViewModel.RemoveItem(item);
-        }
-    }
+	{
+		// Performance: Filtro rápido
+		if (e.PropertyName != nameof(FileSystemItem.IsChecked)) return;
 
-    public void SelectFile(FileSystemItem item)
-    {
-        _selectedItem = item;
-        FileSelected?.Invoke(this, item);
-    }
+		if (sender is FileSystemItem item)
+		{
+			if (item.IsChecked) SelectionViewModel.AddItem(item);
+			else SelectionViewModel.RemoveItem(item);
+		}
+	}
 
-    [RelayCommand]
-    private void SyncFocus()
-    {
-        if (RootItems == null || !RootItems.Any())
-            return;
-        if (_selectedItem == null)
-        {
-            CollapseAll();
-            return;
-        }
+	private void OnItemTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	{
+		if (e.NewItems == null) return;
 
-        foreach (var item in RootItems)
-        {
-            DetermineExpansionState(item, _selectedItem);
-        }
-    }
+		// Uso do Dispatcher apenas se necessário
+		_dispatcherQueue.TryEnqueue(() =>
+		{
+			foreach (string newTag in e.NewItems)
+			{
+				if (!AllProjectTags.Contains(newTag)) AllProjectTags.Add(newTag);
+			}
+		});
+	}
 
-    private bool DetermineExpansionState(FileSystemItem current, FileSystemItem target)
-    {
-        if (current == target)
-        {
-            return true;
-        }
+	// --- Comandos Delegados ---
 
-        bool containsTarget = false;
-        if (current.Children != null && current.Children.Any())
-        {
-            foreach (var child in current.Children)
-            {
-                if (DetermineExpansionState(child, target))
-                {
-                    containsTarget = true;
-                }
-            }
-        }
+	[RelayCommand]
+	private void ExpandAll() => _treeManager.ExpandAll(RootItems);
 
-        if (current.IsDirectory)
-        {
-            current.IsExpanded = containsTarget;
-        }
+	[RelayCommand]
+	private void CollapseAll() => _treeManager.CollapseAll(RootItems);
 
-        return containsTarget;
-    }
+	[RelayCommand]
+	private void SyncFocus() => _treeManager.SyncFocus(RootItems, _selectedItem);
 
-    [RelayCommand]
-    private void ExpandAll()
-    {
-        if (RootItems == null)
-            return;
-        SetExpansionRecursive(RootItems, true);
-    }
+	[RelayCommand]
+	private void ExpandItem(FileSystemItem item)
+	{
+		if (item != null) item.IsExpanded = true;
+	}
 
-    [RelayCommand]
-    private void CollapseAll()
-    {
-        if (RootItems == null)
-            return;
-        SetExpansionRecursive(RootItems, false);
-    }
+	[RelayCommand]
+	private async Task CreateNewItemAsync(object[] args)
+	{
+		if (args.Length < 3 || args[0] is not FileSystemItem target || args[2] is not XamlRoot root) return;
+		await _operationsManager.CreateNewItemAsync(target, (bool)args[1], root);
+	}
 
-    private void SetExpansionRecursive(IEnumerable<FileSystemItem> items, bool isExpanded)
-    {
-        foreach (var item in items)
-        {
-            if (isExpanded && item.SharedState.IsIgnored)
-            {
-                continue;
-            }
+	[RelayCommand]
+	private async Task DeleteItemAsync(object[] args)
+	{
+		if (args.Length < 2 || args[0] is not FileSystemItem item || args[1] is not XamlRoot root) return;
 
-            // ------------------------
-            if (item.IsDirectory)
-            {
-                item.IsExpanded = isExpanded;
-                if (item.Children != null && item.Children.Any())
-                {
-                    SetExpansionRecursive(item.Children, isExpanded);
-                }
-            }
-        }
-    }
+		// Passamos RootItems para que o Manager possa encontrar o pai e remover visualmente
+		await _operationsManager.DeleteItemAsync(item, RootItems, root);
+	}
 
-    [RelayCommand]
-    private async Task BrowseFolderAsync()
-    {
-        if (IsLoading)
-            return;
-        try
-        {
-            IsLoading = true;
-            await _sessionManager.LoadProjectAsync();
-        }
-        catch (Exception ex)
-        {
-            OnStatusChanged($"Erro: {ex.Message}");
-        }
-
-        if (!IsLoading && string.IsNullOrEmpty(CurrentPath))
-            IsLoading = false;
-    }
+	// --- Search Logic (Mantida aqui pois orquestra UI + TreeSearchHelper) ---
 
 	[RelayCommand]
 	private async Task SearchAsync(string query)
@@ -268,95 +215,40 @@ public partial class FileExplorerViewModel : ObservableObject
 
 		try
 		{
-			// AUMENTADO DE 300 PARA 500ms para dar mais tempo de respiro em projetos grandes
-			await Task.Delay(500, token);
-
+			await Task.Delay(300, token); // Debounce reduzido para 300ms (500ms é muito lento para UX)
 			if (!token.IsCancellationRequested && RootItems != null)
 			{
-				// Agora o TreeSearchHelper gerencia o Task.Run internamente
+				// Chamada ao Helper Otimizado que você já criou
 				await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
 			}
 		}
-		catch (TaskCanceledException)
-		{
-			// Busca cancelada, normal ao digitar rápido
-		}
+		catch (TaskCanceledException) { }
 		catch (Exception ex)
 		{
 			OnStatusChanged($"Erro busca: {ex.Message}");
 		}
 	}
 
-	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
-    [RelayCommand]
-    private void ExpandItem(FileSystemItem item)
-    {
-        if (item != null)
-        {
-            item.IsExpanded = true;
-        }
-    }
-
-    [RelayCommand]
-    private void SelectAll()
-    {
-        if (RootItems == null)
-            return;
-        SetCheckedRecursive(RootItems, true);
-    }
-
-    [RelayCommand]
-    private void UnselectAll()
-    {
-        if (RootItems == null)
-            return;
-        SetCheckedRecursive(RootItems, false);
-    }
-
-    // Helper recursivo para marcar/desmarcar
-    private void SetCheckedRecursive(IEnumerable<FileSystemItem> items, bool isChecked)
-    {
-        foreach (var item in items)
-        {
-            if (item.IsCodeFile)
-            {
-                item.IsChecked = isChecked;
-            }
-
-            if (item.Children != null && item.Children.Any())
-            {
-                SetCheckedRecursive(item.Children, isChecked);
-            }
-        }
-    }
-
-	// ARQUIVO: FileExplorerViewModel.cs
-
 	[RelayCommand]
 	private async Task SubmitSearch(string query)
 	{
 		if (RootItems == null) return;
-
 		IsLoading = true;
 		try
 		{
-			// Chama o Helper e "desconstrói" a tupla retornada nas variáveis
-			var (success, count, tag, isSelection) = await TreeSearchHelper.TryExecuteCommandAsync(RootItems, query);
-
+			var (success, itemsToChange, tag, isSelection) = await TreeSearchHelper.TryExecuteCommandAsync(RootItems, query);
 			if (success)
 			{
-				// O comando foi reconhecido e executado
-				string action = isSelection ? "selecionados" : "desselecionados";
+				// Batch update para evitar travamentos em seleções massivas
+				foreach (var item in itemsToChange)
+				{
+					item.IsChecked = isSelection;
+				}
 
-				if (count > 0)
-					OnStatusChanged($"{count} itens com a tag '{tag}' foram {action}.");
-				else
-					OnStatusChanged($"Nenhum item encontrado com a tag '{tag}' para ser alterado.");
-			}
-			else
-			{
-				// Não era um comando de tag (ex: busca normal ou texto vazio)
-				// Aqui você pode colocar lógica futura ou apenas ignorar
+				string action = isSelection ? "selecionados" : "desselecionados";
+				OnStatusChanged(itemsToChange.Count > 0
+					? $"{itemsToChange.Count} itens com a tag '{tag}' foram {action}."
+					: $"Nenhum item encontrado com a tag '{tag}' precisou ser alterado.");
 			}
 		}
 		finally
@@ -365,168 +257,85 @@ public partial class FileExplorerViewModel : ObservableObject
 		}
 	}
 
+	// --- Seleção em Lote ---
 
 	[RelayCommand]
-	private async Task CreateNewItemAsync(object[] args)
+	private void SelectAll() => SetCheckedRecursive(RootItems, true);
+
+	[RelayCommand]
+	private void UnselectAll() => SetCheckedRecursive(RootItems, false);
+
+	private void SetCheckedRecursive(IEnumerable<FileSystemItem> items, bool isChecked)
 	{
-		// 1. Validação dos argumentos vindos do CommandParameter
-		if (args.Length < 3 || args[0] is not FileSystemItem targetItem || args[2] is not XamlRoot xamlRoot)
-			return;
+		// Otimização: Iteração direta
+		if (items == null) return;
 
-		bool isFolder = (bool)args[1];
-
-		// 2. Determinar a pasta pai correta
-		FileSystemItem? parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem);
-
-		// Fallback: se não achou pai mas o target é diretório, usa ele
-		if (parentFolder == null && targetItem.IsDirectory)
-			parentFolder = targetItem;
-
-		if (parentFolder == null)
-			return;
-
-		// 3. Preparar e exibir o diálogo de entrada
-		var inputTextBox = new TextBox
+		foreach (var item in items)
 		{
-			PlaceholderText = isFolder ? "Nome da Pasta" : "Nome do Arquivo.txt"
-		};
+			if (item.IsCodeFile) item.IsChecked = isChecked;
 
-		var dialog = new ContentDialog
-		{
-			Title = isFolder ? "Nova Pasta" : "Novo Arquivo",
-			Content = inputTextBox,
-			PrimaryButtonText = "Criar",
-			CloseButtonText = "Cancelar",
-			DefaultButton = ContentDialogButton.Primary,
-			XamlRoot = xamlRoot
-		};
-
-		var result = await dialog.ShowAsync();
-
-		if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(inputTextBox.Text))
-			return;
-
-		string newName = inputTextBox.Text.Trim();
-		string newFullPath = Path.Combine(parentFolder.SharedState.FullPath, newName);
-
-		try
-		{
-			// 4. Criar fisicamente no disco
-			if (isFolder)
-				await _fileSystemService.CreateDirectoryAsync(newFullPath);
-			else
-				await _fileSystemService.CreateFileAsync(newFullPath);
-
-			// 5. Criar o wrapper visual (ViewModel)
-			var newItem = _itemFactory.CreateWrapper(newFullPath, isFolder ? FileSystemItemType.Directory : FileSystemItemType.File);
-
-			// ---------------------------------------------------------
-			// CORREÇÃO: Registrar eventos para o novo item imediatamente
-			// Isso conecta os listeners de Tags e Checked
-			// ---------------------------------------------------------
-			RegisterItemEvents(newItem);
-
-			// 6. Adicionar à árvore visual e expandir o pai
-			parentFolder.Children.Add(newItem);
-			parentFolder.IsExpanded = true;
-
-			OnStatusChanged($"Criado: {newName}");
-		}
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro ao criar: {ex.Message}");
+			// Só desce se tiver filhos carregados para economizar processamento
+			if (item.Children != null && item.Children.Count > 0)
+			{
+				SetCheckedRecursive(item.Children, isChecked);
+			}
 		}
 	}
 
-	// Comando para Deletar
-	[RelayCommand]
-    private async Task DeleteItemAsync(object[] args)
-    {
-        // Args: [0] = FileSystemItem, [1] = XamlRoot
-        if (args.Length < 2 || args[0] is not FileSystemItem itemToDelete || args[1] is not XamlRoot xamlRoot)
-            return;
-        var dialog = new ContentDialog
-        {
-            Title = "Confirmar Exclusão",
-            Content = $"Tem certeza que deseja excluir '{itemToDelete.Name}' permanentemente?",
-            PrimaryButtonText = "Excluir",
-            CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = xamlRoot
-        };
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary)
-            return;
-        try
-        {
-            // 1. Deletar do disco
-            await _fileSystemService.DeleteItemAsync(itemToDelete.SharedState.FullPath);
-            // 2. Remover da UI
-            var parent = GetParentItem(itemToDelete);
-            if (parent != null)
-            {
-                parent.Children.Remove(itemToDelete);
-            }
-            else if (RootItems.Contains(itemToDelete))
-            {
-                RootItems.Remove(itemToDelete);
-            }
+	// --- Outros ---
 
-            OnStatusChanged($"Excluído: {itemToDelete.Name}");
-        }
-        catch (Exception ex)
-        {
-            OnStatusChanged($"Erro ao excluir: {ex.Message}");
-        }
-    }
-
-    // Método auxiliar para encontrar o pai na árvore visual
-    // Como FileSystemItem não tem propriedade "Parent", precisamos buscar recursivamente
-    private FileSystemItem? GetParentItem(FileSystemItem child)
-    {
-        return FindParentRecursive(RootItems, child);
-    }
-
-    private FileSystemItem? FindParentRecursive(IEnumerable<FileSystemItem> scope, FileSystemItem target)
-    {
-        foreach (var item in scope)
-        {
-            if (item.Children.Contains(target))
-                return item;
-            if (item.Children.Any())
-            {
-                var found = FindParentRecursive(item.Children, target);
-                if (found != null)
-                    return found;
-            }
-        }
-
-        return null;
-    }
-
-
-
-	private static int ModifySelectionByTagRecursive(IEnumerable<FileSystemItem> items, string tag, bool shouldSelect)
+	public void SelectFile(FileSystemItem item)
 	{
-		int count = 0;
-		foreach (var item in items)
+		_selectedItem = item;
+		FileSelected?.Invoke(this, item);
+	}
+
+	[RelayCommand]
+	private async Task BrowseFolderAsync()
+	{
+		if (IsLoading) return;
+		try
 		{
-			bool hasTag = item.SharedState.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
-
-			if (hasTag && item.IsCodeFile)
-			{
-				if (item.IsChecked != shouldSelect)
-				{
-					item.IsChecked = shouldSelect;
-					count++;
-				}
-			}
-
-			if (item.Children != null && item.Children.Any())
-			{
-				count += ModifySelectionByTagRecursive(item.Children, tag, shouldSelect);
-			}
+			IsLoading = true;
+			await _sessionManager.LoadProjectAsync();
 		}
-		return count;
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro: {ex.Message}");
+		}
+		finally
+		{
+			if (string.IsNullOrEmpty(CurrentPath)) IsLoading = false;
+		}
+	}
+
+	public void RefreshAllTags()
+	{
+		if (_itemFactory == null) return;
+
+		// Otimização: HashSet para lookup instantâneo ao invés de Distinct().OrderBy() toda vez se não precisar
+		// Mas para UI, manter ordenado é bom.
+		var uniqueTags = _itemFactory.GetAllStates()
+			.SelectMany(s => s.Tags)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(t => t);
+
+		AllProjectTags.Clear();
+		foreach (var tag in uniqueTags)
+		{
+			AllProjectTags.Add(tag);
+		}
+	}
+
+	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
+
+	public void Dispose()
+	{
+		UnregisterEventsRecursively(RootItems);
+		_sessionManager.ProjectLoaded -= OnProjectLoaded;
+		if (_searchCts != null) _searchCts.Dispose();
+
+		// Limpar referências grandes
+		RootItems.Clear();
 	}
 }
