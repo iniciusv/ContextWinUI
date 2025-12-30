@@ -51,7 +51,7 @@ public partial class GraphParserViewModel : ObservableObject
 		_fileSystemService = fileSystemService;
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 
-		System.Diagnostics.Debug.WriteLine($"GraphParserViewModel criado. RootPath: {_rootPath}");
+		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
 
 		// Verifique se temos um projeto carregado
 		if (string.IsNullOrEmpty(_rootPath))
