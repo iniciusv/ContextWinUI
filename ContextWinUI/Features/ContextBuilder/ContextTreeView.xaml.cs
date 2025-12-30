@@ -3,10 +3,10 @@ using ContextWinUI.Core.Helpers;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Models;
+using ContextWinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Collections.Generic;
-
 namespace ContextWinUI.Views.Components
 {
 	public sealed partial class ContextTreeView : UserControl
@@ -20,7 +20,9 @@ namespace ContextWinUI.Views.Components
 			set => SetValue(ViewModelProperty, value);
 		}
 
-		private ITagManagementUiService TagService => ((App.MainWindow.ViewModel).ContextAnalysis).TagService;
+		private MainViewModel MainViewModel => ((MainWindow)App.MainWindow).ViewModel;
+
+		private ITagManagementUiService TagService => MainViewModel.ContextAnalysis.TagService;
 
 		public ContextTreeView()
 		{
@@ -32,10 +34,10 @@ namespace ContextWinUI.Views.Components
 		{
 			if (args.InvokedItem is FileSystemItem item)
 			{
-				App.MainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
+				// --- CORREÇÃO AQUI (Passo 3): Usar o atalho também ---
+				MainViewModel.ContextAnalysis.SelectFileForPreview(item);
 			}
 		}
-
 		private void OnTagMenuOpening(object sender, object e)
 		{
 			if (sender is Flyout flyout && flyout.Target.DataContext is FileSystemItem item)

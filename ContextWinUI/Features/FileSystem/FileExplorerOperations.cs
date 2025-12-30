@@ -10,29 +10,24 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels.Helpers;
 
-public class FileExplorerOperations
+public class FileExplorerOperations : IFileExplorerOperationsService
 {
 	private readonly IFileSystemService _fileSystemService;
 	private readonly IFileSystemItemFactory _itemFactory;
-	private readonly Action<string> _statusCallback;
-	private readonly Action<FileSystemItem> _onItemCreatedCallback;
-
+	public event EventHandler<string>? StatusChanged;
+	public event EventHandler<FileSystemItem>? ItemCreated;
 	public FileExplorerOperations(
-		IFileSystemService fileSystemService,
-		IFileSystemItemFactory itemFactory,
-		Action<string> statusCallback,
-		Action<FileSystemItem> onItemCreatedCallback)
+			IFileSystemService fileSystemService,
+			IFileSystemItemFactory itemFactory)
 	{
 		_fileSystemService = fileSystemService;
 		_itemFactory = itemFactory;
-		_statusCallback = statusCallback;
-		_onItemCreatedCallback = onItemCreatedCallback;
 	}
 
 	public async Task CreateNewItemAsync(FileSystemItem targetItem, bool isFolder, XamlRoot xamlRoot)
 	{
-		FileSystemItem? parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem); // Precisará refatorar GetParent para ser acessível ou passado
-																										// Nota: A lógica de GetParentItem depende da Raiz. Vamos simplificar assumindo que targetItem é o contexto.
+		FileSystemItem? parentFolder = targetItem.IsDirectory ? targetItem : GetParentItem(targetItem); 
+																										
 
 		if (parentFolder == null && targetItem.IsDirectory) parentFolder = targetItem;
 		if (parentFolder == null) return;
@@ -53,7 +48,6 @@ public class FileExplorerOperations
 
 		string newName = inputTextBox.Text.Trim();
 		string newFullPath = Path.Combine(parentFolder.SharedState.FullPath, newName);
-
 		try
 		{
 			if (isFolder) await _fileSystemService.CreateDirectoryAsync(newFullPath);
@@ -61,16 +55,18 @@ public class FileExplorerOperations
 
 			var newItem = _itemFactory.CreateWrapper(newFullPath, isFolder ? FileSystemItemType.Directory : FileSystemItemType.File);
 
-			// Callback para registrar eventos no ViewModel principal
-			_onItemCreatedCallback(newItem);
+			// DISPARAR O EVENTO AO INVÉS DO CALLBACK
+			ItemCreated?.Invoke(this, newItem);
 
 			parentFolder.Children.Add(newItem);
 			parentFolder.IsExpanded = true;
-			_statusCallback($"Criado: {newName}");
+
+			// DISPARAR O EVENTO AO INVÉS DO CALLBACK
+			StatusChanged?.Invoke(this, $"Criado: {newName}");
 		}
 		catch (Exception ex)
 		{
-			_statusCallback($"Erro ao criar: {ex.Message}");
+			StatusChanged?.Invoke(this, $"Erro ao criar: {ex.Message}");
 		}
 	}
 
@@ -92,23 +88,20 @@ public class FileExplorerOperations
 		{
 			await _fileSystemService.DeleteItemAsync(itemToDelete.SharedState.FullPath);
 
-			// Lógica de remoção visual
-			var parent = FindParentRecursive(rootItems, itemToDelete);
-			if (parent != null)
-			{
-				parent.Children.Remove(itemToDelete);
-			}
-			else if (rootItems.Contains(itemToDelete))
-			{
-				rootItems.Remove(itemToDelete);
-			}
+			var parent = FileExplorerOperations.FindParentRecursive(rootItems, itemToDelete);
 
-			itemToDelete.Dispose(); // Importante para evitar memory leaks de eventos
-			_statusCallback($"Excluído: {itemToDelete.Name}");
+			if (parent != null)
+				parent.Children.Remove(itemToDelete);
+			else if (rootItems.Contains(itemToDelete))
+				rootItems.Remove(itemToDelete);
+
+			itemToDelete.Dispose();
+
+			StatusChanged?.Invoke(this, $"Excluído: {itemToDelete.Name}");
 		}
 		catch (Exception ex)
 		{
-			_statusCallback($"Erro ao excluir: {ex.Message}");
+			StatusChanged?.Invoke(this, $"Erro ao excluir: {ex.Message}");
 		}
 	}
 

@@ -5,8 +5,7 @@ using Microsoft.UI.Xaml;
 using System;
 using System.Threading.Tasks;
 // ARQUIVO: MainWindow.xaml.cs
-using Microsoft.Extensions.DependencyInjection; // <--- ADICIONE ISSO
-
+using Microsoft.Extensions.DependencyInjection; 
 namespace ContextWinUI;
 
 public sealed partial class MainWindow : Window
@@ -15,37 +14,41 @@ public sealed partial class MainWindow : Window
 
 	public MainWindow()
 	{
-		InitializeComponent();
+		this.InitializeComponent();
 
-		// --- CORREÇÃO AQUI ---
-		// Em vez de 'new MainViewModel()', pegamos do container de serviços do App
-		// O cast ((App)Application.Current) é necessário para acessar a propriedade .Services
 		ViewModel = ((App)Application.Current).Services.GetRequiredService<MainViewModel>();
-		// ---------------------
 
-		Title = "Context WinUI - Explorador de Código";
+		this.Title = "Context WinUI - Explorador de Código";
 
-		// Configura o DataContext para que os Bindings {x:Bind} funcionem corretamente
-		if (Content is FrameworkElement fe)
+		if (this.Content is FrameworkElement fe)
 		{
-			fe.DataContext = ViewModel; // Isso conecta o XAML ao ViewModel injetado
+			fe.DataContext = ViewModel;
 
 			fe.Loaded += (s, e) =>
 			{
-				// Ajuste de tamanho da janela (opcional, mantendo seu código)
-				this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700));
+
+				try { this.AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 700)); } catch { }
 			};
 		}
 	}
 
-	// Este método pode ser necessário se você ainda usa eventos no TreeView em vez de Commands
+	// Seus métodos existentes...
 	private void OnFileExplorer_FileSelected(object sender, FileSystemItem item)
 	{
-		ViewModel.OnFileSelected(item);
+		ViewModel.FileExplorer.SelectFile(item); // Ajustado para acessar via FileExplorer
 	}
 
-	// DICA: Você provavelmente não precisa deste RelayCommand aqui no Code Behind.
-	// No XAML do botão, você pode fazer Command="{x:Bind ViewModel.AnalyzeContextCommand}" direto.
 	[RelayCommand]
-	private async Task AnalyzeContextAsync() => await ViewModel.AnalyzeContextCommand.ExecuteAsync(null);
+	private async Task AnalyzeContextAsync()
+	{
+		// Acessa a ViewModel de Análise
+		var analysisVM = ViewModel.ContextAnalysis;
+
+		// Verifica se pode executar e executa
+		// O nome aqui deve ser AnalyzeCommand (criado pelo passo 1)
+		if (analysisVM.AnalyzeCommand.CanExecute(null))
+		{
+			await analysisVM.AnalyzeCommand.ExecuteAsync(null);
+		}
+	}
 }

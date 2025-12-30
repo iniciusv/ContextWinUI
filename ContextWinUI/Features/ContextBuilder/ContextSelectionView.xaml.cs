@@ -29,17 +29,20 @@ public sealed partial class ContextSelectionView : UserControl
 		set => SetValue(ViewModelProperty, value);
 	}
 
-	private ITagManagementUiService TagService => ((App.MainWindow.ViewModel).ContextAnalysis).TagService;
-
-
+	private ITagManagementUiService TagService =>
+		((MainWindow)App.MainWindow).ViewModel.ContextAnalysis.TagService;
 
 	private void OnListViewItemClick(object sender, ItemClickEventArgs e)
 	{
 		if (e.ClickedItem is FileSystemItem item)
 		{
-			App.MainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
+			if (App.MainWindow is MainWindow mainWindow)
+			{
+				mainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
+			}
 		}
 	}
+   
 
 	private void OnTagMenuOpening(object sender, object e)
 	{

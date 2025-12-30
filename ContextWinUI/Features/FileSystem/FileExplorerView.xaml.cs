@@ -68,7 +68,7 @@ public sealed partial class FileExplorerView : UserControl
 	// Método principal para gerenciar cores
 	public SolidColorBrush GetTagBrush(string tagName)
 	{
-		var sessionManager = ExplorerViewModel._sessionManager; // Você precisará expor isso no VM como public ou internal
+		var sessionManager = ExplorerViewModel.SessionManager; // Você precisará expor isso no VM como public ou internal
 
 		// 1. Tenta pegar a cor salva
 		if (sessionManager.TagColors.TryGetValue(tagName, out string hexColor))

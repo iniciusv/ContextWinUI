@@ -104,7 +104,12 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IsVisible = TreeVM.Items.Count > 0;
 	}
 
-	// ARQUIVO: ContextAnalysisViewModel.cs
+	[RelayCommand]
+	private async Task AnalyzeAsync()
+	{
+		// Coloque aqui sua lógica de análise
+		await Task.Delay(100); // Exemplo simulado
+	}
 
 	private async Task EnrichNodeInBackgroundAsync(FileSystemItem node)
 	{

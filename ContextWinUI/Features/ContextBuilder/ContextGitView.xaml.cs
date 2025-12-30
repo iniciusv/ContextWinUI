@@ -1,4 +1,4 @@
-﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Helpers;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.ContextBuilder;
@@ -22,7 +22,8 @@ namespace ContextWinUI.Views.Components
 			set => SetValue(ViewModelProperty, value);
 		}
 
-		private ITagManagementUiService TagService => ((App.MainWindow.ViewModel).ContextAnalysis).TagService;
+		private ITagManagementUiService TagService =>	((MainWindow)App.MainWindow).ViewModel.ContextAnalysis.TagService;
+
 
 		public ContextGitView()
 		{
@@ -33,7 +34,10 @@ namespace ContextWinUI.Views.Components
 		{
 			if (e.ClickedItem is FileSystemItem item)
 			{
-				App.MainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
+				if (App.MainWindow is MainWindow mainWindow)
+				{
+					mainWindow.ViewModel.ContextAnalysis.SelectFileForPreview(item);
+				}
 			}
 		}
 

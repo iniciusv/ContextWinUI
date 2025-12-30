@@ -1,181 +1,93 @@
+// ARQUIVO: FileExplorerViewModel.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.ContextBuilder;
-using ContextWinUI.Helpers;
+using ContextWinUI.Features.FileSystem;
 using ContextWinUI.Models;
 using ContextWinUI.Services;
-using ContextWinUI.ViewModels.Helpers; // Namespace dos novos helpers
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.ViewModels;
 
 public partial class FileExplorerViewModel : ObservableObject, IDisposable
 {
-	// Services
-	public readonly IProjectSessionManager _sessionManager;
-	private readonly IFileSystemService _fileSystemService;
-	private readonly IFileSystemItemFactory _itemFactory;
-	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+	// Serviços Injetados
+	public IProjectSessionManager SessionManager;
+	private readonly IFileExplorerDataService _dataService;
+	private readonly IFileExplorerSearchService _searchService;
+	private readonly IFileExplorerTreeService _treeService;
+	private readonly IFileExplorerOperationsService _operationsService;
+	private readonly IFileSelectionService _selectionService;
 
-	// Helpers (Composição)
-	private readonly FileExplorerTreeManager _treeManager;
-	private readonly FileExplorerOperations _operationsManager;
-
-	// State
-	private CancellationTokenSource? _searchCts;
 	private FileSystemItem? _selectedItem;
-
-	// Public Properties
-	public ITagManagementUiService TagService { get; }
-	public ContextSelectionViewModel SelectionViewModel { get; }
-
-	[ObservableProperty]
-	private ObservableCollection<FileSystemItem> rootItems = new();
 
 	[ObservableProperty]
 	private bool isLoading;
 
-	[ObservableProperty]
-	private string currentPath = "Nenhum projeto carregado";
+	// Propriedades Expostas (Proxy para o DataService)
+	public ObservableCollection<FileSystemItem> RootItems => _dataService.RootItems;
+	public string CurrentPath => _dataService.CurrentPath;
+	public ObservableCollection<string> AllProjectTags => _dataService.AllProjectTags;
 
-	[ObservableProperty]
-	private ObservableCollection<string> allProjectTags = new();
+	// ViewModels e Serviços auxiliares de UI
+	public ITagManagementUiService TagService { get; }
+	public ContextSelectionViewModel SelectionViewModel { get; }
 
-	// Events
+	// Eventos
 	public event EventHandler<string>? StatusChanged;
 	public event EventHandler<FileSystemItem>? FileSelected;
 
 	public FileExplorerViewModel(
 		IProjectSessionManager sessionManager,
 		ITagManagementUiService tagService,
-		IFileSystemService fileSystemService,
-		ContextSelectionViewModel sharedSelectionViewModel,
-		IFileSystemItemFactory itemFactory)
+		IFileExplorerDataService dataService,
+		IFileExplorerSearchService searchService,
+		IFileExplorerTreeService treeService,
+		IFileExplorerOperationsService operationsService,
+		IFileSelectionService selectionService,
+		ContextSelectionViewModel sharedSelectionViewModel)
 	{
-		_sessionManager = sessionManager;
+		SessionManager = sessionManager;
 		TagService = tagService;
-		_fileSystemService = fileSystemService;
+		_dataService = dataService;
+		_searchService = searchService;
+		_treeService = treeService;
+		_operationsService = operationsService;
+		_selectionService = selectionService;
 		SelectionViewModel = sharedSelectionViewModel;
-		_itemFactory = itemFactory;
 
-		// Inicializa Helpers
-		_treeManager = new FileExplorerTreeManager();
-		_operationsManager = new FileExplorerOperations(
-			fileSystemService,
-			itemFactory,
-			msg => OnStatusChanged(msg),
-			item => RegisterItemEvents(item) // Callback para registrar eventos em novos itens
-		);
-
-		_sessionManager.ProjectLoaded += OnProjectLoaded;
-		_sessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
+		// Configuração de Eventos
+		SessionManager.ProjectLoaded += OnProjectLoaded;
+		SessionManager.StatusChanged += (s, msg) => OnStatusChanged(msg);
+		_dataService.StatusChanged += (s, msg) => OnStatusChanged(msg);
 	}
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
-		// Limpeza de eventos anteriores para evitar memory leaks
-		UnregisterEventsRecursively(RootItems);
-
-		RootItems = e.RootItems;
-		CurrentPath = e.RootPath;
 		IsLoading = false;
+		_dataService.Initialize(e.RootItems, e.RootPath);
 
-		SelectionViewModel.Clear();
+		// Notificar UI que as propriedades mudaram (já que RootItems mudou dentro do serviço)
+		OnPropertyChanged(nameof(RootItems));
+		OnPropertyChanged(nameof(CurrentPath));
 
-		// Otimização: Fazer registro em background se a árvore for muito grande, 
-		// mas eventos de UI geralmente precisam ser na thread principal.
-		foreach (var item in RootItems)
-		{
-			RegisterItemEvents(item);
-			if (item.IsChecked) SelectionViewModel.AddItem(item);
-		}
-
-		RefreshAllTags();
 		OnStatusChanged("Projeto carregado com sucesso.");
 	}
 
-	// --- Gerenciamento de Eventos (Ponto Crítico de Performance) ---
-	private void RegisterItemEvents(FileSystemItem item)
-	{
-		// Remove antes de adicionar para garantir que não haja duplicatas
-		item.PropertyChanged -= OnItemPropertyChanged;
-		item.PropertyChanged += OnItemPropertyChanged;
-
-		if (item.SharedState != null)
-		{
-			item.SharedState.Tags.CollectionChanged -= OnItemTagsChanged;
-			item.SharedState.Tags.CollectionChanged += OnItemTagsChanged;
-		}
-
-		if (item.Children != null)
-		{
-			foreach (var child in item.Children)
-			{
-				RegisterItemEvents(child);
-			}
-		}
-	}
-
-	private void UnregisterEventsRecursively(IEnumerable<FileSystemItem> items)
-	{
-		if (items == null) return;
-		foreach (var item in items)
-		{
-			item.PropertyChanged -= OnItemPropertyChanged;
-			if (item.SharedState != null)
-				item.SharedState.Tags.CollectionChanged -= OnItemTagsChanged;
-
-			if (item.Children != null)
-				UnregisterEventsRecursively(item.Children);
-		}
-	}
-
-	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
-	{
-		// Performance: Filtro rápido
-		if (e.PropertyName != nameof(FileSystemItem.IsChecked)) return;
-
-		if (sender is FileSystemItem item)
-		{
-			if (item.IsChecked) SelectionViewModel.AddItem(item);
-			else SelectionViewModel.RemoveItem(item);
-		}
-	}
-
-	private void OnItemTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
-	{
-		if (e.NewItems == null) return;
-
-		// Uso do Dispatcher apenas se necessário
-		_dispatcherQueue.TryEnqueue(() =>
-		{
-			foreach (string newTag in e.NewItems)
-			{
-				if (!AllProjectTags.Contains(newTag)) AllProjectTags.Add(newTag);
-			}
-		});
-	}
-
-	// --- Comandos Delegados ---
+	// --- Comandos de Árvore ---
 
 	[RelayCommand]
-	private void ExpandAll() => _treeManager.ExpandAll(RootItems);
+	private void ExpandAll() => _treeService.ExpandAll(RootItems);
 
 	[RelayCommand]
-	private void CollapseAll() => _treeManager.CollapseAll(RootItems);
+	private void CollapseAll() => _treeService.CollapseAll(RootItems);
 
 	[RelayCommand]
-	private void SyncFocus() => _treeManager.SyncFocus(RootItems, _selectedItem);
+	private void SyncFocus() => _treeService.SyncFocus(RootItems, _selectedItem);
 
 	[RelayCommand]
 	private void ExpandItem(FileSystemItem item)
@@ -183,50 +95,28 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		if (item != null) item.IsExpanded = true;
 	}
 
+	// --- Comandos de Operações ---
+
 	[RelayCommand]
 	private async Task CreateNewItemAsync(object[] args)
 	{
 		if (args.Length < 3 || args[0] is not FileSystemItem target || args[2] is not XamlRoot root) return;
-		await _operationsManager.CreateNewItemAsync(target, (bool)args[1], root);
+		await _operationsService.CreateNewItemAsync(target, (bool)args[1], root);
 	}
 
 	[RelayCommand]
 	private async Task DeleteItemAsync(object[] args)
 	{
 		if (args.Length < 2 || args[0] is not FileSystemItem item || args[1] is not XamlRoot root) return;
-
-		// Passamos RootItems para que o Manager possa encontrar o pai e remover visualmente
-		await _operationsManager.DeleteItemAsync(item, RootItems, root);
+		await _operationsService.DeleteItemAsync(item, RootItems, root);
 	}
 
-	// --- Search Logic (Mantida aqui pois orquestra UI + TreeSearchHelper) ---
+	// --- Comandos de Busca ---
 
 	[RelayCommand]
 	private async Task SearchAsync(string query)
 	{
-		if (_searchCts != null)
-		{
-			_searchCts.Cancel();
-			_searchCts.Dispose();
-		}
-
-		_searchCts = new CancellationTokenSource();
-		var token = _searchCts.Token;
-
-		try
-		{
-			await Task.Delay(300, token); // Debounce reduzido para 300ms (500ms é muito lento para UX)
-			if (!token.IsCancellationRequested && RootItems != null)
-			{
-				// Chamada ao Helper Otimizado que você já criou
-				await TreeSearchHelper.SearchAsync(RootItems, query, token, _dispatcherQueue);
-			}
-		}
-		catch (TaskCanceledException) { }
-		catch (Exception ex)
-		{
-			OnStatusChanged($"Erro busca: {ex.Message}");
-		}
+		await _searchService.PerformSearchAsync(RootItems, query, OnStatusChanged);
 	}
 
 	[RelayCommand]
@@ -236,19 +126,10 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		IsLoading = true;
 		try
 		{
-			var (success, itemsToChange, tag, isSelection) = await TreeSearchHelper.TryExecuteCommandAsync(RootItems, query);
-			if (success)
+			var message = await _searchService.SubmitSearchAsync(RootItems, query);
+			if (!string.IsNullOrEmpty(message))
 			{
-				// Batch update para evitar travamentos em seleções massivas
-				foreach (var item in itemsToChange)
-				{
-					item.IsChecked = isSelection;
-				}
-
-				string action = isSelection ? "selecionados" : "desselecionados";
-				OnStatusChanged(itemsToChange.Count > 0
-					? $"{itemsToChange.Count} itens com a tag '{tag}' foram {action}."
-					: $"Nenhum item encontrado com a tag '{tag}' precisou ser alterado.");
+				OnStatusChanged(message);
 			}
 		}
 		finally
@@ -257,38 +138,13 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		}
 	}
 
-	// --- Seleção em Lote ---
+	// --- Comandos de Seleção e Carregamento ---
 
 	[RelayCommand]
-	private void SelectAll() => SetCheckedRecursive(RootItems, true);
+	private void SelectAll() => _dataService.SetSelectionState(RootItems, true);
 
 	[RelayCommand]
-	private void UnselectAll() => SetCheckedRecursive(RootItems, false);
-
-	private void SetCheckedRecursive(IEnumerable<FileSystemItem> items, bool isChecked)
-	{
-		// Otimização: Iteração direta
-		if (items == null) return;
-
-		foreach (var item in items)
-		{
-			if (item.IsCodeFile) item.IsChecked = isChecked;
-
-			// Só desce se tiver filhos carregados para economizar processamento
-			if (item.Children != null && item.Children.Count > 0)
-			{
-				SetCheckedRecursive(item.Children, isChecked);
-			}
-		}
-	}
-
-	// --- Outros ---
-
-	public void SelectFile(FileSystemItem item)
-	{
-		_selectedItem = item;
-		FileSelected?.Invoke(this, item);
-	}
+	private void UnselectAll() => _dataService.SetSelectionState(RootItems, false);
 
 	[RelayCommand]
 	private async Task BrowseFolderAsync()
@@ -297,7 +153,7 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		try
 		{
 			IsLoading = true;
-			await _sessionManager.LoadProjectAsync();
+			await _dataService.LoadProjectAsync();
 		}
 		catch (Exception ex)
 		{
@@ -309,33 +165,23 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		}
 	}
 
-	public void RefreshAllTags()
+	public void SelectFile(FileSystemItem item)
 	{
-		if (_itemFactory == null) return;
+		_selectedItem = item;
 
-		// Otimização: HashSet para lookup instantâneo ao invés de Distinct().OrderBy() toda vez se não precisar
-		// Mas para UI, manter ordenado é bom.
-		var uniqueTags = _itemFactory.GetAllStates()
-			.SelectMany(s => s.Tags)
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.OrderBy(t => t);
+		// 1. Avisa o serviço global (Isso fará o FileContentViewModel carregar o arquivo)
+		_selectionService.SetSelection(item);
 
-		AllProjectTags.Clear();
-		foreach (var tag in uniqueTags)
-		{
-			AllProjectTags.Add(tag);
-		}
+		// 2. Mantém o evento local caso a MainWindow use
+		FileSelected?.Invoke(this, item);
 	}
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 
 	public void Dispose()
 	{
-		UnregisterEventsRecursively(RootItems);
-		_sessionManager.ProjectLoaded -= OnProjectLoaded;
-		if (_searchCts != null) _searchCts.Dispose();
-
-		// Limpar referências grandes
-		RootItems.Clear();
+		SessionManager.ProjectLoaded -= OnProjectLoaded;
+		_dataService.Dispose();
+		_searchService.Dispose();
 	}
 }
