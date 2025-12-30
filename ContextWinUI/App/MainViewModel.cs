@@ -1,103 +1,84 @@
 // ARQUIVO: MainViewModel.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.GraphParser.ViewModels;
-using ContextWinUI.Helpers;
 using ContextWinUI.Models;
-using ContextWinUI.Services;
-using Microsoft.UI.Xaml;
+using ContextWinUI.Services; // Necessário para SemanticIndexService concreto, se não tiver interface
+using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 
 namespace ContextWinUI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-	// PROPRIEDADES COMPLETAS
+	// =========================================================
+	// DEPENDÊNCIAS (Injetadas via Construtor)
+	// =========================================================
+	private readonly SemanticIndexService _semanticIndexService;
+	private readonly IFileSelectionService _fileSelectionService;
+
+	// Dispatcher para atualizações de UI em threads de fundo
+	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+	// =========================================================
+	// PROPRIEDADES DOS VIEWMODELS FILHOS
+	// =========================================================
 	public FileExplorerViewModel FileExplorer { get; }
 	public ContextAnalysisViewModel ContextAnalysis { get; }
 	public PrePromptViewModel PrePrompt { get; }
 	public FileContentViewModel FileContent { get; }
-
-	private readonly SemanticIndexService _semanticIndexService;
-	private readonly IFileSelectionService _fileSelectionService; // Nova dependência privada
-
+	public GraphParserViewModel GraphParser { get; }
 	public IProjectSessionManager SessionManager { get; }
 
+	// Atalho para binding na View (aponta para a instância dentro do Explorer)
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
-	[ObservableProperty]
-	private GraphParserViewModel graphParser;
 
+	// =========================================================
+	// ESTADO DA UI
+	// =========================================================
 	[ObservableProperty]
 	private string statusMessage = "Pronto";
 
 	[ObservableProperty]
 	private bool isLoading;
 
-	private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-
-	// CONSTRUTOR COMPLETO
-	public MainViewModel()
+	// =========================================================
+	// CONSTRUTOR (Agora limpo e rápido)
+	// =========================================================
+	public MainViewModel(
+			FileExplorerViewModel fileExplorer,
+			ContextAnalysisViewModel contextAnalysis,
+			PrePromptViewModel prePrompt,
+			FileContentViewModel fileContent,
+			GraphParserViewModel graphParser,
+			IProjectSessionManager sessionManager,      // <--- MUDANÇA 2: Pedir a Interface (I...)
+			SemanticIndexService semanticIndexService,
+			IFileSelectionService fileSelectionService) // <--- MUDANÇA 3: Pedir a Interface (I...)
 	{
-		// 1. Primeiro cria os serviços básicos
-		IFileSystemItemFactory itemFactory = new FileSystemItemFactory();
-		IFileSystemService fileSystemService = new FileSystemService(itemFactory);
-		IPersistenceService persistenceService = new PersistenceService();
-		IGitService gitService = new GitService();
-		ISelectionIOService selectionIOService = new SelectionIOService();
-		ITagManagementUiService tagService = new TagManagementUiService();
-
-		// 2. Inicializa os campos da classe (MUITO IMPORTANTE)
-		_fileSelectionService = new FileSelectionService();
-		_semanticIndexService = new SemanticIndexService();
-
-		SessionManager = new ProjectSessionManager(fileSystemService, persistenceService, itemFactory);
-		_semanticIndexService = new SemanticIndexService();
-		ITextSimilarityEngine similarityEngine = new LevenshteinEngine();
-		var dependencyTrackerService = new DependencyTrackerService();
-
-		// 4. Orquestração
-		IDependencyAnalysisOrchestrator orchestrator = new DependencyAnalysisOrchestrator(
-			_semanticIndexService,
-			dependencyTrackerService,
-			itemFactory,
-			fileSystemService
-		);
-
-		var sharedSelectionVM = new ContextSelectionViewModel(
-			itemFactory,
-			selectionIOService,
-			orchestrator,
-			SessionManager
-		);
-
-		// 5. Instanciação das ViewModels Filhas
-		// Passamos o _fileSelectionService para quem precisa reagir à seleção
-		FileExplorer = new FileExplorerViewModel(SessionManager, tagService, fileSystemService, sharedSelectionVM, itemFactory);
-		ContextAnalysis = new ContextAnalysisViewModel(itemFactory,orchestrator,SessionManager,gitService,tagService,sharedSelectionVM,_fileSelectionService);
-
-		// FileContent agora recebe o serviço de seleção
-		FileContent = new FileContentViewModel(fileSystemService, _fileSelectionService);
-
-		PrePrompt = new PrePromptViewModel(SessionManager);
-
-
+		FileExplorer = fileExplorer;
+		ContextAnalysis = contextAnalysis;
+		PrePrompt = prePrompt;
+		FileContent = fileContent;
+		GraphParser = graphParser;
+		SessionManager = sessionManager;
+		_semanticIndexService = semanticIndexService;
+		_fileSelectionService = fileSelectionService;
 
 		RegisterEvents();
-		GraphParser = new GraphParserViewModel(_semanticIndexService,fileSystemService,SessionManager);
 	}
 
+	// =========================================================
+	// COMANDOS E LÓGICA (Inalterados, mas agora usam DI)
+	// =========================================================
 
 	[RelayCommand]
 	private async Task ImportContextFileAsync()
@@ -110,7 +91,7 @@ public partial class MainViewModel : ObservableObject
 
 		var openPicker = new FileOpenPicker();
 
-		// Necessário para WinUI 3 em Desktop
+		// Configuração de Janela para WinUI 3
 		if (App.MainWindow != null)
 		{
 			var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
@@ -183,19 +164,24 @@ public partial class MainViewModel : ObservableObject
 	}
 
 	[RelayCommand]
-	private async Task OpenInParserAsync()
+	private async Task OpenInParserAsync() // Removido async void implícito se não for event handler direto
 	{
-		// 1. Tenta pegar o arquivo que está aberto no visualizador (Prioridade)
-		var item = FileContent.SelectedItem;
+		// Como não há await aqui, poderia ser síncrono, mas mantive a assinatura Task por compatibilidade
+		await Task.CompletedTask;
 
-		// 2. Se não tiver nada aberto, tenta pegar o primeiro marcado no Explorer
+		var item = FileContent.SelectedItem;
 		if (item == null)
 		{
-			// CORREÇÃO: Usar GetCheckedFiles() em vez de SelectedItems
 			var checkedItems = FileExplorer.SelectionViewModel.GetCheckedFiles();
 			item = checkedItems.FirstOrDefault();
 		}
 
+		if (item != null)
+		{
+			// Lógica de abrir no parser (se houver navegação ou ação específica, insira aqui)
+			// No código original apenas validava o item.
+			StatusMessage = $"Arquivo selecionado para parser: {item.Name}";
+		}
 		else
 		{
 			StatusMessage = "Selecione um arquivo de código válido para editar.";
@@ -204,20 +190,20 @@ public partial class MainViewModel : ObservableObject
 
 	public void OnFileSelected(FileSystemItem item)
 	{
-		// "Alguém clicou num arquivo. Não sei quem se importa, mas aqui está."
 		_fileSelectionService.SetSelection(item);
 	}
 
-
 	private void RegisterEvents()
 	{
+		// Eventos do SessionManager
 		SessionManager.StatusChanged += (s, msg) => StatusMessage = msg;
 		SessionManager.ProjectLoaded += OnProjectLoaded_IndexGraph;
 
+		// Eventos dos ViewModels filhos
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
 
-		// Repassar Loading do Explorer para a Main
+		// Sincronizar estado de Loading do Explorer com o Main
 		FileExplorer.PropertyChanged += (s, e) =>
 		{
 			if (e.PropertyName == nameof(FileExplorerViewModel.IsLoading))
@@ -227,10 +213,11 @@ public partial class MainViewModel : ObservableObject
 		};
 	}
 
-
 	[RelayCommand]
 	private async Task AnalyzeContextAsync()
 	{
+		// Nota: FileExplorer e ContextAnalysis compartilham o ContextSelectionViewModel via DI agora.
+		// O método GetCheckedFiles() funcionará perfeitamente.
 		var selectedFiles = FileExplorer.SelectionViewModel.GetCheckedFiles().ToList();
 		var rootPath = SessionManager.CurrentProjectPath;
 
@@ -268,6 +255,7 @@ public partial class MainViewModel : ObservableObject
 
 	private async void OnProjectLoaded_IndexGraph(object? sender, ProjectLoadedEventArgs e)
 	{
+		// Executa indexação pesada em background para não travar a UI
 		await Task.Run(async () =>
 		{
 			try
@@ -279,7 +267,6 @@ public partial class MainViewModel : ObservableObject
 				_dispatcherQueue.TryEnqueue(() =>
 				{
 					StatusMessage = "Grafo de dependências pronto.";
-					// Notifica a aba de visualização que o grafo pode ter mudado (opcional, pois ela reage a seleção de arquivo)
 				});
 			}
 			catch (Exception ex)
