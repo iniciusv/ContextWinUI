@@ -2,6 +2,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Models;
 using Microsoft.UI.Xaml.Media;
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace ContextWinUI.Features.GraphParser.Models;
 
@@ -58,4 +61,133 @@ public partial class CodeBlockItem : ObservableObject
 							  SegmentType == SegmentType.Field ||
 							  SegmentType == SegmentType.Constructor ||
 							  SegmentType == SegmentType.Enum;
+
+	public CodeBlockItem Clone()
+	{
+		return new CodeBlockItem
+		{
+			Id = Guid.NewGuid().ToString(), // Novo ID para evitar conflitos de UI
+			Name = this.Name,
+			Content = this.Content, // O conteúdo é string (imutável), então ok
+			TypeDescription = this.TypeDescription,
+			Icon = this.Icon,
+			StartLine = this.StartLine,
+			EndLine = this.EndLine,
+			SymbolType = this.SymbolType,
+			FileExtension = this.FileExtension,
+			SegmentType = this.SegmentType,
+			DepthLevel = this.DepthLevel
+		};
+	}
+
+
+	[ObservableProperty]
+	private ObservableCollection<CodeBlockVersion> versions = new();
+
+	[ObservableProperty]
+	private int currentVersionIndex = 0;
+
+	[ObservableProperty]
+	private bool hasUnsavedChanges;
+
+	private string _originalContent = string.Empty;
+
+	public void InitializeVersions(string initialContent)
+	{
+		_originalContent = initialContent;
+		Versions.Clear();
+
+		Versions.Add(new CodeBlockVersion
+		{
+			Content = initialContent,
+			Description = "Versão Original",
+			Timestamp = DateTime.Now,
+			IsOriginal = true
+		});
+
+		CurrentVersionIndex = 0;
+		HasUnsavedChanges = false;
+	}
+
+	public void CreateNewVersion(string newContent, string description = "Modificado")
+	{
+		// Removemos a verificação (Content != newContent) porque ao editar, 
+		// o Content JÁ É o newContent (devido ao TwoWay binding).
+
+		var newVersion = new CodeBlockVersion
+		{
+			Content = newContent,
+			Description = description,
+			Timestamp = DateTime.Now,
+			IsOriginal = false
+		};
+
+		Versions.Add(newVersion);
+		CurrentVersionIndex = Versions.Count - 1;
+
+		// Se acabamos de salvar uma versão com este conteúdo, não há mudanças pendentes
+		HasUnsavedChanges = false;
+
+		OnPropertyChanged(nameof(CurrentVersionDescription));
+	}
+
+	public bool RestoreVersion(int versionIndex)
+	{
+		if (versionIndex >= 0 && versionIndex < Versions.Count)
+		{
+			var version = Versions[versionIndex];
+			Content = version.Content;
+			CurrentVersionIndex = versionIndex;
+			HasUnsavedChanges = versionIndex != 0; // Não é original se não for índice 0
+
+			OnPropertyChanged(nameof(CurrentVersionDescription));
+			return true;
+		}
+		return false;
+	}
+
+	partial void OnContentChanged(string value)
+	{
+		// Verifica se temos versões para comparar
+		if (Versions != null && Versions.Any() && CurrentVersionIndex >= 0 && CurrentVersionIndex < Versions.Count)
+		{
+			// Pega o conteúdo da versão salva atual
+			var savedContent = Versions[CurrentVersionIndex].Content;
+
+			// Compara o conteúdo atual (value) com o salvo.
+			// Se forem diferentes, HasUnsavedChanges vira true, habilitando o botão.
+			HasUnsavedChanges = value != savedContent;
+		}
+	}
+
+	public bool RestoreOriginal()
+	{
+		var originalVersion = Versions.FirstOrDefault(v => v.IsOriginal);
+		if (originalVersion != null)
+		{
+			Content = originalVersion.Content;
+			CurrentVersionIndex = Versions.IndexOf(originalVersion);
+			HasUnsavedChanges = false;
+
+			OnPropertyChanged(nameof(CurrentVersionDescription));
+			return true;
+		}
+		return false;
+	}
+
+	public string CurrentVersionDescription
+	{
+		get
+		{
+			if (CurrentVersionIndex >= 0 && CurrentVersionIndex < Versions.Count)
+			{
+				var version = Versions[CurrentVersionIndex];
+				return $"{version.Description} ({version.Timestamp:HH:mm:ss})";
+			}
+			return "Sem versões";
+		}
+	}
+
+	public bool IsCurrentVersionOriginal =>
+		CurrentVersionIndex == 0 && Versions.Any() && Versions[0].IsOriginal;
 }

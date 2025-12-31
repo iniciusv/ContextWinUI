@@ -1,0 +1,133 @@
+<UserControl
+    x:Class="ContextWinUI.Features.GraphParser.Views.Components.VersionFooter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:ContextWinUI.Features.GraphParser.Converters"
+    mc:Ignorable="d">
+
+	<UserControl.Resources>
+		<converters:DateTimeToStringConverter x:Key="DateTimeConverter"/>
+
+		<Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+			<Setter Property="Background" Value="Transparent"/>
+			<Setter Property="BorderThickness" Value="0"/>
+			<Setter Property="Padding" Value="4"/>
+			<Setter Property="MinWidth" Value="32"/>
+			<Setter Property="MinHeight" Value="32"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+	</UserControl.Resources>
+
+	<Grid x:Name="RootGrid" 
+          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+          BorderThickness="0,1,0,0"
+          Padding="12,8">
+
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto"/>
+			<ColumnDefinition Width="*"/>
+			<ColumnDefinition Width="Auto"/>
+		</Grid.ColumnDefinitions>
+
+		<!-- Status do versionamento -->
+		<StackPanel Grid.Column="0" 
+                    Orientation="Horizontal" 
+                    Spacing="8"
+                    VerticalAlignment="Center">
+
+			<FontIcon x:Name="VersionIcon" 
+                     Glyph="&#xE81C;" 
+                     FontSize="14"
+                     Foreground="{x:Bind VersionIconColor, Mode=OneWay}"/>
+
+			<TextBlock x:Name="VersionStatusText"
+                      Text="{x:Bind VersionStatus, Mode=OneWay}"
+                      Style="{StaticResource CaptionTextBlockStyle}"
+                      VerticalAlignment="Center"/>
+		</StackPanel>
+
+		<!-- Informações da versão atual -->
+		<StackPanel Grid.Column="1" 
+                    Orientation="Horizontal" 
+                    Spacing="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+
+			<Button x:Name="BtnOriginalVersion"
+                   Click="OnRestoreOriginalClick"
+                   ToolTipService.ToolTip="Restaurar versão original"
+                   IsEnabled="{x:Bind CanRestoreOriginal, Mode=OneWay}"
+                   Style="{StaticResource DefaultButtonStyle}">
+				<StackPanel Orientation="Horizontal" Spacing="4">
+					<FontIcon Glyph="&#xE7B7;" FontSize="12"/>
+					<TextBlock Text="Original"/>
+				</StackPanel>
+			</Button>
+
+			<Button x:Name="BtnPreviousVersion"
+                   Click="OnPreviousVersionClick"
+                   ToolTipService.ToolTip="Versão anterior"
+                   IsEnabled="{x:Bind CanNavigatePrevious, Mode=OneWay}"
+                   Style="{StaticResource IconButtonStyle}">
+				<FontIcon Glyph="&#xE76B;" FontSize="12"/>
+			</Button>
+
+			<ComboBox x:Name="VersionComboBox"
+                     ItemsSource="{x:Bind Versions, Mode=OneWay}"
+                     SelectedIndex="{x:Bind SelectedVersionIndex, Mode=TwoWay}"
+                     SelectionChanged="OnVersionSelected"
+                     MinWidth="200">
+				<ComboBox.ItemTemplate>
+					<DataTemplate>
+						<StackPanel Margin="4,2">
+							<TextBlock Text="{Binding Description}" 
+                                       FontWeight="SemiBold"/>
+							<TextBlock Text="{Binding Timestamp, Converter={StaticResource DateTimeConverter}}"
+                                       FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+						</StackPanel>
+					</DataTemplate>
+				</ComboBox.ItemTemplate>
+			</ComboBox>
+
+			<Button x:Name="BtnNextVersion"
+                   Click="OnNextVersionClick"
+                   ToolTipService.ToolTip="Próxima versão"
+                   IsEnabled="{x:Bind CanNavigateNext, Mode=OneWay}"
+                   Style="{StaticResource IconButtonStyle}">
+				<FontIcon Glyph="&#xE76C;" FontSize="12"/>
+			</Button>
+
+			<Button x:Name="BtnSaveVersion"
+        Click="OnSaveVersionClick"
+        ToolTipService.ToolTip="Salvar nova versão"
+        
+        IsEnabled="{x:Bind CurrentBlock.HasUnsavedChanges, Mode=OneWay}"
+        
+        Style="{StaticResource AccentButtonStyle}">
+				<StackPanel Orientation="Horizontal" Spacing="4">
+					<FontIcon Glyph="&#xE74E;" FontSize="12"/>
+					<TextBlock Text="Salvar Versão"/>
+				</StackPanel>
+			</Button>
+		</StackPanel>
+
+		<!-- Contador de versões -->
+		<StackPanel Grid.Column="2" 
+                    Orientation="Horizontal" 
+                    Spacing="4"
+                    VerticalAlignment="Center">
+
+			<TextBlock Text="Versão:"
+                      Style="{StaticResource CaptionTextBlockStyle}"/>
+
+			<TextBlock x:Name="VersionCounter"
+                      Text="{x:Bind VersionCounterText, Mode=OneWay}"
+                      FontWeight="SemiBold"
+                      Style="{StaticResource CaptionTextBlockStyle}"/>
+		</StackPanel>
+	</Grid>
+</UserControl>

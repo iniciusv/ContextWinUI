@@ -7,6 +7,7 @@
     xmlns:models="using:ContextWinUI.Features.GraphParser.Models"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:localComp="using:ContextWinUI.Features.GraphParser.Views.Components"
+    xmlns:versionComp="using:ContextWinUI.Features.GraphParser.Views.Components"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
@@ -15,59 +16,108 @@
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
 
-		<ScrollViewer Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
-                      Padding="0" VerticalScrollBarVisibility="Auto">
+		<Grid Grid.Row="0">
+			<ScrollViewer x:Name="MainScrollViewer"
+                          Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
+                          Padding="0" 
+                          VerticalScrollBarVisibility="Auto">
+				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" 
+                              Margin="0">
+					<ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="models:CodeBlockItem">
+							<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
+                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                                  BorderThickness="0,0,0,1" 
+                                  Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                  PointerPressed="OnBlockPointerPressed">
 
-			<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="0">
-				<ItemsControl.ItemTemplate>
-					<DataTemplate x:DataType="models:CodeBlockItem">
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="85"/>
+									<ColumnDefinition Width="*"/>
+								</Grid.ColumnDefinitions>
 
-						<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
-                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-                              BorderThickness="0,0,0,1" 
-                              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+								<Rectangle x:Name="SelectionIndicator"
+                                           Fill="{ThemeResource SystemAccentColor}"
+                                           Width="3"
+                                           HorizontalAlignment="Left"
+                                           Visibility="Collapsed"/>
 
-							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="85"/>
-								<ColumnDefinition Width="*"/>
-							</Grid.ColumnDefinitions>
+								<Grid Grid.Column="0" 
+                                      Background="{ThemeResource LayerFillColorAltBrush}" 
+                                      Padding="8,0" 
+                                      BorderThickness="0,0,1,0" 
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                      ToolTipService.ToolTip="{x:Bind Name}">
 
-							<Grid Grid.Column="0" Background="{ThemeResource LayerFillColorAltBrush}" 
-                                  Padding="8,0" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                  ToolTipService.ToolTip="{x:Bind Name}">
+									<Rectangle HorizontalAlignment="Left" 
+                                               Width="3" 
+                                               VerticalAlignment="Stretch" 
+                                               Fill="{x:Bind HeaderBrush}" 
+                                               Margin="-8,0,0,0"/>
 
-								<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
-                                           Fill="{x:Bind HeaderBrush}" Margin="-8,0,0,0"/>
+									<StackPanel Orientation="Horizontal" 
+                                                Spacing="6" 
+                                                VerticalAlignment="Center" 
+                                                Opacity="0.9">
 
-								<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Opacity="0.9">
-									<FontIcon Glyph="{x:Bind Icon}" Foreground="{x:Bind HeaderBrush}" FontSize="10"/>
-									<TextBlock Text="{x:Bind TypeDescription}" FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
-                                               TextTrimming="CharacterEllipsis"/>
-								</StackPanel>
+										<FontIcon x:Name="VersionIndicator"
+                                                 Glyph="&#xE81C;"
+                                                 FontSize="10"
+                                                 Foreground="{ThemeResource SystemAccentColor}"
+                                                 Visibility="{x:Bind HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}"/>
+
+										<FontIcon Glyph="{x:Bind Icon}" 
+                                                 Foreground="{x:Bind HeaderBrush}" 
+                                                 FontSize="10"/>
+
+										<TextBlock Text="{x:Bind TypeDescription}" 
+                                                   FontSize="9" 
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                                   TextTrimming="CharacterEllipsis"/>
+									</StackPanel>
+								</Grid>
+
+								<localComp:SegmentCodeViewer Grid.Column="1"
+                                                            Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                            FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                                                            VerticalAlignment="Stretch"
+                                                            HorizontalAlignment="Stretch"
+                                                            Margin="0"
+                                                            SaveRequested="OnSegmentSaveRequested"/>
 							</Grid>
+						</DataTemplate>
+					</ItemsControl.ItemTemplate>
+				</ItemsControl>
+			</ScrollViewer>
 
-							<localComp:SegmentCodeViewer Grid.Column="1"
-                                                         Text="{x:Bind Content, Mode=TwoWay}" 
-                                                         FileExtension="{x:Bind FileExtension, Mode=OneWay}"
-                                                         VerticalAlignment="Stretch"
-                                                         HorizontalAlignment="Stretch"
-                                                         Margin="0"/>
-						</Grid>
-					</DataTemplate>
-				</ItemsControl.ItemTemplate>
-			</ItemsControl>
-		</ScrollViewer>
+			<StackPanel x:Name="EmptyMessagePanel"
+                        VerticalAlignment="Center" 
+                        HorizontalAlignment="Center" 
+                        Spacing="16"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+				<TextBlock Text="Nenhum conteúdo granular" 
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+			</StackPanel>
 
-		<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
-                    Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-			<TextBlock Text="Nenhum conteúdo granular" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-		</StackPanel>
-
-		<Grid Background="{ThemeResource LayerFillColorDefaultBrush}" Opacity="0.8"
-              Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-			<ProgressRing IsActive="True" Width="30" Height="30"/>
+			<Grid x:Name="LoadingOverlay"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}" 
+                  Opacity="0.8"
+                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+				<ProgressRing IsActive="True" Width="30" Height="30"/>
+			</Grid>
 		</Grid>
+
+		<versionComp:VersionFooter x:Name="VersionFooterControl"
+                                 Grid.Row="1"
+                                 CurrentBlock="{x:Bind ViewModel.SelectedBlock, Mode=OneWay}"
+                                 VersionRestoreRequested="OnVersionRestoreRequested"
+                                 SaveVersionRequested="OnSaveVersionRequested"
+                                 RestoreOriginalRequested="OnRestoreOriginalRequested"/>
 	</Grid>
 </UserControl>

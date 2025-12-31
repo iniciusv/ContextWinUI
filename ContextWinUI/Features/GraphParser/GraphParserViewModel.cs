@@ -26,26 +26,43 @@ public partial class GraphParserViewModel : ObservableObject
 	[ObservableProperty]
 	private FileSegmentsViewModel? selectedTab;
 
-	public bool HasTabs => Tabs.Any();
-
-	partial void OnTabsChanged(ObservableCollection<FileSegmentsViewModel> value)
-	{
-		OnPropertyChanged(nameof(HasTabs));
-	}
-
-	partial void OnSelectedTabChanged(FileSegmentsViewModel? value)
-	{
-		OnPropertyChanged(nameof(HasTabs));
-	}
-
-	// ADICIONE ESTA LINHA:
 	[ObservableProperty]
 	private ObservableCollection<SearchSuggestion> searchSuggestions = new();
 
-	public GraphParserViewModel(
-	SemanticIndexService indexService,
-	IFileSystemService fileSystemService,
-	IProjectSessionManager sessionManager)
+
+	public bool HasTabs => Tabs.Any();
+
+	partial void OnTabsChanged(ObservableCollection<FileSegmentsViewModel> value) => OnPropertyChanged(nameof(HasTabs));
+
+	partial void OnSelectedTabChanged(FileSegmentsViewModel? value) => OnPropertyChanged(nameof(HasTabs));
+
+
+	[RelayCommand]
+	private void CommitAllPendingChanges()
+	{
+		bool anyChange = false;
+		foreach (var tab in Tabs)
+		{
+			foreach (var block in tab.Blocks)
+			{
+				if (block.HasUnsavedChanges)
+				{
+					block.CreateNewVersion(block.Content, $"Salvo em lote ({DateTime.Now:HH:mm})");
+					anyChange = true;
+				}
+			}
+		}
+
+		if (anyChange)
+		{
+			System.Diagnostics.Debug.WriteLine("Todas as alterações pendentes foram versionadas.");
+		}
+	}
+
+	// Opcional: Uma propriedade para saber se existe ALGUMA coisa para salvar em qualquer lugar
+	public bool HasAnyUnsavedChanges => Tabs.Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
+
+	public GraphParserViewModel(SemanticIndexService indexService,IFileSystemService fileSystemService,IProjectSessionManager sessionManager)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -68,7 +85,6 @@ public partial class GraphParserViewModel : ObservableObject
 		_rootPath = e.RootPath;
 		System.Diagnostics.Debug.WriteLine($"Projeto carregado no GraphParserViewModel: {_rootPath}");
 
-		// Inicializa o grafo em background
 		_ = InitializeGraphAsync();
 	}
 
@@ -218,7 +234,6 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 	}
 
-	// Método de fallback que preenche SearchSuggestions com base na busca no diretório
 	private void SearchInDirectoryAsSuggestions(string query)
 	{
 		try

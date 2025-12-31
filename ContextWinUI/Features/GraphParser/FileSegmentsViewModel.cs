@@ -1,10 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models; // Para SymbolType
+using ContextWinUI.Core.Models;
 using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -36,7 +36,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 		FileName = Path.GetFileName(filePath);
 		_fileSystemService = fileSystemService;
 
-		// Inicia o carregamento e parsing imediatamente
+		// Inicia o carregamento automaticamente
 		_ = LoadBlocksAsync();
 	}
 
@@ -47,18 +47,21 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		try
 		{
+			// 1. Lê o arquivo do disco
 			var fileContent = await _fileSystemService.ReadFileContentAsync(FilePath);
-			if (string.IsNullOrEmpty(fileContent)) return;
 
-			// 1. Roslyn Parse
+			if (string.IsNullOrEmpty(fileContent))
+				return;
+
+			// 2. Parseia com Roslyn
 			var tree = CSharpSyntaxTree.ParseText(fileContent);
 			var root = await tree.GetRootAsync();
 
-			// 2. Segmentação Recursiva
 			var segments = new List<CodeBlockItem>();
+
+			// 3. Achata a árvore em segmentos lineares
 			FlattenNode(root, fileContent, 0, segments);
 
-			// 3. Popula a lista
 			foreach (var seg in segments)
 			{
 				seg.FileExtension = Path.GetExtension(FilePath);
@@ -82,8 +85,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 	}
 
-	// --- LÓGICA DE PARSING (Moved from GraphParserViewModel) ---
-
+	// Lógica recursiva para quebrar o código em blocos
 	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
 	{
 		var childrenToProcess = node.ChildNodes()
@@ -96,7 +98,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		foreach (var child in childrenToProcess)
 		{
-			// Gaps antes do filho
+			// Captura GAPs (espaços entre métodos, comentários soltos, etc)
 			if (child.SpanStart > cursor)
 			{
 				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
@@ -104,13 +106,14 @@ public partial class FileSegmentsViewModel : ObservableObject
 					resultList.Add(CreateSegment(node, gapText, depth, true));
 			}
 
-			// Processar Filho
 			if (IsContainerNode(child))
 			{
+				// Recursão para classes/namespaces
 				FlattenNode(child, fullText, depth + 1, resultList);
 			}
 			else
 			{
+				// Nó folha (método, propriedade, field)
 				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
 				resultList.Add(CreateSegment(child, childText, depth + 1, false));
 			}
@@ -118,7 +121,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 			cursor = child.Span.End;
 		}
 
-		// Sobra final
+		// Captura o final do bloco (fechamento de chaves, etc)
 		if (cursor < node.Span.End)
 		{
 			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
@@ -126,7 +129,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 				resultList.Add(CreateSegment(node, tailText, depth, true));
 		}
 
-		// Fim de arquivo
+		// Caso especial para final de arquivo
 		if (node is CompilationUnitSyntax && cursor < fullText.Length)
 		{
 			var finalTrivia = fullText.Substring(cursor);
@@ -143,7 +146,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 			? (content.Trim() == "}" ? "Fechamento" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
 			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
 
-		return new CodeBlockItem
+		var item = new CodeBlockItem
 		{
 			Name = name,
 			Content = content,
@@ -152,8 +155,18 @@ public partial class FileSegmentsViewModel : ObservableObject
 			TypeDescription = type.ToString().ToUpperInvariant(),
 			StartLine = content.Count(c => c == '\n') + 1
 		};
+
+		// -----------------------------------------------------------------------
+		// REQUISITO 1: SALVAR VERSÃO ORIGINAL NO CARREGAMENTO
+		// Aqui garantimos que assim que o bloco nasce, ele tem a versão "Original"
+		// salva na memória.
+		// -----------------------------------------------------------------------
+		item.InitializeVersions(content);
+
+		return item;
 	}
 
+	// Métodos auxiliares de Roslyn (GetMemberName, IsContainerNode, etc...) mantidos iguais ao original
 	private string GetMemberName(MemberDeclarationSyntax member)
 	{
 		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
@@ -198,4 +211,10 @@ public partial class FileSegmentsViewModel : ObservableObject
 			_ => SegmentType.Gap
 		};
 	}
+
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(HasSelectedBlock))]
+	private CodeBlockItem? selectedBlock;
+
+	public bool HasSelectedBlock => SelectedBlock != null;
 }
