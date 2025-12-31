@@ -123,25 +123,20 @@ public partial class CodeBlockItem : ObservableObject
 		OnPropertyChanged(nameof(IsCurrentVersionOriginal));
 	}
 
-	public void CreateNewVersion(string newContent, string description = "Modificado")
+	public void CreateNewVersion(string newContent, string description = "Modificado", DateTime? customTimestamp = null)
 	{
-		// Removemos a verificação (Content != newContent) porque ao editar, 
-		// o Content JÁ É o newContent (devido ao TwoWay binding).
-
 		var newVersion = new CodeBlockVersion
 		{
 			Content = newContent,
 			Description = description,
-			Timestamp = DateTime.Now,
+			// Usa o timestamp do lote (global) ou o atual se for um save manual
+			Timestamp = customTimestamp ?? DateTime.Now,
 			IsOriginal = false
 		};
 
 		Versions.Add(newVersion);
 		CurrentVersionIndex = Versions.Count - 1;
-
-		// Se acabamos de salvar uma versão com este conteúdo, não há mudanças pendentes
 		HasUnsavedChanges = false;
-
 		OnPropertyChanged(nameof(CurrentVersionDescription));
 	}
 

@@ -1,13 +1,14 @@
-// ARQUIVO: GraphParserViewModel.cs (modificado)
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,14 +31,25 @@ public partial class GraphParserViewModel : ObservableObject
 	[ObservableProperty]
 	private ObservableCollection<SearchSuggestion> searchSuggestions = new();
 
+	// --- VERSIONAMENTO CENTRALIZADO ---
+	[ObservableProperty]
+	private ObservableCollection<GlobalVersion> globalHistory = new();
+
+	[ObservableProperty]
+	private int currentGlobalIndex = 0;
+	// ----------------------------------
 
 	public bool HasTabs => Tabs.Any();
 
+	// Triggers para atualizar a UI quando abas mudam
 	partial void OnTabsChanged(ObservableCollection<FileSegmentsViewModel> value) => OnPropertyChanged(nameof(HasTabs));
-
 	partial void OnSelectedTabChanged(FileSegmentsViewModel? value) => OnPropertyChanged(nameof(HasTabs));
 
-	public GraphParserViewModel(SemanticIndexService indexService, IFileSystemService fileSystemService, IProjectSessionManager sessionManager, ICodeBlockParserService parserService)
+	public GraphParserViewModel(
+		SemanticIndexService indexService,
+		IFileSystemService fileSystemService,
+		IProjectSessionManager sessionManager,
+		ICodeBlockParserService parserService)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -46,64 +58,106 @@ public partial class GraphParserViewModel : ObservableObject
 
 		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
 
-		// Verifique se temos um projeto carregado
 		if (string.IsNullOrEmpty(_rootPath))
 		{
-			System.Diagnostics.Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
+			Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
 		}
 
-		// Subscreva ao evento de projeto carregado
 		sessionManager.ProjectLoaded += OnProjectLoaded;
+
+		// Inicializa o histórico com o estado zero
+		InitializeGlobalHistory();
+	}
+
+	private void InitializeGlobalHistory()
+	{
+		GlobalHistory.Clear();
+		GlobalHistory.Add(new GlobalVersion
+		{
+			Description = "Estado Inicial",
+			IsOriginal = true,
+			Timestamp = DateTime.MinValue
+		});
+		CurrentGlobalIndex = 0;
+	}
+
+	// --- PONTO CRÍTICO: Implementação do método parcial gerado pelo ObservableProperty ---
+	partial void OnCurrentGlobalIndexChanged(int value)
+	{
+		// Se o índice mudou (seja via UI, seja via código), propagamos para todas as abas
+		RestoreAllToVersion(value);
 	}
 
 	[RelayCommand]
 	public void CommitAllPendingChanges()
 	{
-		string batchTimestamp = DateTime.Now.ToString("HH:mm:ss");
+		// Define um Timestamp ÚNICO para todo o lote
+		var batchTime = DateTime.Now;
+		string batchTimestamp = batchTime.ToString("HH:mm:ss");
+		string description = $"Lote {batchTimestamp}";
+
 		bool anyChange = false;
 
+		// 1. Cria a versão Global
+		var newGlobalVersion = new GlobalVersion
+		{
+			Description = description,
+			Timestamp = batchTime,
+			IsOriginal = false
+		};
+		GlobalHistory.Add(newGlobalVersion);
+
+		// 2. Comanda TODAS as abas a criar snapshot com o MESMO horário
 		foreach (var tab in Tabs)
 		{
+			// Opcional: só snapshotar se tiver mudanças, ou snapshotar tudo para garantir sincronia.
+			// Aqui vamos snapshotar quem tem mudanças.
 			if (tab.HasAnyUnsavedChanges)
 			{
-				// MUDANÇA: Usamos o método da própria ViewModel da aba.
-				// Ele cuida de criar as versões dos blocos E adicionar na lista GlobalHistory.
-				tab.CommitGlobalVersion($"Lote {batchTimestamp}");
+				tab.SnapshotBlocksForGlobalVersion(description, batchTime);
 				anyChange = true;
 			}
 		}
 
 		if (anyChange)
 		{
-			System.Diagnostics.Debug.WriteLine("Commit Global realizado e histórico atualizado.");
+			Debug.WriteLine($"Commit Global realizado: {description}");
+		}
+
+		// 3. Atualiza o índice para a nova versão (isso vai disparar OnCurrentGlobalIndexChanged)
+		CurrentGlobalIndex = GlobalHistory.Count - 1;
+
+		// 4. Força a sincronia visual do índice nas abas (caso OnCurrentGlobalIndexChanged não pegue algo)
+		foreach (var tab in Tabs)
+		{
+			tab.SyncGlobalIndex(CurrentGlobalIndex);
 		}
 	}
 
-	// NOVO: Lógica para sincronizar todos os blocos para um índice específico
 	public void RestoreAllToVersion(int versionIndex)
 	{
+		if (versionIndex < 0 || versionIndex >= GlobalHistory.Count) return;
+
+		Debug.WriteLine($"Restaurando todas as abas para versão global: {versionIndex}");
+
+		// Garante que a propriedade local está correta (evita reentrância se já for igual)
+		if (CurrentGlobalIndex != versionIndex)
+		{
+			CurrentGlobalIndex = versionIndex;
+		}
+
 		foreach (var tab in Tabs)
 		{
-			foreach (var block in tab.Blocks)
-			{
-				// Tenta restaurar apenas se o bloco tiver essa versão
-				// Isso evita erros se um bloco tiver 5 versões e outro só 2
-				if (block.Versions.Count > versionIndex)
-				{
-					block.RestoreVersion(versionIndex);
-				}
-			}
+			tab.RestoreToGlobalIndex(versionIndex);
 		}
 	}
 
 	public bool HasAnyUnsavedChanges => Tabs.Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
-
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
 		_rootPath = e.RootPath;
-		System.Diagnostics.Debug.WriteLine($"Projeto carregado no GraphParserViewModel: {_rootPath}");
-
+		Debug.WriteLine($"Projeto carregado no GraphParserViewModel: {_rootPath}");
 		_ = InitializeGraphAsync();
 	}
 
@@ -114,12 +168,12 @@ public partial class GraphParserViewModel : ObservableObject
 			if (!string.IsNullOrEmpty(_rootPath))
 			{
 				await _indexService.GetOrIndexProjectAsync(_rootPath);
-				System.Diagnostics.Debug.WriteLine("Grafo indexado e pronto para busca.");
+				Debug.WriteLine("Grafo indexado e pronto para busca.");
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Diagnostics.Debug.WriteLine($"Erro ao indexar grafo: {ex.Message}");
+			Debug.WriteLine($"Erro ao indexar grafo: {ex.Message}");
 		}
 	}
 
@@ -129,49 +183,34 @@ public partial class GraphParserViewModel : ObservableObject
 		if (string.IsNullOrWhiteSpace(query) || string.IsNullOrEmpty(_rootPath))
 		{
 			SearchSuggestions.Clear();
-			System.Diagnostics.Debug.WriteLine($"Busca ignorada. Query: '{query}', RootPath: '{_rootPath}'");
 			return;
 		}
 
 		try
 		{
-			System.Diagnostics.Debug.WriteLine($"Iniciando busca por: '{query}' em: {_rootPath}");
-
-			// Obtenha o grafo atual
 			var graph = _indexService.GetCurrentGraph();
-
 			if (graph == null || !graph.Nodes.Any())
 			{
-				System.Diagnostics.Debug.WriteLine("Grafo vazio ou não disponível. Usando fallback.");
 				SearchInDirectoryAsSuggestions(query);
 				return;
 			}
 
-			System.Diagnostics.Debug.WriteLine($"Grafo obtido. Total de nós: {graph.Nodes.Count}");
-
 			var queryLower = query.ToLowerInvariant();
 			var suggestions = new List<SearchSuggestion>();
 
-			// Agrupa nós por arquivo (usando a resolução de ID para String)
-			var nodesByFile = graph.Nodes.Values // Agora iteramos diretamente sobre SymbolNode
+			var nodesByFile = graph.Nodes.Values
 				.GroupBy(node => graph.GetFilePath(node.FileId))
 				.Where(group => !string.IsNullOrEmpty(group.Key) && File.Exists(group.Key));
-
-			System.Diagnostics.Debug.WriteLine($"Arquivos únicos no grafo: {nodesByFile.Count()}");
 
 			foreach (var fileGroup in nodesByFile)
 			{
 				try
 				{
-					if (string.IsNullOrEmpty(fileGroup.Key))
-					{
-						continue;
-					}
+					if (string.IsNullOrEmpty(fileGroup.Key)) continue;
 
 					var fileName = Path.GetFileName(fileGroup.Key);
 					string filePath = fileGroup.Key;
 
-					// Filtra os nós dentro deste grupo
 					var matchingNodes = fileGroup
 						.Where(node =>
 							node.Name.ToLowerInvariant().Contains(queryLower) ||
@@ -181,23 +220,8 @@ public partial class GraphParserViewModel : ObservableObject
 
 					if (matchingNodes.Any())
 					{
-						string relativePath;
-						try
-						{
-							if (string.IsNullOrEmpty(_rootPath))
-							{
-								continue;
-							}
-							relativePath = Path.GetRelativePath(_rootPath, filePath);
-						}
-						catch (ArgumentException)
-						{
-							relativePath = filePath;
-						}
-
-						// CORREÇÃO AQUI: 'n' já é um SymbolNode, não precisa de .Value
-						var symbolsFound = string.Join(", ",
-							matchingNodes.Select(n => $"{n.Type}: {n.Name}").Take(3));
+						string relativePath = Path.GetRelativePath(_rootPath, filePath);
+						var symbolsFound = string.Join(", ", matchingNodes.Select(n => $"{n.Type}: {n.Name}").Take(3));
 
 						suggestions.Add(new SearchSuggestion
 						{
@@ -209,33 +233,19 @@ public partial class GraphParserViewModel : ObservableObject
 						});
 					}
 				}
-				catch (Exception ex)
-				{
-					System.Diagnostics.Debug.WriteLine($"Erro ao processar arquivo {fileGroup.Key}: {ex.Message}");
-				}
+				catch { /* Ignore */ }
 			}
 
-			// Ordena por relevância
-			suggestions = suggestions
-				.OrderByDescending(s => s.MatchCount)
-				.ThenBy(s => s.Title)
-				.Take(15)
-				.ToList();
+			suggestions = suggestions.OrderByDescending(s => s.MatchCount).ThenBy(s => s.Title).Take(15).ToList();
 
 			SearchSuggestions.Clear();
-			foreach (var suggestion in suggestions)
-			{
-				SearchSuggestions.Add(suggestion);
-			}
+			foreach (var s in suggestions) SearchSuggestions.Add(s);
 
-			if (!SearchSuggestions.Any())
-			{
-				SearchInDirectoryAsSuggestions(query);
-			}
+			if (!SearchSuggestions.Any()) SearchInDirectoryAsSuggestions(query);
 		}
 		catch (Exception ex)
 		{
-			System.Diagnostics.Debug.WriteLine($"Erro na busca: {ex.Message}");
+			Debug.WriteLine($"Erro na busca: {ex.Message}");
 			SearchInDirectoryAsSuggestions(query);
 		}
 	}
@@ -244,69 +254,26 @@ public partial class GraphParserViewModel : ObservableObject
 	{
 		try
 		{
-			if (string.IsNullOrEmpty(_rootPath))
-			{
-				System.Diagnostics.Debug.WriteLine("_rootPath está vazio. Não é possível buscar no diretório.");
-				SearchSuggestions.Clear();
-
-				// Adicione uma sugestão informativa
-				SearchSuggestions.Add(new SearchSuggestion
-				{
-					Title = "Nenhum projeto carregado",
-					Subtitle = "Abra um projeto primeiro para usar a busca",
-					FilePath = string.Empty,
-					Icon = "\uE897", // Ícone de informação
-					MatchCount = 0
-				});
-				return;
-			}
-
-			if (!Directory.Exists(_rootPath))
-			{
-				System.Diagnostics.Debug.WriteLine($"Diretório não existe: {_rootPath}");
-				SearchSuggestions.Clear();
-				return;
-			}
-
-			System.Diagnostics.Debug.WriteLine($"Buscando no diretório: {_rootPath}");
+			if (string.IsNullOrEmpty(_rootPath) || !Directory.Exists(_rootPath)) return;
 
 			var files = Directory.EnumerateFiles(_rootPath, "*.cs", SearchOption.AllDirectories)
 				.Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\"))
 				.Where(f => Path.GetFileName(f).Contains(query, StringComparison.OrdinalIgnoreCase))
 				.Take(15)
-				.Select(f =>
+				.Select(f => new SearchSuggestion
 				{
-					try
-					{
-						return new SearchSuggestion
-						{
-							Title = Path.GetFileName(f),
-							Subtitle = "Arquivo encontrado no diretório",
-							FilePath = Path.GetRelativePath(_rootPath, f),
-							Icon = "\uE943",
-							MatchCount = 1
-						};
-					}
-					catch (ArgumentException ex)
-					{
-						System.Diagnostics.Debug.WriteLine($"Erro ao criar sugestão para {f}: {ex.Message}");
-						return null;
-					}
+					Title = Path.GetFileName(f),
+					Subtitle = "Arquivo no diretório",
+					FilePath = Path.GetRelativePath(_rootPath, f),
+					Icon = "\uE943",
+					MatchCount = 1
 				})
-				.Where(s => s != null)
 				.ToList();
 
 			SearchSuggestions.Clear();
-			foreach (var suggestion in files)
-			{
-				SearchSuggestions.Add(suggestion);
-			}
+			foreach (var s in files) SearchSuggestions.Add(s);
 		}
-		catch (Exception ex)
-		{
-			System.Diagnostics.Debug.WriteLine($"Erro na busca no diretório: {ex.Message}");
-			SearchSuggestions.Clear();
-		}
+		catch { SearchSuggestions.Clear(); }
 	}
 
 	[RelayCommand]
@@ -318,22 +285,31 @@ public partial class GraphParserViewModel : ObservableObject
 		else if (parameter is null) return;
 
 		if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_rootPath)) return;
-		string fullPath = Path.Combine(_rootPath, path);
 
+		string fullPath = Path.Combine(_rootPath, path);
 		var existingTab = Tabs.FirstOrDefault(t => t.FilePath == fullPath);
 		if (existingTab != null)
 		{
 			SelectedTab = existingTab;
 			return;
 		}
-		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService, _indexService, _parserService);
 
+		// --- AQUI ESTÁ A LIGAÇÃO CHAVE: Passamos o GlobalHistory e CurrentGlobalIndex ---
+		var newTab = new FileSegmentsViewModel(
+			fullPath,
+			_fileSystemService,
+			_indexService,
+			_parserService,
+			GlobalHistory,
+			CurrentGlobalIndex
+		);
 
-		// --- CONECTANDO OS EVENTOS ---
-		// Isso garante que o clique na View dispare a lógica global no Pai
+		// Assinamos os eventos para comunicação bi-direcional
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
-		newTab.GlobalRestoreRequested += (s, index) => RestoreAllToVersion(index);
-		// -----------------------------
+
+		// Quando a aba pede restore (ex: clicou no footer da aba), atualizamos o índice do pai
+		// Isso vai disparar OnCurrentGlobalIndexChanged do Pai, que vai propagar para todos.
+		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
 
 		Tabs.Add(newTab);
 		SelectedTab = newTab;

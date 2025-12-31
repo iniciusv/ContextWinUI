@@ -111,12 +111,6 @@ namespace ContextWinUI.Features.GraphParser.Views
 			return null;
 		}
 
-		private void OnVersionRestoreRequested(object sender, int versionIndex)
-		{
-	
-			ViewModel.TriggerGlobalRestore(versionIndex);
-		}
-
 		// ALTERADO: Ao pedir salvar, pede Globalmente
 		private void OnSaveVersionRequested(object sender, EventArgs e)
 		{
