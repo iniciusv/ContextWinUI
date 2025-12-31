@@ -149,46 +149,72 @@ public sealed partial class SegmentCodeViewer : UserControl
 		_editCts?.Cancel();
 		_editCts = new CancellationTokenSource();
 		var token = _editCts.Token;
-		string currentText = Text;
+
+		// MUDANÇA CRÍTICA: Pegamos o texto direto do componente visual (RichEditBox).
+		// A opção TextGetOptions.None retorna apenas '\r' para quebras de linha (1 char).
+		// Isso garante que o Roslyn conte exatamente os mesmos índices que o editor usa.
+		CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string rawEditorText);
+
+		// Removemos o '\r' fantasma que o RichEditBox sempre coloca no final do arquivo
+		// para não atrapalhar o parser.
+		if (rawEditorText.EndsWith("\r"))
+		{
+			rawEditorText = rawEditorText.Substring(0, rawEditorText.Length - 1);
+		}
+
 		string ext = FileExtension?.ToLower() ?? ".txt";
 		bool isDark = ThemeHelper.IsDarkTheme();
+
 		_ = Task.Delay(250, token).ContinueWith(async _ =>
 		{
 			if (token.IsCancellationRequested) return;
+
 			try
 			{
 				List<HighlightSpan> syntaxSpans;
+
+				// Passamos o rawEditorText (com \r) para os serviços.
+				// O Roslyn lida bem com \r como quebra de linha.
 				if (ext == ".cs")
-					syntaxSpans = await _fastEditorService.CalculateHighlightsAsync(currentText, isDark);
+					syntaxSpans = await _fastEditorService.CalculateHighlightsAsync(rawEditorText, isDark);
 				else
-					syntaxSpans = await _regexHighlightService.CalculateHighlightsAsync(currentText, ext, ThemeHelper.GetCurrentThemeStyle());
+					syntaxSpans = await _regexHighlightService.CalculateHighlightsAsync(rawEditorText, ext, ThemeHelper.GetCurrentThemeStyle());
+
 				if (token.IsCancellationRequested) return;
+
 				DispatcherQueue.TryEnqueue(() =>
 				{
 					if (token.IsCancellationRequested) return;
-					ApplyHighlights(syntaxSpans);
+					// Passamos o mesmo texto usado no cálculo para aplicar o highlight
+					ApplyHighlights(syntaxSpans, rawEditorText);
 				});
 			}
 			catch { }
 		}, TaskScheduler.Default);
 	}
-	private void ApplyHighlights(List<HighlightSpan> syntaxSpans)
+
+	// Adicione o parâmetro 'editorText' para termos certeza do tamanho
+	private void ApplyHighlights(List<HighlightSpan> syntaxSpans, string editorText)
 	{
 		if (CodeEditor == null || CodeEditor.Document == null) return;
+
 		try
 		{
 			CodeEditor.Document.BatchDisplayUpdates();
-			CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string editorText);
-			if (string.IsNullOrEmpty(editorText)) return;
+
+			// Usamos o tamanho do texto que foi usado para calcular o highlight
 			int editorLength = editorText.Length;
+
 			var reuseRange = CodeEditor.Document.GetRange(0, 0);
+
+			// Limpa formatação anterior
 			reuseRange.SetRange(0, editorLength);
 			var defaultFg = ThemeHelper.IsDarkTheme() ? Colors.White : Colors.Black;
-			reuseRange.CharacterFormat.BackgroundColor = Colors.Transparent;
 			reuseRange.CharacterFormat.ForegroundColor = defaultFg;
+
 			foreach (var span in syntaxSpans)
 			{
-				ApplySpanOptimized(reuseRange, span, editorText, editorLength, isBackground: false);
+				ApplySpanOptimized(reuseRange, span, editorLength, isBackground: false);
 			}
 		}
 		catch (Exception ex)
@@ -200,6 +226,24 @@ public sealed partial class SegmentCodeViewer : UserControl
 			try { CodeEditor.Document.ApplyDisplayUpdates(); } catch { }
 		}
 	}
+
+	private void ApplySpanOptimized(Microsoft.UI.Text.ITextRange range, HighlightSpan span, int editorLength, bool isBackground)
+	{
+		// SEM MAPAS: O índice do Roslyn (span.Start) agora é idêntico ao visual.
+		int safeStart = Math.Clamp(span.Start, 0, editorLength);
+		int safeEnd = Math.Clamp(span.Start + span.Length, 0, editorLength);
+
+		if (safeEnd > safeStart)
+		{
+			range.SetRange(safeStart, safeEnd);
+
+			if (isBackground)
+				range.CharacterFormat.BackgroundColor = span.Color;
+			else
+				range.CharacterFormat.ForegroundColor = span.Color;
+		}
+	}
+
 	private void ApplySpanOptimized(Microsoft.UI.Text.ITextRange range, HighlightSpan span, string editorText, int editorLength, bool isBackground)
 	{
 		int visualStart = MapRoslynToVisualIndices(span.Start, editorText);
@@ -216,6 +260,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 				range.CharacterFormat.ForegroundColor = span.Color;
 		}
 	}
+
 	private int MapRoslynToVisualIndices(int roslynIndex, string editorText)
 	{
 		int currentRoslynCount = 0;
@@ -223,6 +268,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 		for (int i = 0; i < len; i++)
 		{
 			if (currentRoslynCount >= roslynIndex) return i;
+
 			if (editorText[i] == '\r')
 				currentRoslynCount += 2;
 			else
@@ -230,6 +276,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 		}
 		return len;
 	}
+
 	private void CodeEditor_KeyDown(object sender, KeyRoutedEventArgs e)
 	{
 		var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
