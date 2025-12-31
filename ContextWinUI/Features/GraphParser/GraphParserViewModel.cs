@@ -40,26 +40,23 @@ public partial class GraphParserViewModel : ObservableObject
 	[RelayCommand]
 	public void CommitAllPendingChanges()
 	{
-		bool anyChange = false;
-		// Gera um timestamp único para identificar esse "Lote" de salvamento
 		string batchTimestamp = DateTime.Now.ToString("HH:mm:ss");
+		bool anyChange = false;
 
 		foreach (var tab in Tabs)
 		{
-			foreach (var block in tab.Blocks)
+			if (tab.HasAnyUnsavedChanges)
 			{
-				if (block.HasUnsavedChanges)
-				{
-					// Usa o mesmo texto de versão para todos, facilitando identificar o grupo
-					block.CreateNewVersion(block.Content, $"Lote {batchTimestamp}");
-					anyChange = true;
-				}
+				// MUDANÇA: Usamos o método da própria ViewModel da aba.
+				// Ele cuida de criar as versões dos blocos E adicionar na lista GlobalHistory.
+				tab.CommitGlobalVersion($"Lote {batchTimestamp}");
+				anyChange = true;
 			}
 		}
 
 		if (anyChange)
 		{
-			System.Diagnostics.Debug.WriteLine("Commit Global realizado.");
+			System.Diagnostics.Debug.WriteLine("Commit Global realizado e histórico atualizado.");
 		}
 	}
 

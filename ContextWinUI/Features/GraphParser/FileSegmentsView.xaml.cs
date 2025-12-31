@@ -127,10 +127,7 @@ namespace ContextWinUI.Features.GraphParser.Views
 			// a versão nova neste bloco e em todos os outros modificados.
 		}
 
-		// MANTIDO: O RestoreOriginal pode continuar sendo local ou global, 
-		// mas geralmente "Original" é específico do arquivo. 
-		// Se quiser global, crie um TriggerGlobalRestoreOriginal. 
-		// Por enquanto, vou manter local para segurança, ou mude para TriggerGlobalRestore(0).
+
 		private void OnRestoreOriginalRequested(object sender, EventArgs e)
 		{
 			ViewModel.TriggerGlobalRestore(0); // Assume que 0 é sempre o original globalmente
@@ -138,13 +135,9 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private void OnSegmentSaveRequested(object sender, EventArgs e)
 		{
-			if (sender is SegmentCodeViewer viewer && ViewModel.SelectedBlock != null)
+			if (ViewModel.HasAnyUnsavedChanges)
 			{
-				// Cria nova versão automaticamente quando o usuário salva
-				ViewModel.SelectedBlock.CreateNewVersion(
-					viewer.Text,
-					"Salvo pelo usuário"
-				);
+				ViewModel.CommitGlobalVersion("Salvo pelo Editor");
 			}
 		}
 	}

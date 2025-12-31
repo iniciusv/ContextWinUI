@@ -124,8 +124,11 @@ public partial class FileSegmentsViewModel : ObservableObject
 		CurrentGlobalIndex = 0;
 	}
 
+	// ARQUIVO: FileSegmentsViewModel.cs
+
 	public void CommitGlobalVersion(string description = "Salvo em lote")
 	{
+		// 1. Cria a nova entrada no histórico
 		var newVersion = new GlobalVersion
 		{
 			Description = description,
@@ -134,15 +137,21 @@ public partial class FileSegmentsViewModel : ObservableObject
 		};
 		GlobalHistory.Add(newVersion);
 
-		CurrentGlobalIndex = GlobalHistory.Count - 1;
-
+		// 2. PRIMEIRO salvamos os blocos (Isso garante que a versão exista antes de tentarmos restaurá-la)
 		foreach (var block in Blocks)
 		{
 			if (block.HasUnsavedChanges)
 			{
+				// Aqui o bloco salva o conteúdo ATUAL ("New Code") na lista de versões dele
 				block.CreateNewVersion(block.Content, description);
 			}
 		}
+
+		// 3. AGORA sim atualizamos o índice global
+		// Isso vai disparar RestoreGlobalState, mas como o bloco já tem a versão nova salva,
+		// ele vai "restaurar" para o que você acabou de salvar, mantendo o texto na tela.
+		CurrentGlobalIndex = GlobalHistory.Count - 1;
+
 		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 	}
 
