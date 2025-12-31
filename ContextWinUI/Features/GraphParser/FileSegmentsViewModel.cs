@@ -2,9 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.UI.Xaml.Media; // Para SolidColorBrush, se necessário aqui ou no Model
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -12,379 +10,235 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphParser.ViewModels;
-
-public partial class FileSegmentsViewModel : ObservableObject
+namespace ContextWinUI.Features.GraphParser.ViewModels
 {
-	private readonly IFileSystemService _fileSystemService;
-	public string FilePath { get; }
-	public string FileName { get; }
+	public partial class FileSegmentsViewModel : ObservableObject
+	{
+		// Dependências
+		private readonly IFileSystemService _fileSystemService;
+		private readonly ISemanticIndexService _indexService;
+		private readonly ICodeBlockParserService _parserService; // Nova dependência
 
+		// Propriedades Públicas de Leitura
+		public string FilePath { get; }
+		public string FileName { get; }
 
-	[ObservableProperty]
-	private ObservableCollection<CodeBlockItem> blocks = new();
+		// Coleções Observáveis
+		[ObservableProperty]
+		private ObservableCollection<CodeBlockItem> blocks = new();
 
-	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(HasSelectedBlock))]
-	private CodeBlockItem? selectedBlock;
+		[ObservableProperty]
+		private ObservableCollection<GlobalVersion> globalHistory = new();
 
-	[ObservableProperty]
-	private bool isLoading;
+		// Estado da Seleção e UI
+		[ObservableProperty]
+		[NotifyPropertyChangedFor(nameof(HasSelectedBlock))]
+		private CodeBlockItem? selectedBlock;
 
-	[ObservableProperty]
-	private bool isEmpty;
+		[ObservableProperty]
+		private bool isLoading;
 
-	[ObservableProperty]
-	private ObservableCollection<GlobalVersion> globalHistory = new();
+		[ObservableProperty]
+		private bool isEmpty;
 
-	[ObservableProperty]
-	private int currentGlobalIndex = 0;
+		[ObservableProperty]
+		private int currentGlobalIndex = 0;
 
-	[ObservableProperty]
-	private string currentSymbolInfo = string.Empty;
+		[ObservableProperty]
+		private string currentSymbolInfo = string.Empty;
 
-	public bool HasSelectedBlock => SelectedBlock != null;
-	public bool HasAnyUnsavedChanges => Blocks.Any(b => b.HasUnsavedChanges);
+		// Propriedades Computadas
+		public bool HasSelectedBlock => SelectedBlock != null;
+		public bool HasAnyUnsavedChanges => Blocks.Any(b => b.HasUnsavedChanges);
 
-	public event EventHandler? GlobalSaveRequested;
-	public event EventHandler<int>? GlobalRestoreRequested;
-	private readonly SemanticIndexService _indexService;
+		// Eventos
+		public event EventHandler? GlobalSaveRequested;
+		public event EventHandler<int>? GlobalRestoreRequested;
 
-	public FileSegmentsViewModel(
+		// Construtor
+		public FileSegmentsViewModel(
 			string filePath,
 			IFileSystemService fileSystemService,
-			SemanticIndexService indexService)
-	{
-		FilePath = filePath;
-		FileName = Path.GetFileName(filePath);
-		_fileSystemService = fileSystemService;
-		_indexService = indexService;
-		_ = LoadBlocksAsync();
-	}
-
-	public void NotifyUnsavedChanges() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
-
-	private async Task LoadBlocksAsync()
-	{
-		IsLoading = true;
-		Blocks.Clear();
-		SelectedBlock = null;
-
-		try
+			SemanticIndexService indexService,
+			ICodeBlockParserService parserService)
 		{
-			var fileContent = await _fileSystemService.ReadFileContentAsync(FilePath);
-			if (string.IsNullOrEmpty(fileContent)) return;
+			FilePath = filePath;
+			FileName = Path.GetFileName(filePath);
+			_fileSystemService = fileSystemService;
+			_indexService = indexService;
+			_parserService = parserService;
 
-			var tree = CSharpSyntaxTree.ParseText(fileContent);
-			var root = await tree.GetRootAsync();
-			var segments = new List<CodeBlockItem>();
-
-			FlattenNode(root, fileContent, 0, segments);
-
-			foreach (var seg in segments)
-			{
-				seg.FileExtension = Path.GetExtension(FilePath);
-				Blocks.Add(seg);
-			}
-
-			if (Blocks.Any())
-			{
-				SelectedBlock = Blocks.First();
-			}
-
-			// Inicializa o histórico global após carregar
-			InitializeGlobalHistory();
-		}
-		catch (Exception ex)
-		{
-			Blocks.Add(new CodeBlockItem
-			{
-				Name = "Erro de Leitura",
-				Content = ex.Message,
-				SegmentType = SegmentType.Trivia,
-				TypeDescription = "ERROR"
-			});
-		}
-		finally
-		{
-			IsLoading = false;
-			IsEmpty = Blocks.Count == 0;
-		}
-	}
-
-	private void InitializeGlobalHistory()
-	{
-		GlobalHistory.Clear();
-		GlobalHistory.Add(new GlobalVersion
-		{
-			Description = "Versão Original",
-			IsOriginal = true,
-			Timestamp = DateTime.MinValue
-		});
-		CurrentGlobalIndex = 0;
-	}
-
-	// ARQUIVO: FileSegmentsViewModel.cs
-
-	public void CommitGlobalVersion(string description = "Salvo em lote")
-	{
-		// 1. Cria a nova entrada no histórico
-		var newVersion = new GlobalVersion
-		{
-			Description = description,
-			Timestamp = DateTime.Now,
-			IsOriginal = false
-		};
-		GlobalHistory.Add(newVersion);
-
-		// 2. PRIMEIRO salvamos os blocos (Isso garante que a versão exista antes de tentarmos restaurá-la)
-		foreach (var block in Blocks)
-		{
-			if (block.HasUnsavedChanges)
-			{
-				// Aqui o bloco salva o conteúdo ATUAL ("New Code") na lista de versões dele
-				block.CreateNewVersion(block.Content, description);
-			}
+			_ = LoadBlocksAsync();
 		}
 
-		// 3. AGORA sim atualizamos o índice global
-		// Isso vai disparar RestoreGlobalState, mas como o bloco já tem a versão nova salva,
-		// ele vai "restaurar" para o que você acabou de salvar, mantendo o texto na tela.
-		CurrentGlobalIndex = GlobalHistory.Count - 1;
+		// ==========================================================
+		// LÓGICA DE CARREGAMENTO (Refatorada)
+		// ==========================================================
 
-		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
-	}
-
-	partial void OnCurrentGlobalIndexChanged(int value)
-	{
-		if (GlobalHistory == null || value < 0 || value >= GlobalHistory.Count) return;
-		RestoreGlobalState(value);
-	}
-
-	private void RestoreGlobalState(int globalIndex)
-	{
-		foreach (var block in Blocks)
+		private async Task LoadBlocksAsync()
 		{
-			int targetBlockIndex = Math.Min(globalIndex, block.Versions.Count - 1);
-			if (targetBlockIndex >= 0)
+			IsLoading = true;
+			Blocks.Clear();
+			SelectedBlock = null;
+
+			try
 			{
-				block.RestoreVersion(targetBlockIndex);
-			}
-		}
-	}
+				// 1. Ler o conteúdo bruto do arquivo
+				var fileContent = await _fileSystemService.ReadFileContentAsync(FilePath);
+				if (string.IsNullOrEmpty(fileContent)) return;
 
-	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
-	public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
-	public void NotifyChangesChanged() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
-	// ARQUIVO: ContextWinUI/Features/GraphParser/ViewModels/FileSegmentsViewModel.cs
+				// 2. Usar o serviço para fazer o Parse (Roslyn)
+				var parsedItems = await _parserService.ParseFileAsync(FilePath, fileContent);
 
-	// =========================================================================================
-	// MÉTODO 1: FLATTEN NODE (Recursivo)
-	// Responsável por percorrer a árvore e calcular os offsets (posições) corretamente
-	// =========================================================================================
-	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
-	{
-		// 1. Identificar filhos que queremos destacar (Métodos, Props) ou entrar (Classes, Namespaces)
-		var childrenToProcess = node.ChildNodes()
-			.Where(n => IsInterestingNode(n) || IsContainerNode(n))
-			.OrderBy(n => n.SpanStart)
-			.ToList();
-
-		// 2. Inicializar o cursor
-		// Se for o nó raiz (arquivo inteiro), começa do 0.
-		// Se for um nó interno (ex: Classe), começa onde a classe começa.
-		int cursor = node.SpanStart;
-		if (node is CompilationUnitSyntax) cursor = 0;
-
-		foreach (var child in childrenToProcess)
-		{
-			// ---------------------------------------------------------
-			// A. GAP (Texto entre o cursor anterior e o filho atual)
-			// ---------------------------------------------------------
-			// Ex: Espaços, chaves de abertura '{', comentários soltos antes do método
-			if (child.SpanStart > cursor)
-			{
-				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
-				if (!string.IsNullOrEmpty(gapText))
+				// 3. Popular a ViewModel
+				foreach (var item in parsedItems)
 				{
-					// O Gap começa exatamente onde o cursor estava
-					resultList.Add(CreateSegment(node, gapText, depth, true, cursor));
+					Blocks.Add(item);
+				}
+
+				if (Blocks.Any())
+				{
+					SelectedBlock = Blocks.First();
+				}
+
+				// 4. Inicializar o histórico de versões
+				InitializeGlobalHistory();
+			}
+			catch (Exception ex)
+			{
+				// Fallback em caso de erro crítico
+				Blocks.Add(new CodeBlockItem
+				{
+					Name = "Erro de Leitura",
+					Content = ex.Message,
+					SegmentType = SegmentType.Trivia,
+					TypeDescription = "ERROR"
+				});
+			}
+			finally
+			{
+				IsLoading = false;
+				IsEmpty = Blocks.Count == 0;
+			}
+		}
+
+		// ==========================================================
+		// GERENCIAMENTO DE HISTÓRICO E VERSÕES
+		// ==========================================================
+
+		public void NotifyUnsavedChanges() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+		public void NotifyChangesChanged() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+
+		private void InitializeGlobalHistory()
+		{
+			GlobalHistory.Clear();
+			GlobalHistory.Add(new GlobalVersion
+			{
+				Description = "Versão Original",
+				IsOriginal = true,
+				Timestamp = DateTime.MinValue
+			});
+			CurrentGlobalIndex = 0;
+		}
+
+		public void CommitGlobalVersion(string description = "Salvo em lote")
+		{
+			var newVersion = new GlobalVersion
+			{
+				Description = description,
+				Timestamp = DateTime.Now,
+				IsOriginal = false
+			};
+
+			GlobalHistory.Add(newVersion);
+
+			// Cria uma nova versão para cada bloco que foi modificado
+			foreach (var block in Blocks)
+			{
+				if (block.HasUnsavedChanges)
+				{
+					block.CreateNewVersion(block.Content, description);
 				}
 			}
 
-			// ---------------------------------------------------------
-			// B. FILHO (Container ou Item Granular)
-			// ---------------------------------------------------------
-			if (IsContainerNode(child))
+			CurrentGlobalIndex = GlobalHistory.Count - 1;
+			OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+		}
+
+		// Trigger disparado quando a propriedade CurrentGlobalIndex muda na View
+		partial void OnCurrentGlobalIndexChanged(int value)
+		{
+			if (GlobalHistory == null || value < 0 || value >= GlobalHistory.Count) return;
+			RestoreGlobalState(value);
+		}
+
+		private void RestoreGlobalState(int globalIndex)
+		{
+			foreach (var block in Blocks)
 			{
-				// Se for Container (Classe/Namespace), mergulhamos nele (recursão)
-				FlattenNode(child, fullText, depth + 1, resultList);
+				// Tenta restaurar a versão correspondente ao índice global.
+				// Se o bloco tiver menos versões que o global, pega a última disponível.
+				int targetBlockIndex = Math.Min(globalIndex, block.Versions.Count - 1);
+
+				if (targetBlockIndex >= 0)
+				{
+					block.RestoreVersion(targetBlockIndex);
+				}
+			}
+		}
+
+		// Wrapper methods para disparar eventos para a View/Pai
+		public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
+		public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
+
+		// ==========================================================
+		// LÓGICA DE RESOLUÇÃO DE SÍMBOLOS (Semantic Index)
+		// ==========================================================
+
+		public void ResolveSymbolHeuristic(int cursorIndexInBlock)
+		{
+			if (SelectedBlock == null) return;
+
+			string word = GetWordAtCursor(SelectedBlock.Content, cursorIndexInBlock);
+
+			// Calcula posição absoluta para consultar o grafo
+			int absPos = SelectedBlock.AbsoluteStartPosition + cursorIndexInBlock;
+
+			var node = _indexService.InferSymbolFromGraph(word, FilePath, absPos);
+
+			if (node != null)
+			{
+				var graph = _indexService.GetCurrentGraph();
+				string resolvedPath = graph.GetFilePath(node.FileId);
+				string fileName = string.IsNullOrEmpty(resolvedPath) ? "Desconhecido" : Path.GetFileName(resolvedPath);
+
+				CurrentSymbolInfo = $"[{node.Type}] {node.Name}\nDefinido em: {fileName}";
 			}
 			else
 			{
-				// Se for Item Granular (Método, Propriedade), criamos o bloco fechado
-				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
-
-				// A posição absoluta é o Start do próprio nó filho
-				resultList.Add(CreateSegment(child, childText, depth + 1, false, child.SpanStart));
-			}
-
-			// Avançamos o cursor para o fim deste filho
-			cursor = child.Span.End;
-		}
-
-		// ---------------------------------------------------------
-		// C. TAIL (Texto restante após o último filho)
-		// ---------------------------------------------------------
-		// Ex: Chave de fechamento '}' da classe
-		if (cursor < node.Span.End)
-		{
-			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
-			if (!string.IsNullOrEmpty(tailText))
-			{
-				resultList.Add(CreateSegment(node, tailText, depth, true, cursor));
+				CurrentSymbolInfo = $"'{word}' (Sem informações no grafo)";
 			}
 		}
 
-		// ---------------------------------------------------------
-		// D. EOF (Apenas para o nó Raiz)
-		// ---------------------------------------------------------
-		// Pega qualquer coisa após a última classe (espaços finais, comentários de rodapé)
-		if (node is CompilationUnitSyntax && cursor < fullText.Length)
+		private string GetWordAtCursor(string text, int position)
 		{
-			var finalTrivia = fullText.Substring(cursor);
-			if (!string.IsNullOrEmpty(finalTrivia))
-			{
-				var eofItem = CreateSegment(node, finalTrivia, depth, true, cursor);
-				eofItem.Name = "EOF";
-				eofItem.TypeDescription = "END";
-				resultList.Add(eofItem);
-			}
-		}
-	}
+			if (string.IsNullOrEmpty(text) || position < 0 || position > text.Length) return string.Empty;
 
-	// =========================================================================================
-	// MÉTODO 2: CREATE SEGMENT
-	// Cria o objeto CodeBlockItem preenchendo o AbsoluteStartPosition
-	// =========================================================================================
-	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap, int absoluteStart)
-	{
-		var type = IdentifySegmentType(node, isGap, content);
+			int start = position;
+			int end = position;
 
-		// Determinar o Nome de Exibição
-		string name;
-		if (isGap)
-		{
-			if (content.Trim() == "}")
-				name = "Fechamento";
-			else if (node is ClassDeclarationSyntax cls)
-				name = $"Estrutura ({cls.Identifier.Text})";
-			else if (node is NamespaceDeclarationSyntax ns)
-				name = $"Estrutura (Namespace)";
-			else
-				name = $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})";
-		}
-		else
-		{
-			name = node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name;
+			// Retrocede para achar o início da palavra
+			while (start > 0 && IsIdentifierChar(text[start - 1])) start--;
+
+			// Avança para achar o fim da palavra
+			while (end < text.Length && IsIdentifierChar(text[end])) end++;
+
+			return text.Substring(start, end - start);
 		}
 
-		// Criar o Item
-		var item = new CodeBlockItem
+		private bool IsIdentifierChar(char c)
 		{
-			Name = name,
-			Content = content,
-			DepthLevel = depth,
-			SegmentType = type,
-			TypeDescription = type.ToString().ToUpperInvariant(),
-			StartLine = content.Count(c => c == '\n') + 1, // Estimativa visual apenas
-			FileExtension = Path.GetExtension(FilePath),
-
-			// --- CORREÇÃO IMPORTANTE ---
-			AbsoluteStartPosition = absoluteStart
-			// ---------------------------
-		};
-
-		// Inicializa o sistema de versionamento/undo
-		item.InitializeVersions(content);
-
-		return item;
-	}
-	private string GetMemberName(MemberDeclarationSyntax member)
-	{
-		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
-		if (member is PropertyDeclarationSyntax p) return p.Identifier.Text;
-		if (member is ClassDeclarationSyntax c) return c.Identifier.Text;
-		if (member is InterfaceDeclarationSyntax i) return i.Identifier.Text;
-		if (member is NamespaceDeclarationSyntax n) return n.Name.ToString();
-		if (member is FileScopedNamespaceDeclarationSyntax fn) return fn.Name.ToString();
-		return member.GetType().Name.Replace("DeclarationSyntax", "");
-	}
-	private bool IsContainerNode(SyntaxNode node) =>
-		node is ClassDeclarationSyntax || node is NamespaceDeclarationSyntax ||
-		node is FileScopedNamespaceDeclarationSyntax || node is StructDeclarationSyntax ||
-		node is InterfaceDeclarationSyntax;
-	private bool IsInterestingNode(SyntaxNode node) =>
-		node is MethodDeclarationSyntax || node is ConstructorDeclarationSyntax ||
-		node is PropertyDeclarationSyntax || node is FieldDeclarationSyntax ||
-		node is EnumDeclarationSyntax || node is UsingDirectiveSyntax;
-	private SegmentType IdentifySegmentType(SyntaxNode node, bool isGap, string content)
-	{
-		if (string.IsNullOrWhiteSpace(content)) return SegmentType.Trivia;
-		if (content.Trim() == "}") return SegmentType.CloseBrace;
-		if (isGap)
-		{
-			if (node is ClassDeclarationSyntax) return SegmentType.ClassHeader;
-			if (node is NamespaceDeclarationSyntax) return SegmentType.NamespaceDecl;
-			return SegmentType.Gap;
+			return char.IsLetterOrDigit(c) || c == '_';
 		}
-		return node switch
-		{
-			MethodDeclarationSyntax => SegmentType.Method,
-			ConstructorDeclarationSyntax => SegmentType.Constructor,
-			PropertyDeclarationSyntax => SegmentType.Property,
-			FieldDeclarationSyntax => SegmentType.Field,
-			EnumDeclarationSyntax => SegmentType.Enum,
-			UsingDirectiveSyntax => SegmentType.FileHeader,
-			_ => SegmentType.Gap
-		};
-	}
-
-	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
-	{
-		if (SelectedBlock == null) return;
-
-		// 1. Obter a palavra (lógica simples para pegar palavra inteira sob o cursor)
-		string word = GetWordAtCursor(SelectedBlock.Content, cursorIndexInBlock);
-
-		// 2. Calcular posição absoluta
-		int absPos = SelectedBlock.AbsoluteStartPosition + cursorIndexInBlock;
-
-		// 3. Chamar o IndexService
-		var node = _indexService.InferSymbolFromGraph(word, FilePath, absPos);
-
-		if (node != null)
-		{
-			// Sucesso! Mostramos o que o Grafo sabe sobre isso.
-			CurrentSymbolInfo = $"[{node.Type}] {node.Name}\nDefinido em: {Path.GetFileName(node.FilePath)}";
-		}
-		else
-		{
-			CurrentSymbolInfo = $"'{word}' (Sem informações no grafo)";
-		}
-	}
-
-	private string GetWordAtCursor(string text, int position)
-	{
-		if (string.IsNullOrEmpty(text) || position < 0 || position > text.Length) return string.Empty;
-
-		// Lógica simples para expandir a seleção para esquerda e direita até achar espaço ou pontuação
-		int start = position;
-		int end = position;
-
-		while (start > 0 && char.IsLetterOrDigit(text[start - 1])) start--;
-		while (end < text.Length && char.IsLetterOrDigit(text[end])) end++;
-
-		return text.Substring(start, end - start);
 	}
 }

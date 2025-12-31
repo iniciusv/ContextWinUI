@@ -6,6 +6,7 @@ using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.FileSystem;
+using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
@@ -42,6 +43,8 @@ public partial class App : Application
 		services.AddSingleton<IGitService, GitService>(); // Verifique se essa classe existe
 		services.AddSingleton<ISelectionIOService, SelectionIOService>(); // Verifique se essa classe existe
 		services.AddSingleton<ITagManagementUiService, TagManagementUiService>();
+
+		services.AddSingleton<ICodeBlockParserService, CodeBlockParserService>();
 
 		// 2. ESTADO CRÍTICO
 		services.AddSingleton<IFileSelectionService, FileSelectionService>();

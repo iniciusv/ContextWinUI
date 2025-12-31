@@ -1,4 +1,5 @@
 using ColorCode.Styling;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeEditor;
 using ContextWinUI.Helpers;
@@ -15,7 +16,7 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.CodeAnalyses;
 
-public class SemanticIndexService
+public class SemanticIndexService : ISemanticIndexService
 {
 	private DependencyGraph _cachedGraph = new();
 	private string _cachedRootPath = string.Empty;
@@ -84,38 +85,32 @@ public class SemanticIndexService
 		if (_cachedGraph == null || string.IsNullOrWhiteSpace(word))
 			return null;
 
-		// 1. Busca Local: Identificar nós dentro do arquivo atual
-		// Normalizamos a chave para garantir o match no dicionário
-		string fileKey = filePath.ToLowerInvariant();
+		// OTIMIZAÇÃO: Primeiro pegamos o ID do arquivo a partir da string
+		int fileId = _cachedGraph.GetOrAddFileId(filePath);
 
-		if (!_cachedGraph.FileIndex.TryGetValue(fileKey, out var fileNodes))
+		// Se o arquivo não está no índice, retornamos null
+		if (!_cachedGraph.FileIndex.TryGetValue(fileId, out var fileNodes))
 		{
-			return null; // Arquivo não indexado ou novo
+			return null;
 		}
 
-		// 2. Identificar Contexto: Em qual container (Método/Classe) o cursor está?
-		// Buscamos o nó mais "apertado" (menor Length) que contém a posição.
-		// Isso garante que se estivermos num Método dentro de uma Classe, pegaremos o Método primeiro.
+		// Busca local (dentro do arquivo)
 		var containerNode = fileNodes
 			.Where(n => n.StartPosition <= absolutePosition &&
 						(n.StartPosition + n.Length) >= absolutePosition)
-			.OrderBy(n => n.Length) // Menor para o maior (Método -> Classe -> Namespace)
+			.OrderBy(n => n.Length)
 			.FirstOrDefault();
 
-		// 3. TENTATIVA A: É um membro da mesma classe/arquivo?
-		// Procuramos por: Propriedades, Métodos, Campos definidos neste mesmo arquivo
-		// que tenham o nome exato da palavra.
 		var localMember = fileNodes.FirstOrDefault(n => n.Name == word);
-
-		// Se achamos e não é o próprio container onde estamos (ex: recursão), retornamos.
-		if (localMember != null)
+		if (localMember != null) // Node é struct/class, verificação de null pode precisar de ajuste dependendo do uso
 		{
+			// Nota: Se SymbolNode for ref type, null check é valido. 
+			// Se mudou para struct, use 'default'. Aqui assumi que SymbolNode é class.
 			return localMember;
 		}
 
-		// 4. TENTATIVA B: É um Tipo (Classe/Interface) definido em outro lugar do projeto?
-		// Se a palavra não está no arquivo, pode ser uma referência a outra classe (ex: "DependencyGraph graph")
-		// Esta busca varre todos os nós. Se o projeto for MUITO grande, idealmente o DependencyGraph teria um "NameIndex".
+		// Busca global
+		// Aqui não mudou muito, pois NameIndex ainda é string
 		var globalType = _cachedGraph.Nodes.Values
 			.FirstOrDefault(n => n.Name == word &&
 								(n.Type == SymbolType.Class ||

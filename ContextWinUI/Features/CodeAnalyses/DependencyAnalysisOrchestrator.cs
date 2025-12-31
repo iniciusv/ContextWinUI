@@ -1,12 +1,11 @@
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Helpers; // Assumindo onde está CodeCleanupHelper
 using ContextWinUI.Core.Models;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.UI.Dispatching;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -34,48 +33,38 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		_fileSystemService = fileSystemService;
 	}
 
-
 	/// <summary>
-	/// Preenche um nó de MÉTODO com suas dependências recursivas.
-	/// Operação: Algoritmo de busca em Grafo (BFS/DFS) em memória.
+	/// Preenche um nó de ARQUIVO com seus métodos e classes encontrados no Grafo.
 	/// </summary>
 	public async Task EnrichFileNodeAsync(FileSystemItem item, string projectPath)
 	{
-		// Se já tiver filhos, não faz nada (evita reprocessamento desnecessário)
+		// Se já tiver filhos, não faz nada (evita reprocessamento)
 		if (item.Children.Any()) return;
 
-		var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()	 ?? App.MainWindow.DispatcherQueue;
-
+		var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
+						 ?? App.MainWindow.DispatcherQueue;
 
 		// ---------------------------------------------------------
-		// ETAPA 1: FAST TRACK (Análise Sintática Pura)
-		// Objetivo: Dar feedback visual imediato ao usuário enquanto a compilação roda.
+		// ETAPA 1: FAST TRACK (Análise Sintática Pura - Visualização Rápida)
 		// ---------------------------------------------------------
-		string fileContent = string.Empty;
+		var tempChildren = new List<FileSystemItem>();
 		try
 		{
-			// Lê o conteúdo do disco rapidamente
-			fileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
-
-			// Parse rápido (sem Semantic Model, apenas texto -> árvore)
+			string fileContent = await _fileSystemService.ReadFileContentAsync(item.FullPath);
 			var tree = CSharpSyntaxTree.ParseText(fileContent);
 			var root = await tree.GetRootAsync();
 
-			var methodsSyntax = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
-			var classesSyntax = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
+			var methodsSyntax = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+			var classesSyntax = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
 
-			var tempChildren = new List<FileSystemItem>();
-
-			// Criação visual dos métodos (sem ID de linkagem ainda)
 			if (methodsSyntax.Any())
 			{
 				var methodsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::methods_temp", FileSystemItemType.LogicalGroup, "\uEA86");
-				methodsGroup.SharedState.Name = "Métodos (Carregando...)"; // Feedback visual
+				methodsGroup.SharedState.Name = "Métodos (Carregando...)";
 
 				foreach (var m in methodsSyntax)
 				{
 					var methodName = m.Identifier.Text;
-					// Usamos um ID temporário. Nota: O ícone pode ser cinza ou diferente se quiser indicar "loading"
 					var tempItem = _itemFactory.CreateWrapper($"{item.FullPath}::temp::{methodName}", FileSystemItemType.Method, "\uF158");
 					tempItem.SharedState.Name = methodName;
 					methodsGroup.Children.Add(tempItem);
@@ -83,7 +72,6 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				tempChildren.Add(methodsGroup);
 			}
 
-			// Criação visual das classes/tipos
 			if (classesSyntax.Any())
 			{
 				var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types_temp", FileSystemItemType.LogicalGroup, "\uE943");
@@ -99,38 +87,36 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				tempChildren.Add(typesGroup);
 			}
 
-			// Atualiza a UI imediatamente com os dados preliminares
 			dispatcher.TryEnqueue(() =>
 			{
-				// Verifica se no meio tempo a análise completa não terminou (race condition rara)
+				// Verifica race condition
 				if (!item.Children.Any())
 				{
 					foreach (var child in tempChildren) item.Children.Add(child);
 					if (tempChildren.Any()) item.IsExpanded = true;
-
-					// IMPORTANTE: Notificar que as propriedades de visibilidade mudaram
 					item.NotifyViewUpdate(nameof(item.DeepAnalyzeVisibility));
 					item.NotifyViewUpdate(nameof(item.MethodFlowVisibility));
 				}
 			});
 		}
-		catch (Exception)
+		catch
 		{
-			// Se falhar o parse rápido, ignoramos e deixamos o fluxo seguir para a análise completa
+			// Ignora falhas no Fast Track e segue para análise profunda
 		}
 
 		// ---------------------------------------------------------
-		// ETAPA 2: ANÁLISE PROFUNDA (Semântica)
-		// Objetivo: Obter os IDs corretos do Roslyn para permitir navegação de dependência.
+		// ETAPA 2: ANÁLISE PROFUNDA (Grafo Semântico Otimizado)
 		// ---------------------------------------------------------
 
-		// Isso pode demorar se for a primeira execução (compilação do projeto)
 		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
 
-		var searchKey = Path.GetFullPath(item.FullPath).ToLowerInvariant();
-		if (!graph.FileIndex.TryGetValue(searchKey, out var fileSymbols))
+		// CORREÇÃO: Converter Path String -> FileId Int
+		int fileId = graph.GetOrAddFileId(Path.GetFullPath(item.FullPath));
+
+		// Busca nós usando ID Inteiro no FileIndex
+		if (!graph.FileIndex.TryGetValue(fileId, out var fileSymbols))
 		{
-			// Se não encontrou símbolos no grafo, removemos os itens temporários de "Loading" e encerramos
+			// Se não houver símbolos, limpa os temporários
 			dispatcher.TryEnqueue(() => item.Children.Clear());
 			return;
 		}
@@ -138,6 +124,7 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		var methodNodes = new List<SymbolNode>();
 		var typeNodes = new List<SymbolNode>();
 
+		// Cópia thread-safe da lista
 		lock (fileSymbols)
 		{
 			foreach (var s in fileSymbols)
@@ -149,62 +136,64 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 		}
 
-		// Ordena pela posição no arquivo para ficar igual à leitura do código
+		// Ordenação visual
 		methodNodes.Sort((a, b) => a.StartPosition.CompareTo(b.StartPosition));
 		typeNodes.Sort((a, b) => a.StartPosition.CompareTo(b.StartPosition));
 
 		var finalChildren = new List<FileSystemItem>();
 
-		// Recria o grupo de métodos, agora com dados reais e linkáveis
+		// Caminho textual para IDs visuais da TreeView
+		string filePathStr = item.FullPath;
+
+		// 2a. Construção dos Métodos
 		if (methodNodes.Count > 0)
 		{
-			var methodsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
-			methodsGroup.SharedState.Name = "Métodos"; // Nome definitivo
+			var methodsGroup = _itemFactory.CreateWrapper($"{filePathStr}::methods", FileSystemItemType.LogicalGroup, "\uEA86");
+			methodsGroup.SharedState.Name = "Métodos";
 
 			foreach (var node in methodNodes)
 			{
-				// O ID agora é o node.Id (Assinatura única do Roslyn), permitindo o MethodFlow funcionar
-				var methodItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Method, "\uF158");
+				// CORREÇÃO: node.Id é int. Usamos ToString() para a MethodSignature (que a UI espera ser string)
+				var methodItem = _itemFactory.CreateWrapper($"{filePathStr}::{node.Id}", FileSystemItemType.Method, "\uF158");
 				methodItem.SharedState.Name = node.Name;
-				methodItem.MethodSignature = node.Id;
+				methodItem.MethodSignature = node.Id.ToString();
 				methodsGroup.Children.Add(methodItem);
 			}
 			finalChildren.Add(methodsGroup);
 		}
 
-		// Recria o grupo de tipos
+		// 2b. Construção dos Tipos
 		if (typeNodes.Count > 0)
 		{
-			var typesGroup = _itemFactory.CreateWrapper($"{item.FullPath}::types", FileSystemItemType.LogicalGroup, "\uE943");
+			var typesGroup = _itemFactory.CreateWrapper($"{filePathStr}::types", FileSystemItemType.LogicalGroup, "\uE943");
 			typesGroup.SharedState.Name = "Estrutura e Tipos Usados";
 
 			foreach (var node in typeNodes)
 			{
-				// 1. Adiciona a própria classe (a declaração)
-				var typeItem = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", FileSystemItemType.Class, "\uE943");
+				var typeItem = _itemFactory.CreateWrapper($"{filePathStr}::{node.Id}", FileSystemItemType.Class, "\uE943");
 				typeItem.SharedState.Name = node.Name + " (Definição)";
-				typeItem.MethodSignature = node.Id;
+				typeItem.MethodSignature = node.Id.ToString();
 				typesGroup.Children.Add(typeItem);
 
-				// 2. Busca as dependências desta classe no Grafo
+				// Dependências do Tipo (Lookup no Grafo)
 				if (graph.Nodes.TryGetValue(node.Id, out var classNodeInGraph))
 				{
-					// Filtra links de tipos usados, herança ou interfaces
+					// Agrupa dependências únicas
 					var dependencies = classNodeInGraph.OutgoingLinks
 						.Where(l => l.Type == LinkType.UsesType || l.Type == LinkType.Inherits || l.Type == LinkType.Implements)
-						.GroupBy(l => l.TargetId) // Evita duplicados
+						.GroupBy(l => l.TargetId)
 						.Select(g => g.First());
 
 					foreach (var link in dependencies)
 					{
 						if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
 						{
-							// Adiciona o tipo usado como um filho ou item da lista
-							var depItem = _itemFactory.CreateWrapper($"{targetNode.FilePath}::{targetNode.Id}", FileSystemItemType.Dependency, "\uE972");
-							depItem.SharedState.Name = targetNode.Name; // Ex: "IProjectSessionManager"
-							depItem.MethodSignature = targetNode.Id;
+							// CORREÇÃO: Recuperar o caminho do arquivo do nó destino via ID
+							string targetPath = graph.GetFilePath(targetNode.FileId);
 
-							// Você pode adicionar direto no grupo ou dentro do item da classe
+							var depItem = _itemFactory.CreateWrapper($"{targetPath}::{targetNode.Id}", FileSystemItemType.Dependency, "\uE972");
+							depItem.SharedState.Name = targetNode.Name;
+							depItem.MethodSignature = targetNode.Id.ToString();
 							typesGroup.Children.Add(depItem);
 						}
 					}
@@ -214,137 +203,103 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		}
 
 		// ---------------------------------------------------------
-		// ETAPA 3: SWAP (Troca)
-		// Objetivo: Substituir os itens temporários pelos itens finais na UI thread.
+		// ETAPA 3: SWAP (Atualização da UI)
 		// ---------------------------------------------------------
 		dispatcher.TryEnqueue(() =>
 		{
-			// Limpa os itens de "Carregando..."
 			item.Children.Clear();
-
-			// Adiciona os itens finais enriquecidos
-			foreach (var child in finalChildren)
-			{
-				item.Children.Add(child);
-			}
+			foreach (var child in finalChildren) item.Children.Add(child);
 
 			if (finalChildren.Any()) item.IsExpanded = true;
 		});
 	}
-	/// <summary>
-	/// Preenche um nó de MÉTODO com suas dependências recursivas.
-	/// Operação: Algoritmo de busca em Grafo (BFS/DFS) em memória.
-	/// </summary>
-	// ARQUIVO: DependencyAnalysisOrchestrator.cs
 
+	/// <summary>
+	/// Preenche um nó de MÉTODO com o fluxo de chamadas (Call Graph).
+	/// </summary>
 	public async Task EnrichMethodFlowAsync(FileSystemItem item, string projectPath)
 	{
-		// Se já tiver filhos carregados, não faz nada (evita recarregar)
 		if (item.Children.Any()) return;
 
-		// Cede a vez para a UI não travar antes de processar
-		await Task.Yield();
+		await Task.Yield(); // Libera UI
 
-		// Obtém o grafo (já em cache se disponível)
 		var graph = await _indexService.GetOrIndexProjectAsync(projectPath);
 
-		// Identifica o nó correspondente ao item clicado
-		var methodId = item.MethodSignature;
-		if (string.IsNullOrEmpty(methodId) || !graph.Nodes.TryGetValue(methodId, out var startNode))
+		// CORREÇÃO: Parse seguro de String (UI) para Int (Grafo)
+		if (string.IsNullOrEmpty(item.MethodSignature) || !int.TryParse(item.MethodSignature, out int methodId))
 			return;
 
-		// ----------------------------------------------------------------------------------
-		// REFATORAÇÃO AQUI:
-		// Como agora o SymbolLink guarda posições (Start/Length), podemos ter múltiplos links
-		// apontando para o mesmo TargetId (ex: duas chamadas ao mesmo método).
-		// Para a Árvore Visual, queremos apenas itens únicos, então agrupamos pelo TargetId.
-		// ----------------------------------------------------------------------------------
+		if (!graph.Nodes.TryGetValue(methodId, out var startNode))
+			return;
+
+		// Agrupamento por TargetId (int)
 		var uniqueLinks = startNode.OutgoingLinks
 			.GroupBy(link => link.TargetId)
-			.Select(group => group.First()) // Pega um representante do grupo
+			.Select(group => group.First())
 			.ToList();
 
 		if (!uniqueLinks.Any()) return;
 
-		var flowItems = new List<FileSystemItem>();       // Chamadas de métodos/acessos
-		var dependencyItems = new List<FileSystemItem>(); // Tipos utilizados
+		var flowItems = new List<FileSystemItem>();
+		var dependencyItems = new List<FileSystemItem>();
 
 		foreach (var link in uniqueLinks)
 		{
-			// Tenta achar o nó destino no grafo
 			if (graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
 			{
-				// Categoria 1: Fluxo de Execução (Chamadas e Acessos)
 				if (link.Type == LinkType.Calls || link.Type == LinkType.Accesses)
 				{
-					// Ícone diferente se for Método (cubo roxo) ou Propriedade (chave inglesa)
 					string icon = targetNode.Type == SymbolType.Method ? "\uF158" : "\uE946";
-
-					var child = CreateItemFromNode(targetNode, FileSystemItemType.Method, icon);
-					child.IsChecked = true; // Marca por padrão para facilitar seleção de contexto
+					// Usa helper corrigido que acessa o Grafo para resolver caminhos
+					var child = CreateItemFromNode(targetNode, FileSystemItemType.Method, icon, graph);
+					child.IsChecked = true;
 					flowItems.Add(child);
 				}
-				// Categoria 2: Dependências de Tipos (UsesType, Inherits, etc)
 				else if (link.Type == LinkType.UsesType || link.Type == LinkType.Inherits || link.Type == LinkType.Implements)
 				{
-					var child = CreateItemFromNode(targetNode, FileSystemItemType.Dependency, "\uE972");
+					var child = CreateItemFromNode(targetNode, FileSystemItemType.Dependency, "\uE972", graph);
 					child.IsChecked = true;
 					dependencyItems.Add(child);
 				}
 			}
 		}
 
-		// Atualiza a UI na Thread Principal
 		Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
 		{
-			// Adiciona grupo "Chamadas & Acessos" se houver itens
 			if (flowItems.Count > 0)
 			{
 				var flowGroup = _itemFactory.CreateWrapper($"{item.FullPath}::flow", FileSystemItemType.LogicalGroup, "\uE80D");
 				flowGroup.SharedState.Name = "Chamadas & Acessos";
-
-				foreach (var child in flowItems)
-					flowGroup.Children.Add(child);
-
+				foreach (var child in flowItems) flowGroup.Children.Add(child);
 				item.Children.Add(flowGroup);
 			}
 
-			// Adiciona grupo "Tipos Usados" se houver itens
 			if (dependencyItems.Count > 0)
 			{
 				var depsGroup = _itemFactory.CreateWrapper($"{item.FullPath}::deps", FileSystemItemType.LogicalGroup, "\uE71D");
 				depsGroup.SharedState.Name = "Tipos Usados";
-
-				foreach (var child in dependencyItems)
-					depsGroup.Children.Add(child);
-
+				foreach (var child in dependencyItems) depsGroup.Children.Add(child);
 				item.Children.Add(depsGroup);
 			}
 
-			// Expande o item pai para mostrar os resultados
-			if (item.Children.Any())
-				item.IsExpanded = true;
+			if (item.Children.Any()) item.IsExpanded = true;
 		});
 	}
+
 	/// <summary>
-	/// Constrói o texto final para o LLM.
-	/// Operação: Lê arquivos do disco (IO) mas usa coordenadas do Grafo para cortar o texto (Slicing) em vez de Parsing.
+	/// Constrói o texto final para o LLM usando Slicing baseado em Grafo.
 	/// </summary>
 	public async Task<string> BuildContextStringAsync(IEnumerable<FileSystemItem> selectedItems, IProjectSessionManager sessionSettings)
 	{
 		var graph = _indexService.GetCurrentGraph();
 		var sb = new StringBuilder();
 
-		// 1. Adiciona Pre-Prompt
 		if (!string.IsNullOrWhiteSpace(sessionSettings.PrePrompt))
 		{
 			sb.AppendLine(sessionSettings.PrePrompt);
-			sb.AppendLine();
-			sb.AppendLine("--- CONTEXTO DO CÓDIGO ---");
-			sb.AppendLine();
+			sb.AppendLine("\n--- CONTEXTO DO CÓDIGO ---\n");
 		}
 
-		// 2. Agrupa itens por arquivo físico para minimizar IO
 		var itemsByFile = selectedItems
 			.GroupBy(i => GetPhysicalPath(i.FullPath))
 			.Where(g => !string.IsNullOrEmpty(g.Key) && File.Exists(g.Key));
@@ -352,16 +307,16 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 		foreach (var group in itemsByFile)
 		{
 			string filePath = group.Key;
-			string fileContent = await _fileSystemService.ReadFileContentAsync(filePath); // Lê arquivo inteiro uma vez
+			// IO: Lê o arquivo físico uma única vez
+			string fileContent = await _fileSystemService.ReadFileContentAsync(filePath);
 
 			sb.AppendLine($"// ARQUIVO: {Path.GetFileName(filePath)}");
 
-			// Verifica se selecionou o arquivo inteiro ou partes dele
 			bool isFullFileSelected = group.Any(i => i.Type == FileSystemItemType.File && i.IsChecked);
 
 			if (isFullFileSelected)
 			{
-				// Estratégia A: Arquivo Completo (aplica limpezas regex básicas se configurado)
+				// Estratégia A: Arquivo Completo
 				string processedContent = CodeCleanupHelper.ProcessCode(
 					fileContent,
 					Path.GetExtension(filePath),
@@ -374,20 +329,22 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 			else
 			{
-				// Estratégia B: Extração Cirúrgica baseada no Grafo
-				var explicitNodeIds = group
-					.Where(i => !string.IsNullOrEmpty(i.MethodSignature))
-					.Select(i => i.MethodSignature)
-					.ToHashSet();
+				// Estratégia B: Extração Parcial (Slicing)
+				// CORREÇÃO: Recuperar IDs inteiros da MethodSignature
+				var explicitNodeIds = new HashSet<int>();
+				foreach (var i in group)
+				{
+					if (!string.IsNullOrEmpty(i.MethodSignature) && int.TryParse(i.MethodSignature, out int id))
+					{
+						explicitNodeIds.Add(id);
+					}
+				}
 
 				if (explicitNodeIds.Count == 0) continue;
 
-				// Expandir para dependências se necessário (opcional: aqui estamos exportando apenas o que foi marcado visualmente)
-				// Se quiser exportar a árvore recursiva automaticamente, chame _trackerService.GetDeepDependencies aqui.
-
 				sb.AppendLine("// (Conteúdo Parcial - Apenas métodos relevantes)");
 
-				// Ordenar por posição no arquivo para o texto sair na ordem correta
+				// Busca nós no grafo e ordena por posição
 				var nodesToExport = explicitNodeIds
 					.Select(id => graph.Nodes.TryGetValue(id, out var n) ? n : null)
 					.Where(n => n != null)
@@ -398,12 +355,11 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				{
 					if (node == null) continue;
 
-					// Extração ultra-rápida via Substring usando coordenadas do grafo
-					if (node.StartPosition + node.Length <= fileContent.Length)
+					// Verifica limites para evitar crash de substring
+					if (node.StartPosition >= 0 && node.StartPosition + node.Length <= fileContent.Length)
 					{
 						string extract = fileContent.Substring(node.StartPosition, node.Length);
 
-						// Opcional: Aplicar limpeza básica no trecho extraído
 						if (sessionSettings.OmitComments)
 							extract = CodeCleanupHelper.RemoveComments(extract);
 
@@ -412,9 +368,7 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 					}
 				}
 			}
-			sb.AppendLine();
-			sb.AppendLine(new string('-', 40));
-			sb.AppendLine();
+			sb.AppendLine($"\n{new string('-', 40)}\n");
 		}
 
 		return sb.ToString();
@@ -422,20 +376,26 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 
 	// --- Helpers Privados ---
 
-	private FileSystemItem CreateItemFromNode(SymbolNode node, FileSystemItemType type, string icon)
+	private FileSystemItem CreateItemFromNode(SymbolNode node, FileSystemItemType type, string icon, DependencyGraph graph)
 	{
-		// O ID único do grafo vai no MethodSignature para rastreio futuro
-		var item = _itemFactory.CreateWrapper($"{node.FilePath}::{node.Id}", type, icon);
-		item.SharedState.Name = node.Name; // Nome amigável (ex: "CalcularImposto")
-		item.MethodSignature = node.Id;    // ID Real (ex: "Namespace.Class.CalcularImposto(decimal)")
+		// CORREÇÃO CRÍTICA: Resolver caminho textual a partir do FileId do nó
+		string filePath = graph.GetFilePath(node.FileId);
+
+		// Cria chave composta visual: "c:\path\file.cs::12345"
+		var item = _itemFactory.CreateWrapper($"{filePath}::{node.Id}", type, icon);
+
+		item.SharedState.Name = node.Name;
+		item.MethodSignature = node.Id.ToString(); // Converte int para string para persistir na UI
+
 		return item;
 	}
 
 	private string GetPhysicalPath(string fullPath)
 	{
 		if (string.IsNullOrEmpty(fullPath)) return string.Empty;
+
+		// Remove sufixos como "::methods", "::flow" ou "::12345"
 		int separatorIndex = fullPath.IndexOf("::");
 		return separatorIndex > 0 ? fullPath.Substring(0, separatorIndex) : fullPath;
 	}
-
 }

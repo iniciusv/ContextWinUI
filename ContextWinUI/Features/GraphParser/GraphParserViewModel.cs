@@ -150,10 +150,10 @@ public partial class GraphParserViewModel : ObservableObject
 			var queryLower = query.ToLowerInvariant();
 			var suggestions = new List<SearchSuggestion>();
 
-			// Agrupa nós por arquivo
-			var nodesByFile = graph.Nodes
-				.Where(node => !string.IsNullOrEmpty(node.Value.FilePath) && File.Exists(node.Value.FilePath))
-				.GroupBy(node => node.Value.FilePath);
+			// Agrupa nós por arquivo (usando a resolução de ID para String)
+			var nodesByFile = graph.Nodes.Values // Agora iteramos diretamente sobre SymbolNode
+				.GroupBy(node => graph.GetFilePath(node.FileId))
+				.Where(group => !string.IsNullOrEmpty(group.Key) && File.Exists(group.Key));
 
 			System.Diagnostics.Debug.WriteLine($"Arquivos únicos no grafo: {nodesByFile.Count()}");
 
@@ -163,47 +163,39 @@ public partial class GraphParserViewModel : ObservableObject
 				{
 					if (string.IsNullOrEmpty(fileGroup.Key))
 					{
-						System.Diagnostics.Debug.WriteLine("Arquivo com caminho vazio ignorado.");
 						continue;
 					}
 
 					var fileName = Path.GetFileName(fileGroup.Key);
+					string filePath = fileGroup.Key;
 
-					// Debug: Log do arquivo sendo processado
-					System.Diagnostics.Debug.WriteLine($"Processando arquivo: {fileName}");
-
+					// Filtra os nós dentro deste grupo
 					var matchingNodes = fileGroup
 						.Where(node =>
-							node.Value.Name.ToLowerInvariant().Contains(queryLower) ||
-							node.Value.Type.ToString().ToLowerInvariant().Contains(queryLower) ||
+							node.Name.ToLowerInvariant().Contains(queryLower) ||
+							node.Type.ToString().ToLowerInvariant().Contains(queryLower) ||
 							fileName.ToLowerInvariant().Contains(queryLower))
 						.ToList();
 
 					if (matchingNodes.Any())
 					{
 						string relativePath;
-
 						try
 						{
-							// Calcula caminho relativo com validação
 							if (string.IsNullOrEmpty(_rootPath))
 							{
-								System.Diagnostics.Debug.WriteLine($"ERRO: _rootPath está vazio ao processar {fileName}");
 								continue;
 							}
-
-							relativePath = Path.GetRelativePath(_rootPath, fileGroup.Key);
-							System.Diagnostics.Debug.WriteLine($"Caminho relativo calculado: {relativePath}");
+							relativePath = Path.GetRelativePath(_rootPath, filePath);
 						}
-						catch (ArgumentException ex)
+						catch (ArgumentException)
 						{
-							System.Diagnostics.Debug.WriteLine($"Erro ao calcular caminho relativo para {fileGroup.Key}: {ex.Message}");
-							// Fallback: usar caminho completo se relativo falhar
-							relativePath = fileGroup.Key;
+							relativePath = filePath;
 						}
 
+						// CORREÇÃO AQUI: 'n' já é um SymbolNode, não precisa de .Value
 						var symbolsFound = string.Join(", ",
-							matchingNodes.Select(n => $"{n.Value.Type}: {n.Value.Name}").Take(3));
+							matchingNodes.Select(n => $"{n.Type}: {n.Name}").Take(3));
 
 						suggestions.Add(new SearchSuggestion
 						{
@@ -228,19 +220,14 @@ public partial class GraphParserViewModel : ObservableObject
 				.Take(15)
 				.ToList();
 
-			System.Diagnostics.Debug.WriteLine($"Sugestões encontradas: {suggestions.Count}");
-
-			// Atualiza a coleção
 			SearchSuggestions.Clear();
 			foreach (var suggestion in suggestions)
 			{
 				SearchSuggestions.Add(suggestion);
 			}
 
-			// Se não encontrou nada no grafo, faz busca no diretório
 			if (!SearchSuggestions.Any())
 			{
-				System.Diagnostics.Debug.WriteLine("Nenhuma sugestão encontrada no grafo. Tentando busca por diretório...");
 				SearchInDirectoryAsSuggestions(query);
 			}
 		}
