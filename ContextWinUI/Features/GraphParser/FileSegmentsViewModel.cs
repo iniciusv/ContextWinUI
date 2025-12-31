@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
@@ -119,8 +120,66 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 	private void InitializeGlobalHistory()
 	{
-		// Se precisar de alguma inicialização local, faz aqui.
-		// Mas o histórico principal vem do GlobalHistory
+	}
+
+	[RelayCommand]
+	public void DeleteBlock(CodeBlockItem? block)
+	{
+		if (block == null) return;
+
+		// Lógica simples de remoção
+		if (Blocks.Contains(block))
+		{
+			// Se o bloco deletado for o selecionado, tente selecionar o próximo ou anterior
+			if (SelectedBlock == block)
+			{
+				var index = Blocks.IndexOf(block);
+				if (index > 0) SelectedBlock = Blocks[index - 1];
+				else if (Blocks.Count > 1) SelectedBlock = Blocks[index + 1];
+				else SelectedBlock = null;
+			}
+
+			Blocks.Remove(block);
+			NotifyUnsavedChanges(); // Importante para sinalizar que a estrutura do arquivo mudou
+		}
+	}
+
+	[RelayCommand]
+	public void AddSiblingBlock(CodeBlockItem referenceBlock)
+	{
+		if (referenceBlock == null) return;
+
+		int index = Blocks.IndexOf(referenceBlock);
+		if (index == -1) return;
+
+		// 1. Determinar o tipo e conteúdo padrão base
+		// Como assumimos que estará na mesma classe/pai, usamos a indentação do irmão
+		string indentation = new string('\t', referenceBlock.DepthLevel); // Ou espaços, dependendo do seu padrão
+
+		// Cria um template básico
+		string defaultContent = $"\n{indentation}// Novo Segmento\n{indentation}public void NovaFuncionalidade()\n{indentation}{{\n{indentation}\t\n{indentation}}}";
+
+		// 2. Criar o novo item
+		var newBlock = new CodeBlockItem
+		{
+			Id = Guid.NewGuid().ToString(),
+			Name = "NovaFuncionalidade",
+			SegmentType = SegmentType.Method, // Assumindo método por padrão
+			SymbolType = SymbolType.Method,
+			DepthLevel = referenceBlock.DepthLevel,
+			FileExtension = referenceBlock.FileExtension,
+			TypeDescription = "NOVO MÉTODO"
+		};
+
+		// Inicializa o versionamento do novo bloco (Versão 0)
+		newBlock.InitializeVersions(defaultContent);
+
+		// 3. Inserir na coleção logo após o bloco clicado
+		Blocks.Insert(index + 1, newBlock);
+
+		// 4. Selecionar e focar
+		SelectedBlock = newBlock;
+		NotifyUnsavedChanges();
 	}
 
 	public void NotifyUnsavedChanges() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));

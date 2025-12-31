@@ -31,67 +31,78 @@
 					<ItemsControl.ItemTemplate>
 						<DataTemplate x:DataType="models:CodeBlockItem">
 							<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
-                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-                                  BorderThickness="0,0,0,1" 
-                                  Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                                  PointerPressed="OnBlockPointerPressed">
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+          BorderThickness="0,0,0,1" 
+          Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+          PointerPressed="OnBlockPointerPressed">
 
+								<Grid.ContextFlyout>
+									<MenuFlyout>
+										<MenuFlyoutItem Text="Inserir Novo Bloco Abaixo" 
+                                Icon="Add"
+                                Command="{Binding DataContext.AddSiblingBlockCommand, ElementName=MainScrollViewer}"
+                                CommandParameter="{x:Bind}"/>
+										<MenuFlyoutSeparator/>
+										<MenuFlyoutItem Text="Excluir Bloco" 
+                                Icon="Delete"
+                                Foreground="Red"
+                                Command="{Binding DataContext.DeleteBlockCommand, ElementName=MainScrollViewer}"
+                                CommandParameter="{x:Bind}"/>
+									</MenuFlyout>
+								</Grid.ContextFlyout>
 								<Grid.ColumnDefinitions>
 									<ColumnDefinition Width="85"/>
 									<ColumnDefinition Width="*"/>
 								</Grid.ColumnDefinitions>
 
 								<Rectangle x:Name="SelectionIndicator"
-                                           Fill="{ThemeResource SystemAccentColor}"
-                                           Width="3"
-                                           HorizontalAlignment="Left"
-                                           Visibility="Collapsed"/>
+                   Fill="{ThemeResource SystemAccentColor}"
+                   Width="3"
+                   HorizontalAlignment="Left"
+                   Visibility="Collapsed"/>
 
 								<Grid Grid.Column="0" 
-                                      Background="{ThemeResource LayerFillColorAltBrush}" 
-                                      Padding="8,0" 
-                                      BorderThickness="0,0,1,0" 
-                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                      ToolTipService.ToolTip="{x:Bind Name}">
+              Background="{ThemeResource LayerFillColorAltBrush}" 
+              Padding="8,0" 
+              BorderThickness="0,0,1,0" 
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              ToolTipService.ToolTip="{x:Bind Name}">
 
 									<Rectangle HorizontalAlignment="Left" 
-                                               Width="3" 
-                                               VerticalAlignment="Stretch" 
-                                               Fill="{x:Bind HeaderBrush}" 
-                                               Margin="-8,0,0,0"/>
+                       Width="3" 
+                       VerticalAlignment="Stretch" 
+                       Fill="{x:Bind HeaderBrush}" 
+                       Margin="-8,0,0,0"/>
 
 									<StackPanel Orientation="Horizontal" 
-                                                Spacing="6" 
-                                                VerticalAlignment="Center" 
-                                                Opacity="0.9">
-
+                        Spacing="6" 
+                        VerticalAlignment="Center" 
+                        Opacity="0.9">
 										<FontIcon x:Name="VersionIndicator"
-                                                 Glyph="&#xE81C;"
-                                                 FontSize="10"
-                                                 Foreground="{ThemeResource SystemAccentColor}"
-                                                 Visibility="{x:Bind HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}"/>
-
+                          Glyph="&#xE81C;"
+                          FontSize="10"
+                          Foreground="{ThemeResource SystemAccentColor}"
+                          Visibility="{x:Bind HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}"/>
 										<FontIcon Glyph="{x:Bind Icon}" 
-                                                 Foreground="{x:Bind HeaderBrush}" 
-                                                 FontSize="10"/>
-
+                          Foreground="{x:Bind HeaderBrush}" 
+                          FontSize="10"/>
 										<TextBlock Text="{x:Bind TypeDescription}" 
-                                                   FontSize="9" 
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
-                                                   TextTrimming="CharacterEllipsis"/>
+                           FontSize="9" 
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                           TextTrimming="CharacterEllipsis"/>
 									</StackPanel>
 								</Grid>
 
 								<localComp:SegmentCodeViewer Grid.Column="1"
-                                                     Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                                     FileExtension="{x:Bind FileExtension, Mode=OneWay}"
-                                                     VerticalAlignment="Stretch"
-                                                     HorizontalAlignment="Stretch"
-                                                     Margin="0"
-                                                     SaveRequested="OnSegmentSaveRequested"
-                                                     ContentModified="OnSegmentContentModified"
-                                                     GotFocus="OnSegmentGotFocus"/>
+                                     Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                     FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                                     VerticalAlignment="Stretch"
+                                     HorizontalAlignment="Stretch"
+                                     Margin="0"
+                                     SaveRequested="OnSegmentSaveRequested"
+                                     ContentModified="OnSegmentContentModified"
+                                     GotFocus="OnSegmentGotFocus"/>
 							</Grid>
 						</DataTemplate>
 					</ItemsControl.ItemTemplate>
