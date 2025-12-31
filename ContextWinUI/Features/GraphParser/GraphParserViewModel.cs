@@ -19,6 +19,7 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly SemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
 	private string _rootPath;
+	private readonly ICodeBlockParserService _parserService;
 
 	[ObservableProperty]
 	private ObservableCollection<FileSegmentsViewModel> tabs = new();
@@ -36,6 +37,24 @@ public partial class GraphParserViewModel : ObservableObject
 
 	partial void OnSelectedTabChanged(FileSegmentsViewModel? value) => OnPropertyChanged(nameof(HasTabs));
 
+	public GraphParserViewModel(SemanticIndexService indexService, IFileSystemService fileSystemService, IProjectSessionManager sessionManager, ICodeBlockParserService parserService)
+	{
+		_indexService = indexService;
+		_fileSystemService = fileSystemService;
+		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
+		_parserService = parserService;
+
+		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
+
+		// Verifique se temos um projeto carregado
+		if (string.IsNullOrEmpty(_rootPath))
+		{
+			System.Diagnostics.Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
+		}
+
+		// Subscreva ao evento de projeto carregado
+		sessionManager.ProjectLoaded += OnProjectLoaded;
+	}
 
 	[RelayCommand]
 	public void CommitAllPendingChanges()
@@ -79,23 +98,6 @@ public partial class GraphParserViewModel : ObservableObject
 
 	public bool HasAnyUnsavedChanges => Tabs.Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
-	public GraphParserViewModel(SemanticIndexService indexService,IFileSystemService fileSystemService,IProjectSessionManager sessionManager)
-	{
-		_indexService = indexService;
-		_fileSystemService = fileSystemService;
-		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
-
-		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
-
-		// Verifique se temos um projeto carregado
-		if (string.IsNullOrEmpty(_rootPath))
-		{
-			System.Diagnostics.Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
-		}
-
-		// Subscreva ao evento de projeto carregado
-		sessionManager.ProjectLoaded += OnProjectLoaded;
-	}
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
@@ -324,8 +326,8 @@ public partial class GraphParserViewModel : ObservableObject
 			SelectedTab = existingTab;
 			return;
 		}
+		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService, _indexService, _parserService);
 
-		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService, _indexService);
 
 		// --- CONECTANDO OS EVENTOS ---
 		// Isso garante que o clique na View dispare a lógica global no Pai
