@@ -16,7 +16,6 @@ namespace ContextWinUI.Features.GraphParser.Views
 	{
 		private CodeBlockItem? _lastSelectedBlock;
 
-		// Adicione esta propriedade para acessar o ViewModel
 		public FileSegmentsViewModel ViewModel => (FileSegmentsViewModel)DataContext;
 
 		public FileSegmentsView()
@@ -26,27 +25,35 @@ namespace ContextWinUI.Features.GraphParser.Views
 			this.Loaded += OnLoaded;
 		}
 
-		private void OnLoaded(object sender, RoutedEventArgs e)
-		{
-			// Força a atualização da UI quando carregado
-			UpdateSelectionIndicator();
-		}
+		private void OnLoaded(object sender, RoutedEventArgs e) => UpdateSelectionIndicator();
+
+		private void OnSegmentContentModified(object sender, EventArgs e) => EnsureBlockSelection(sender);
+
+		private void OnSegmentGotFocus(object sender, RoutedEventArgs e) => EnsureBlockSelection(sender);
 
 		private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
 		{
 			if (sender is FrameworkElement element && element.DataContext is CodeBlockItem block)
 			{
-				// Atualiza a seleção no ViewModel
 				ViewModel.SelectedBlock = block;
-
-				// Atualiza indicador visual
 				UpdateSelectionIndicator();
+			}
+		}
+
+		private void EnsureBlockSelection(object sender)
+		{
+			if (sender is FrameworkElement element && element.DataContext is CodeBlockItem block)
+			{
+				if (ViewModel.SelectedBlock != block)
+				{
+					ViewModel.SelectedBlock = block;
+					UpdateSelectionIndicator();
+				}
 			}
 		}
 
 		private void UpdateSelectionIndicator()
 		{
-			// Remove seleção anterior
 			if (_lastSelectedBlock != null)
 			{
 				var container = FindContainerForBlock(_lastSelectedBlock);
@@ -58,7 +65,6 @@ namespace ContextWinUI.Features.GraphParser.Views
 				}
 			}
 
-			// Adiciona seleção atual
 			if (ViewModel.SelectedBlock != null)
 			{
 				var container = FindContainerForBlock(ViewModel.SelectedBlock);
@@ -75,7 +81,6 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
 		{
-			// Procura recursivamente pelo container que tem o bloco
 			return FindContainerRecursive(MainScrollViewer.Content as FrameworkElement, block);
 		}
 
@@ -103,29 +108,27 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private void OnVersionRestoreRequested(object sender, int versionIndex)
 		{
-			if (ViewModel.SelectedBlock != null)
-			{
-				ViewModel.SelectedBlock.RestoreVersion(versionIndex);
-			}
+	
+			ViewModel.TriggerGlobalRestore(versionIndex);
 		}
 
+		// ALTERADO: Ao pedir salvar, pede Globalmente
 		private void OnSaveVersionRequested(object sender, EventArgs e)
 		{
-			if (ViewModel.SelectedBlock != null && ViewModel.SelectedBlock.HasUnsavedChanges)
-			{
-				ViewModel.SelectedBlock.CreateNewVersion(
-					ViewModel.SelectedBlock.Content,
-					$"Versão salva {DateTime.Now:HH:mm:ss}"
-				);
-			}
+			// Em vez de salvar só este bloco, disparar o Save All
+			ViewModel.TriggerGlobalSave();
+
+			// Nota: O método CommitAllPendingChanges do pai vai cuidar de criar 
+			// a versão nova neste bloco e em todos os outros modificados.
 		}
 
+		// MANTIDO: O RestoreOriginal pode continuar sendo local ou global, 
+		// mas geralmente "Original" é específico do arquivo. 
+		// Se quiser global, crie um TriggerGlobalRestoreOriginal. 
+		// Por enquanto, vou manter local para segurança, ou mude para TriggerGlobalRestore(0).
 		private void OnRestoreOriginalRequested(object sender, EventArgs e)
 		{
-			if (ViewModel.SelectedBlock != null)
-			{
-				ViewModel.SelectedBlock.RestoreOriginal();
-			}
+			ViewModel.TriggerGlobalRestore(0); // Assume que 0 é sempre o original globalmente
 		}
 
 		private void OnSegmentSaveRequested(object sender, EventArgs e)

@@ -1,4 +1,5 @@
-// ARQUIVO: VersionFooter.xaml.cs (CORRIGIDO)
+using CommunityToolkit.Mvvm.ComponentModel;
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -9,9 +10,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Windows.UI;
-using Windows.UI.Xaml;
-
 
 namespace ContextWinUI.Features.GraphParser.Views.Components
 {
@@ -39,24 +37,21 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 					{
 						_currentBlock.PropertyChanged -= OnBlockPropertyChanged;
 					}
-
 					_currentBlock = value;
-
 					if (_currentBlock != null)
 					{
 						_currentBlock.PropertyChanged += OnBlockPropertyChanged;
 					}
 
-					UpdateUI();
+					// Agenda a atualização para evitar travamento da UI
+					this.DispatcherQueue.TryEnqueue(() => UpdateUI());
 					OnPropertyChanged();
 				}
 			}
 		}
 
-		// Propriedade para binding do ComboBox - agora x:Bind pode acessar
 		public ObservableCollection<CodeBlockVersion> Versions { get; } = new ObservableCollection<CodeBlockVersion>();
 
-		// Propriedade para binding do SelectedIndex
 		public int SelectedVersionIndex
 		{
 			get => _currentBlock?.CurrentVersionIndex ?? 0;
@@ -73,15 +68,9 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		{
 			get
 			{
-				if (_currentBlock == null)
-					return "Nenhum bloco selecionado";
-
-				if (_currentBlock.IsCurrentVersionOriginal)
-					return "Versão original";
-
-				return _currentBlock.HasUnsavedChanges
-					? "Modificações não salvas"
-					: "Versão salva";
+				if (_currentBlock == null) return "Nenhum bloco selecionado";
+				if (_currentBlock.IsCurrentVersionOriginal) return "Versão original";
+				return _currentBlock.HasUnsavedChanges ? "Modificações não salvas" : "Versão salva";
 			}
 		}
 
@@ -89,15 +78,9 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		{
 			get
 			{
-				if (_currentBlock == null)
-					return new SolidColorBrush(Colors.Gray);
-
-				if (_currentBlock.IsCurrentVersionOriginal)
-					return new SolidColorBrush(Colors.Green);
-
-				return _currentBlock.HasUnsavedChanges
-					? new SolidColorBrush(Colors.Orange)
-					: new SolidColorBrush(Colors.Blue);
+				if (_currentBlock == null) return new SolidColorBrush(Colors.Gray);
+				if (_currentBlock.IsCurrentVersionOriginal) return new SolidColorBrush(Colors.Green);
+				return _currentBlock.HasUnsavedChanges ? new SolidColorBrush(Colors.Orange) : new SolidColorBrush(Colors.Blue);
 			}
 		}
 
@@ -105,9 +88,7 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		{
 			get
 			{
-				if (_currentBlock == null || !_currentBlock.Versions.Any())
-					return "0/0";
-
+				if (_currentBlock == null || !_currentBlock.Versions.Any()) return "0/0";
 				return $"{_currentBlock.CurrentVersionIndex + 1}/{_currentBlock.Versions.Count}";
 			}
 		}
@@ -136,22 +117,34 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 				e.PropertyName == nameof(CodeBlockItem.Versions) ||
 				e.PropertyName == nameof(CodeBlockItem.HasUnsavedChanges))
 			{
-				UpdateUI();
+				this.DispatcherQueue.TryEnqueue(() =>
+				{
+					UpdateUI();
+				});
 			}
 		}
 
 		private void UpdateUI()
 		{
-			Versions.Clear();
-
-			if (_currentBlock != null)
+			if (_currentBlock == null)
 			{
-				foreach (var version in _currentBlock.Versions)
+				Versions.Clear();
+			}
+			else
+			{
+
+				if (Versions.Count != _currentBlock.Versions.Count)
 				{
-					Versions.Add(version);
+					Versions.Clear();
+					foreach (var version in _currentBlock.Versions)
+					{
+						Versions.Add(version);
+					}
 				}
 			}
 
+			// Notifica a View que as propriedades mudaram
+			OnPropertyChanged(nameof(SelectedVersionIndex));
 			OnPropertyChanged(nameof(VersionStatus));
 			OnPropertyChanged(nameof(VersionIconColor));
 			OnPropertyChanged(nameof(VersionCounterText));
@@ -159,7 +152,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			OnPropertyChanged(nameof(CanNavigatePrevious));
 			OnPropertyChanged(nameof(CanNavigateNext));
 			OnPropertyChanged(nameof(CanSaveVersion));
-			OnPropertyChanged(nameof(SelectedVersionIndex));
 		}
 
 		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e)
@@ -187,7 +179,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		{
 			if (e.AddedItems.Count > 0 && e.AddedItems[0] is CodeBlockVersion version)
 			{
-				// Encontra o índice da versão selecionada
 				if (_currentBlock != null && _currentBlock.Versions.Contains(version))
 				{
 					int index = _currentBlock.Versions.IndexOf(version);
@@ -205,7 +196,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		}
 
 		public event PropertyChangedEventHandler? PropertyChanged;
-
 		private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
 		{
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

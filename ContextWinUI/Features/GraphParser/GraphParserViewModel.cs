@@ -38,16 +38,20 @@ public partial class GraphParserViewModel : ObservableObject
 
 
 	[RelayCommand]
-	private void CommitAllPendingChanges()
+	public void CommitAllPendingChanges()
 	{
 		bool anyChange = false;
+		// Gera um timestamp único para identificar esse "Lote" de salvamento
+		string batchTimestamp = DateTime.Now.ToString("HH:mm:ss");
+
 		foreach (var tab in Tabs)
 		{
 			foreach (var block in tab.Blocks)
 			{
 				if (block.HasUnsavedChanges)
 				{
-					block.CreateNewVersion(block.Content, $"Salvo em lote ({DateTime.Now:HH:mm})");
+					// Usa o mesmo texto de versão para todos, facilitando identificar o grupo
+					block.CreateNewVersion(block.Content, $"Lote {batchTimestamp}");
 					anyChange = true;
 				}
 			}
@@ -55,11 +59,27 @@ public partial class GraphParserViewModel : ObservableObject
 
 		if (anyChange)
 		{
-			System.Diagnostics.Debug.WriteLine("Todas as alterações pendentes foram versionadas.");
+			System.Diagnostics.Debug.WriteLine("Commit Global realizado.");
 		}
 	}
 
-	// Opcional: Uma propriedade para saber se existe ALGUMA coisa para salvar em qualquer lugar
+	// NOVO: Lógica para sincronizar todos os blocos para um índice específico
+	public void RestoreAllToVersion(int versionIndex)
+	{
+		foreach (var tab in Tabs)
+		{
+			foreach (var block in tab.Blocks)
+			{
+				// Tenta restaurar apenas se o bloco tiver essa versão
+				// Isso evita erros se um bloco tiver 5 versões e outro só 2
+				if (block.Versions.Count > versionIndex)
+				{
+					block.RestoreVersion(versionIndex);
+				}
+			}
+		}
+	}
+
 	public bool HasAnyUnsavedChanges => Tabs.Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
 	public GraphParserViewModel(SemanticIndexService indexService,IFileSystemService fileSystemService,IProjectSessionManager sessionManager)
@@ -307,27 +327,14 @@ public partial class GraphParserViewModel : ObservableObject
 	private void OpenFile(object parameter)
 	{
 		string? path = null;
+		if (parameter is SearchSuggestion suggestion) path = suggestion.FilePath;
+		else if (parameter is string filePathString) path = filePathString;
+		else if (parameter is null) return;
 
-		// O parâmetro pode ser tanto uma string quanto um SearchSuggestion
-		if (parameter is SearchSuggestion suggestion)
-		{
-			path = suggestion.FilePath;
-		}
-		else if (parameter is string filePathString)
-		{
-			path = filePathString;
-		}
-		else if (parameter is null)
-		{
-			return;
-		}
-
-		if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_rootPath))
-			return;
-
+		if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_rootPath)) return;
 		string fullPath = Path.Combine(_rootPath, path);
-		var existingTab = Tabs.FirstOrDefault(t => t.FilePath == fullPath);
 
+		var existingTab = Tabs.FirstOrDefault(t => t.FilePath == fullPath);
 		if (existingTab != null)
 		{
 			SelectedTab = existingTab;
@@ -335,6 +342,13 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 
 		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService);
+
+		// --- CONECTANDO OS EVENTOS ---
+		// Isso garante que o clique na View dispare a lógica global no Pai
+		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
+		newTab.GlobalRestoreRequested += (s, index) => RestoreAllToVersion(index);
+		// -----------------------------
+
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}

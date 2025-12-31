@@ -84,12 +84,14 @@
 								</Grid>
 
 								<localComp:SegmentCodeViewer Grid.Column="1"
-                                                            Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                                            FileExtension="{x:Bind FileExtension, Mode=OneWay}"
-                                                            VerticalAlignment="Stretch"
-                                                            HorizontalAlignment="Stretch"
-                                                            Margin="0"
-                                                            SaveRequested="OnSegmentSaveRequested"/>
+                                                     Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                     FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                                                     VerticalAlignment="Stretch"
+                                                     HorizontalAlignment="Stretch"
+                                                     Margin="0"
+                                                     SaveRequested="OnSegmentSaveRequested"
+                                                     ContentModified="OnSegmentContentModified"
+                                                     GotFocus="OnSegmentGotFocus"/>
 							</Grid>
 						</DataTemplate>
 					</ItemsControl.ItemTemplate>

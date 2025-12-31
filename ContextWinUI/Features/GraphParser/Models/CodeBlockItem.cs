@@ -92,21 +92,33 @@ public partial class CodeBlockItem : ObservableObject
 
 	private string _originalContent = string.Empty;
 
+
 	public void InitializeVersions(string initialContent)
 	{
 		_originalContent = initialContent;
+
+		// 1. Limpa qualquer lixo anterior
 		Versions.Clear();
 
+		// 2. Cria a Versão 0 (Original/Baseline)
 		Versions.Add(new CodeBlockVersion
 		{
+			Id = Guid.NewGuid().ToString(),
 			Content = initialContent,
-			Description = "Versão Original",
-			Timestamp = DateTime.Now,
-			IsOriginal = true
+			Description = "Versão Original", // Texto padrão para identificar o inicio
+			Timestamp = DateTime.MinValue,
+			IsOriginal = true // <--- ISSO É CRUCIAL
 		});
 
+		// 3. Define o ponteiro para a versão 0
 		CurrentVersionIndex = 0;
+
+		// 4. Garante que o sistema saiba que não há pendências
 		HasUnsavedChanges = false;
+
+		// Notifica a UI para atualizar ícones (deve ficar verde/original)
+		OnPropertyChanged(nameof(CurrentVersionDescription));
+		OnPropertyChanged(nameof(IsCurrentVersionOriginal));
 	}
 
 	public void CreateNewVersion(string newContent, string description = "Modificado")
@@ -151,13 +163,20 @@ public partial class CodeBlockItem : ObservableObject
 		// Verifica se temos versões para comparar
 		if (Versions != null && Versions.Any() && CurrentVersionIndex >= 0 && CurrentVersionIndex < Versions.Count)
 		{
-			// Pega o conteúdo da versão salva atual
 			var savedContent = Versions[CurrentVersionIndex].Content;
 
-			// Compara o conteúdo atual (value) com o salvo.
-			// Se forem diferentes, HasUnsavedChanges vira true, habilitando o botão.
-			HasUnsavedChanges = value != savedContent;
+			string currentNormalized = NormalizeLineEndings(value ?? string.Empty);
+			string savedNormalized = NormalizeLineEndings(savedContent ?? string.Empty);
+
+			HasUnsavedChanges = !string.Equals(currentNormalized, savedNormalized, StringComparison.Ordinal);
+
+			OnPropertyChanged(nameof(HasUnsavedChanges));
 		}
+	}
+
+	private string NormalizeLineEndings(string input)
+	{
+		return input.Replace("\r\n", "\n").Replace("\r", "\n");
 	}
 
 	public bool RestoreOriginal()

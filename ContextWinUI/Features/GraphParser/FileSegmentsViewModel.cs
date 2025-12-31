@@ -30,20 +30,26 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private bool isEmpty;
 
+	public event EventHandler? GlobalSaveRequested;
+	public event EventHandler<int>? GlobalRestoreRequested;
+
 	public FileSegmentsViewModel(string filePath, IFileSystemService fileSystemService)
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
 		_fileSystemService = fileSystemService;
-
-		// Inicia o carregamento automaticamente
 		_ = LoadBlocksAsync();
 	}
+
+	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
+
+	public void TriggerGlobalRestore(int versionIndex) => GlobalRestoreRequested?.Invoke(this, versionIndex);
 
 	private async Task LoadBlocksAsync()
 	{
 		IsLoading = true;
 		Blocks.Clear();
+		SelectedBlock = null;
 
 		try
 		{
@@ -66,6 +72,11 @@ public partial class FileSegmentsViewModel : ObservableObject
 			{
 				seg.FileExtension = Path.GetExtension(FilePath);
 				Blocks.Add(seg);
+			}
+
+			if (Blocks.Any())
+			{
+				SelectedBlock = Blocks.First();
 			}
 		}
 		catch (Exception ex)
@@ -138,30 +149,34 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 	}
 
+	// Em FileSegmentsViewModel.cs
+
 	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap)
 	{
+		// Lógica existente de identificação de tipo...
 		var type = IdentifySegmentType(node, isGap, content);
 
 		string name = isGap
 			? (content.Trim() == "}" ? "Fechamento" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
 			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
 
+		// Criação do objeto
 		var item = new CodeBlockItem
 		{
 			Name = name,
-			Content = content,
+			Content = content, // Conteúdo cru lido do arquivo
 			DepthLevel = depth,
 			SegmentType = type,
 			TypeDescription = type.ToString().ToUpperInvariant(),
-			StartLine = content.Count(c => c == '\n') + 1
+			StartLine = content.Count(c => c == '\n') + 1,
+			// Inicializa propriedades visuais padrão
+			FileExtension = Path.GetExtension(FilePath)
 		};
 
-		// -----------------------------------------------------------------------
-		// REQUISITO 1: SALVAR VERSÃO ORIGINAL NO CARREGAMENTO
-		// Aqui garantimos que assim que o bloco nasce, ele tem a versão "Original"
-		// salva na memória.
-		// -----------------------------------------------------------------------
+		// --- GARANTIA DA VERSÃO ORIGINAL ---
+		// Assim que o bloco nasce, "carimbamos" o conteúdo atual como a Versão Original.
 		item.InitializeVersions(content);
+		// -----------------------------------
 
 		return item;
 	}

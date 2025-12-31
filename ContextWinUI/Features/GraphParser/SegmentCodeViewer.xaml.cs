@@ -84,10 +84,25 @@ public sealed partial class SegmentCodeViewer : UserControl
 	{
 		var control = (SegmentCodeViewer)d;
 		if (control._isInternalUpdate) return;
+
 		var newText = e.NewValue as string ?? string.Empty;
+
 		control.CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentEditorText);
-		string currentEditorTextNormalized = currentEditorText.Replace("\r", "\r\n");
-		if (currentEditorTextNormalized != newText)
+
+		// Normalização para comparação: O RichEditBox sempre adiciona um \r no final.
+		// Precisamos ignorar esse \r extra na comparação para não travar o loop.
+		string currentEditorTextNormalized = currentEditorText;
+		if (currentEditorTextNormalized.EndsWith("\r"))
+		{
+			currentEditorTextNormalized = currentEditorTextNormalized.Substring(0, currentEditorTextNormalized.Length - 1);
+		}
+
+		// CORREÇÃO: Normaliza quebras de linha para comparar maçãs com maçãs
+		var newTextNorm = newText.Replace("\r\n", "\n").Replace("\r", "\n");
+		var currentEditorNorm = currentEditorTextNormalized.Replace("\r\n", "\n").Replace("\r", "\n");
+
+		// Só atualiza o editor se o texto for REALMENTE diferente semânticamente
+		if (newTextNorm != currentEditorNorm)
 		{
 			control._isInternalUpdate = true;
 			control.CodeEditor.Document.SetText(Microsoft.UI.Text.TextSetOptions.None, newText);
@@ -95,18 +110,34 @@ public sealed partial class SegmentCodeViewer : UserControl
 			control.RequestEditorHighlighting();
 		}
 	}
+
+	// 2. Modifique o evento do Editor
 	private void CodeEditor_TextChanged(object sender, RoutedEventArgs e)
 	{
 		if (_isInternalUpdate) return;
+
 		try
 		{
 			CodeEditor.Document.GetText(Microsoft.UI.Text.TextGetOptions.None, out string currentText);
-			string normalizedText = currentText.Replace("\r", "\r\n");
-			_isInternalUpdate = true;
-			Text = normalizedText;
-			_isInternalUpdate = false;
-			RequestEditorHighlighting();
-			ContentModified?.Invoke(this, EventArgs.Empty);
+
+			// O RichEditBox do WinUI retorna um \r no final do texto. Removemos para não sujar o Model.
+			if (currentText.EndsWith("\r"))
+			{
+				currentText = currentText.Substring(0, currentText.Length - 1);
+			}
+
+			// Verifica se realmente mudou em relação à propriedade Text atual (Dependency Property)
+			// Isso evita que o evento dispare loops de atualização desnecessários
+			if (currentText != Text)
+			{
+				_isInternalUpdate = true;
+				Text = currentText; // Atualiza o ViewModel (TwoWay binding)
+				_isInternalUpdate = false;
+
+				// Dispara eventos apenas se necessário
+				RequestEditorHighlighting();
+				ContentModified?.Invoke(this, EventArgs.Empty);
+			}
 		}
 		catch (Exception ex)
 		{
