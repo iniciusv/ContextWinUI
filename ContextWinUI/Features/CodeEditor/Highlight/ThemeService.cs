@@ -1,5 +1,7 @@
 using ColorCode.Styling;
+using ContextWinUI.Core.Models;
 using ContextWinUI.Helpers;
+using Microsoft.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,10 +38,31 @@ public sealed class ThemeService : IThemeService
 	public string ScopeOperator => ThemeHelper.ScopeOperator;
 	public string ScopePreprocessor => ThemeHelper.ScopePreprocessor;
 
-	// Implementação dos métodos (delega para a classe estática)
 	public bool IsDarkTheme() => ThemeHelper.IsDarkTheme();
 
 	public StyleDictionary GetCurrentThemeStyle() => ThemeHelper.GetCurrentThemeStyle();
 
 	public Color GetColorFromHex(string hex) => ThemeHelper.GetColorFromHex(hex);
+
+	public Color GetColorForSymbol(SymbolType type, StyleDictionary currentStyles)
+	{
+		string scopeKey = type switch
+		{
+			SymbolType.Class => ThemeHelper.ScopeClass,
+			SymbolType.Interface => ThemeHelper.ScopeInterface,
+			SymbolType.Enum => ThemeHelper.ScopeEnum,
+			SymbolType.Struct => ThemeHelper.ScopeStruct,
+			SymbolType.Constructor => ThemeHelper.ScopeMethod,
+			SymbolType.Method => ThemeHelper.ScopeMethod,
+			_ => string.Empty
+		};
+
+		if (!string.IsNullOrEmpty(scopeKey) && currentStyles.Contains(scopeKey))
+		{
+			var hex = currentStyles[scopeKey].Foreground;
+			return ThemeHelper.GetColorFromHex(hex);
+		}
+
+		return Colors.Transparent;
+	}
 }

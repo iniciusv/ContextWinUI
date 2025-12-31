@@ -34,6 +34,8 @@ public partial class CodeBlockItem : ObservableObject
 
 	public string FileExtension { get; set; } = ".cs";
 
+	public int AbsoluteStartPosition { get; set; }
+
 	// Propriedade para colorir o cabeçalho do bloco baseado no tipo
 	public SolidColorBrush HeaderBrush => SymbolType switch
 	{

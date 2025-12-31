@@ -341,7 +341,7 @@ public partial class GraphParserViewModel : ObservableObject
 			return;
 		}
 
-		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService);
+		var newTab = new FileSegmentsViewModel(fullPath, _fileSystemService, _indexService);
 
 		// --- CONECTANDO OS EVENTOS ---
 		// Isso garante que o clique na View dispare a lógica global no Pai

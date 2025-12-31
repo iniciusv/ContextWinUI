@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -19,6 +20,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	public string FilePath { get; }
 	public string FileName { get; }
 
+
 	[ObservableProperty]
 	private ObservableCollection<CodeBlockItem> blocks = new();
 
@@ -32,25 +34,31 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private bool isEmpty;
 
-	// --- CORREÇÃO DO ERRO CS0103: Declarando o Histórico Global ---
 	[ObservableProperty]
 	private ObservableCollection<GlobalVersion> globalHistory = new();
 
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
-	// -------------------------------------------------------------
+
+	[ObservableProperty]
+	private string currentSymbolInfo = string.Empty;
 
 	public bool HasSelectedBlock => SelectedBlock != null;
 	public bool HasAnyUnsavedChanges => Blocks.Any(b => b.HasUnsavedChanges);
 
 	public event EventHandler? GlobalSaveRequested;
 	public event EventHandler<int>? GlobalRestoreRequested;
+	private readonly SemanticIndexService _indexService;
 
-	public FileSegmentsViewModel(string filePath, IFileSystemService fileSystemService)
+	public FileSegmentsViewModel(
+			string filePath,
+			IFileSystemService fileSystemService,
+			SemanticIndexService indexService)
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
 		_fileSystemService = fileSystemService;
+		_indexService = indexService;
 		_ = LoadBlocksAsync();
 	}
 
@@ -158,65 +166,121 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
 	public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
+	public void NotifyChangesChanged() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+	// ARQUIVO: ContextWinUI/Features/GraphParser/ViewModels/FileSegmentsViewModel.cs
 
-
-	public void NotifyChangesChanged()
-	{
-		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
-	}
+	// =========================================================================================
+	// MÉTODO 1: FLATTEN NODE (Recursivo)
+	// Responsável por percorrer a árvore e calcular os offsets (posições) corretamente
+	// =========================================================================================
 	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
 	{
+		// 1. Identificar filhos que queremos destacar (Métodos, Props) ou entrar (Classes, Namespaces)
 		var childrenToProcess = node.ChildNodes()
 			.Where(n => IsInterestingNode(n) || IsContainerNode(n))
 			.OrderBy(n => n.SpanStart)
 			.ToList();
 
+		// 2. Inicializar o cursor
+		// Se for o nó raiz (arquivo inteiro), começa do 0.
+		// Se for um nó interno (ex: Classe), começa onde a classe começa.
 		int cursor = node.SpanStart;
 		if (node is CompilationUnitSyntax) cursor = 0;
 
 		foreach (var child in childrenToProcess)
 		{
+			// ---------------------------------------------------------
+			// A. GAP (Texto entre o cursor anterior e o filho atual)
+			// ---------------------------------------------------------
+			// Ex: Espaços, chaves de abertura '{', comentários soltos antes do método
 			if (child.SpanStart > cursor)
 			{
 				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
 				if (!string.IsNullOrEmpty(gapText))
-					resultList.Add(CreateSegment(node, gapText, depth, true));
+				{
+					// O Gap começa exatamente onde o cursor estava
+					resultList.Add(CreateSegment(node, gapText, depth, true, cursor));
+				}
 			}
 
+			// ---------------------------------------------------------
+			// B. FILHO (Container ou Item Granular)
+			// ---------------------------------------------------------
 			if (IsContainerNode(child))
 			{
+				// Se for Container (Classe/Namespace), mergulhamos nele (recursão)
 				FlattenNode(child, fullText, depth + 1, resultList);
 			}
 			else
 			{
+				// Se for Item Granular (Método, Propriedade), criamos o bloco fechado
 				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
-				resultList.Add(CreateSegment(child, childText, depth + 1, false));
+
+				// A posição absoluta é o Start do próprio nó filho
+				resultList.Add(CreateSegment(child, childText, depth + 1, false, child.SpanStart));
 			}
+
+			// Avançamos o cursor para o fim deste filho
 			cursor = child.Span.End;
 		}
 
+		// ---------------------------------------------------------
+		// C. TAIL (Texto restante após o último filho)
+		// ---------------------------------------------------------
+		// Ex: Chave de fechamento '}' da classe
 		if (cursor < node.Span.End)
 		{
 			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
 			if (!string.IsNullOrEmpty(tailText))
-				resultList.Add(CreateSegment(node, tailText, depth, true));
+			{
+				resultList.Add(CreateSegment(node, tailText, depth, true, cursor));
+			}
 		}
 
+		// ---------------------------------------------------------
+		// D. EOF (Apenas para o nó Raiz)
+		// ---------------------------------------------------------
+		// Pega qualquer coisa após a última classe (espaços finais, comentários de rodapé)
 		if (node is CompilationUnitSyntax && cursor < fullText.Length)
 		{
 			var finalTrivia = fullText.Substring(cursor);
 			if (!string.IsNullOrEmpty(finalTrivia))
-				resultList.Add(new CodeBlockItem { Name = "EOF", Content = finalTrivia, SegmentType = SegmentType.Trivia, TypeDescription = "EOF" });
+			{
+				var eofItem = CreateSegment(node, finalTrivia, depth, true, cursor);
+				eofItem.Name = "EOF";
+				eofItem.TypeDescription = "END";
+				resultList.Add(eofItem);
+			}
 		}
 	}
 
-	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap)
+	// =========================================================================================
+	// MÉTODO 2: CREATE SEGMENT
+	// Cria o objeto CodeBlockItem preenchendo o AbsoluteStartPosition
+	// =========================================================================================
+	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap, int absoluteStart)
 	{
 		var type = IdentifySegmentType(node, isGap, content);
-		string name = isGap
-			? (content.Trim() == "}" ? "Fechamento" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
-			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
 
+		// Determinar o Nome de Exibição
+		string name;
+		if (isGap)
+		{
+			if (content.Trim() == "}")
+				name = "Fechamento";
+			else if (node is ClassDeclarationSyntax cls)
+				name = $"Estrutura ({cls.Identifier.Text})";
+			else if (node is NamespaceDeclarationSyntax ns)
+				name = $"Estrutura (Namespace)";
+			else
+				name = $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})";
+		}
+		else
+		{
+			name = node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name;
+		}
+
+		// Criar o Item
 		var item = new CodeBlockItem
 		{
 			Name = name,
@@ -224,13 +288,19 @@ public partial class FileSegmentsViewModel : ObservableObject
 			DepthLevel = depth,
 			SegmentType = type,
 			TypeDescription = type.ToString().ToUpperInvariant(),
-			StartLine = content.Count(c => c == '\n') + 1,
-			FileExtension = Path.GetExtension(FilePath)
+			StartLine = content.Count(c => c == '\n') + 1, // Estimativa visual apenas
+			FileExtension = Path.GetExtension(FilePath),
+
+			// --- CORREÇÃO IMPORTANTE ---
+			AbsoluteStartPosition = absoluteStart
+			// ---------------------------
 		};
-		item.InitializeVersions(content); // Garante versão original
+
+		// Inicializa o sistema de versionamento/undo
+		item.InitializeVersions(content);
+
 		return item;
 	}
-
 	private string GetMemberName(MemberDeclarationSyntax member)
 	{
 		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
@@ -269,5 +339,43 @@ public partial class FileSegmentsViewModel : ObservableObject
 			UsingDirectiveSyntax => SegmentType.FileHeader,
 			_ => SegmentType.Gap
 		};
+	}
+
+	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
+	{
+		if (SelectedBlock == null) return;
+
+		// 1. Obter a palavra (lógica simples para pegar palavra inteira sob o cursor)
+		string word = GetWordAtCursor(SelectedBlock.Content, cursorIndexInBlock);
+
+		// 2. Calcular posição absoluta
+		int absPos = SelectedBlock.AbsoluteStartPosition + cursorIndexInBlock;
+
+		// 3. Chamar o IndexService
+		var node = _indexService.InferSymbolFromGraph(word, FilePath, absPos);
+
+		if (node != null)
+		{
+			// Sucesso! Mostramos o que o Grafo sabe sobre isso.
+			CurrentSymbolInfo = $"[{node.Type}] {node.Name}\nDefinido em: {Path.GetFileName(node.FilePath)}";
+		}
+		else
+		{
+			CurrentSymbolInfo = $"'{word}' (Sem informações no grafo)";
+		}
+	}
+
+	private string GetWordAtCursor(string text, int position)
+	{
+		if (string.IsNullOrEmpty(text) || position < 0 || position > text.Length) return string.Empty;
+
+		// Lógica simples para expandir a seleção para esquerda e direita até achar espaço ou pontuação
+		int start = position;
+		int end = position;
+
+		while (start > 0 && char.IsLetterOrDigit(text[start - 1])) start--;
+		while (end < text.Length && char.IsLetterOrDigit(text[end])) end++;
+
+		return text.Substring(start, end - start);
 	}
 }

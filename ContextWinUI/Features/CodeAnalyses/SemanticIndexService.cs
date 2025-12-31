@@ -1,6 +1,10 @@
-﻿using ContextWinUI.Core.Models;
+using ColorCode.Styling;
+using ContextWinUI.Core.Models;
+using ContextWinUI.Features.CodeEditor;
+using ContextWinUI.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.UI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -27,7 +31,6 @@ public class SemanticIndexService
 		return await Task.Run(async () => await IndexProjectAsync(rootPath));
 	}
 
-	// ARQUIVO: SemanticIndexService.cs
 	public async Task<DependencyGraph> IndexProjectAsync(string rootPath)
 	{
 		// 1. Leitura rápida dos arquivos (mantém como estava)
@@ -75,4 +78,62 @@ public class SemanticIndexService
 	}
 
 	public DependencyGraph GetCurrentGraph() => _cachedGraph;
+
+	public SymbolNode? InferSymbolFromGraph(string word, string filePath, int absolutePosition)
+	{
+		if (_cachedGraph == null || string.IsNullOrWhiteSpace(word))
+			return null;
+
+		// 1. Busca Local: Identificar nós dentro do arquivo atual
+		// Normalizamos a chave para garantir o match no dicionário
+		string fileKey = filePath.ToLowerInvariant();
+
+		if (!_cachedGraph.FileIndex.TryGetValue(fileKey, out var fileNodes))
+		{
+			return null; // Arquivo não indexado ou novo
+		}
+
+		// 2. Identificar Contexto: Em qual container (Método/Classe) o cursor está?
+		// Buscamos o nó mais "apertado" (menor Length) que contém a posição.
+		// Isso garante que se estivermos num Método dentro de uma Classe, pegaremos o Método primeiro.
+		var containerNode = fileNodes
+			.Where(n => n.StartPosition <= absolutePosition &&
+						(n.StartPosition + n.Length) >= absolutePosition)
+			.OrderBy(n => n.Length) // Menor para o maior (Método -> Classe -> Namespace)
+			.FirstOrDefault();
+
+		// 3. TENTATIVA A: É um membro da mesma classe/arquivo?
+		// Procuramos por: Propriedades, Métodos, Campos definidos neste mesmo arquivo
+		// que tenham o nome exato da palavra.
+		var localMember = fileNodes.FirstOrDefault(n => n.Name == word);
+
+		// Se achamos e não é o próprio container onde estamos (ex: recursão), retornamos.
+		if (localMember != null)
+		{
+			return localMember;
+		}
+
+		// 4. TENTATIVA B: É um Tipo (Classe/Interface) definido em outro lugar do projeto?
+		// Se a palavra não está no arquivo, pode ser uma referência a outra classe (ex: "DependencyGraph graph")
+		// Esta busca varre todos os nós. Se o projeto for MUITO grande, idealmente o DependencyGraph teria um "NameIndex".
+		var globalType = _cachedGraph.Nodes.Values
+			.FirstOrDefault(n => n.Name == word &&
+								(n.Type == SymbolType.Class ||
+								 n.Type == SymbolType.Interface ||
+								 n.Type == SymbolType.Enum ||
+								 n.Type == SymbolType.Struct));
+
+		return globalType;
+	}
+
+	public SymbolType? GetSymbolType(string word)
+	{
+		if (_cachedGraph == null) return null;
+
+		if (_cachedGraph.GlobalSymbolCache.TryGetValue(word, out SymbolType type))
+			return type;
+
+		return null;
+	}
+
 }

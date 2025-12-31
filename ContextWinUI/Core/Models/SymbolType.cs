@@ -9,6 +9,8 @@ public enum SymbolType
 	Property,
 	Field,
 	Constructor,
+	Struct,
+	Enum,
 
 	// Granulares (Novos)
 	LocalVariable,
