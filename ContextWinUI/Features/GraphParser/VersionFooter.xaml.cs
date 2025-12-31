@@ -1,6 +1,6 @@
 using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls; // Necessário para SplitButton e SplitButtonClickEventArgs
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -10,7 +10,9 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 {
 	public sealed partial class VersionFooter : UserControl, INotifyPropertyChanged
 	{
-		public event EventHandler? SaveRequested;
+		// Eventos que o FileSegmentsView vai escutar
+		public event EventHandler? SaveNewVersionRequested;
+		public event EventHandler? SaveOverwriteRequested;
 		public event EventHandler? RestoreOriginalRequested;
 		public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -21,7 +23,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 
 		#region Dependency Properties
 
-		// 1. LISTA DE VERSÕES (Vem do GlobalHistory do ViewModel)
 		public static readonly DependencyProperty GlobalVersionsProperty =
 			DependencyProperty.Register(nameof(GlobalVersions), typeof(ObservableCollection<GlobalVersion>), typeof(VersionFooter), new PropertyMetadata(null, OnPropertyChangedStatic));
 
@@ -31,7 +32,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			set => SetValue(GlobalVersionsProperty, value);
 		}
 
-		// 2. ÍNDICE SELECIONADO (Vem do CurrentGlobalIndex do ViewModel)
 		public static readonly DependencyProperty SelectedGlobalIndexProperty =
 			DependencyProperty.Register(nameof(SelectedGlobalIndex), typeof(int), typeof(VersionFooter), new PropertyMetadata(0, OnPropertyChangedStatic));
 
@@ -41,7 +41,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			set => SetValue(SelectedGlobalIndexProperty, value);
 		}
 
-		// 3. PODE SALVAR? (Vem do HasAnyUnsavedChanges do ViewModel)
 		public static readonly DependencyProperty CanSaveProperty =
 			DependencyProperty.Register(nameof(CanSave), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false, OnPropertyChangedStatic));
 
@@ -51,7 +50,42 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			set => SetValue(CanSaveProperty, value);
 		}
 
-		// Callback genérico para avisar a UI interna quando as propriedades externas mudarem
+		public static readonly DependencyProperty TargetBlockProperty =
+			DependencyProperty.Register(nameof(TargetBlock), typeof(CodeBlockItem), typeof(VersionFooter), new PropertyMetadata(null));
+
+		public CodeBlockItem TargetBlock
+		{
+			get => (CodeBlockItem)GetValue(TargetBlockProperty);
+			set => SetValue(TargetBlockProperty, value);
+		}
+
+		public static readonly DependencyProperty IsComparisonModeProperty =
+			DependencyProperty.Register(nameof(IsComparisonMode), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false));
+
+		public bool IsComparisonMode
+		{
+			get => (bool)GetValue(IsComparisonModeProperty);
+			set => SetValue(IsComparisonModeProperty, value);
+		}
+
+		public static readonly DependencyProperty LeftIndexProperty =
+			DependencyProperty.Register(nameof(LeftIndex), typeof(int), typeof(VersionFooter), new PropertyMetadata(0));
+
+		public int LeftIndex
+		{
+			get => (int)GetValue(LeftIndexProperty);
+			set => SetValue(LeftIndexProperty, value);
+		}
+
+		public static readonly DependencyProperty RightIndexProperty =
+			DependencyProperty.Register(nameof(RightIndex), typeof(int), typeof(VersionFooter), new PropertyMetadata(0));
+
+		public int RightIndex
+		{
+			get => (int)GetValue(RightIndexProperty);
+			set => SetValue(RightIndexProperty, value);
+		}
+
 		private static void OnPropertyChangedStatic(DependencyObject d, DependencyPropertyChangedEventArgs e)
 		{
 			if (d is VersionFooter control)
@@ -66,7 +100,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 
 		private void UpdateVisualState()
 		{
-			// Atualiza propriedades calculadas visuais
 			OnPropertyChanged(nameof(VersionCounterText));
 			OnPropertyChanged(nameof(CanNavigatePrevious));
 			OnPropertyChanged(nameof(CanNavigateNext));
@@ -82,7 +115,6 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		}
 
 		public bool CanNavigatePrevious => SelectedGlobalIndex > 0;
-
 		public bool CanNavigateNext => GlobalVersions != null && SelectedGlobalIndex < GlobalVersions.Count - 1;
 
 		#endregion
@@ -91,32 +123,38 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 
 		private void OnPreviousVersionClick(object sender, RoutedEventArgs e)
 		{
-			if (CanNavigatePrevious)
-			{
-				SelectedGlobalIndex--; // O TwoWay binding vai atualizar o ViewModel
-			}
+			if (CanNavigatePrevious) SelectedGlobalIndex--;
 		}
 
 		private void OnNextVersionClick(object sender, RoutedEventArgs e)
 		{
-			if (CanNavigateNext)
-			{
-				SelectedGlobalIndex++; // O TwoWay binding vai atualizar o ViewModel
-			}
+			if (CanNavigateNext) SelectedGlobalIndex++;
 		}
 
 		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e)
 		{
-			// Opção A: Resetar índice direto (mais simples)
-			// SelectedGlobalIndex = 0; 
-
-			// Opção B: Disparar evento (conforme seu pedido original)
 			RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
 		}
 
-		private void OnSaveVersionClick(object sender, RoutedEventArgs e)
+		// --- HANDLERS DO SPLIT BUTTON (Aqui estava o erro CS0123) ---
+
+		// SplitButton requer 'SplitButtonClickEventArgs', não 'RoutedEventArgs'
+		private void OnSplitButtonCommit(SplitButton sender, SplitButtonClickEventArgs args)
 		{
-			SaveRequested?.Invoke(this, EventArgs.Empty);
+			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
+		}
+
+		// 2. Handler exclusivo para o ITEM DE MENU dentro do Flyout
+		// Assinatura: (object, RoutedEventArgs)
+		private void OnMenuItemCommit(object sender, RoutedEventArgs e)
+		{
+			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
+		}
+
+		// Handler do botão "Sobrescrever" (já estava correto, usa RoutedEventArgs)
+		private void OnOverwriteClick(object sender, RoutedEventArgs e)
+		{
+			SaveOverwriteRequested?.Invoke(this, EventArgs.Empty);
 		}
 
 		private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

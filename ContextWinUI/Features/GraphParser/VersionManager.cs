@@ -3,9 +3,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ContextWinUI.Features.GraphParser // Ajuste o namespace conforme sua estrutura
+namespace ContextWinUI.Features.GraphParser
 {
-	public class VersionManager<T> where T : class
+	// Adicione 'partial' aqui
+	public partial class VersionManager<T> where T : class
 	{
 		private readonly Dictionary<string, List<CodeBlockVersion>> _versions = new();
 		private readonly Dictionary<string, T> _originalItems = new();
@@ -16,6 +17,7 @@ namespace ContextWinUI.Features.GraphParser // Ajuste o namespace conforme sua e
 			{
 				_versions[itemId] = new List<CodeBlockVersion>();
 				_originalItems[itemId] = DeepCopy(item);
+
 				_versions[itemId].Add(new CodeBlockVersion
 				{
 					Content = initialContent,

@@ -13,6 +13,7 @@
 	<UserControl.Resources>
 		<converters:BoolToVisibilityConverter x:Key="VisibleIfTrue" TrueValue="Visible" FalseValue="Collapsed"/>
 		<converters:BoolToVisibilityConverter x:Key="CollapsedIfTrue" TrueValue="Collapsed" FalseValue="Visible"/>
+		<converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" TrueValue="Visible" FalseValue="Collapsed"/>
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
@@ -22,115 +23,177 @@
 		</Grid.RowDefinitions>
 
 		<Grid Grid.Row="0">
-			<ScrollViewer x:Name="MainScrollViewer"
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="{x:Bind ViewModel.LeftColumnWidth, Mode=OneWay}"/>
+				<ColumnDefinition Width="*"/>
+			</Grid.ColumnDefinitions>
+
+			<Border Grid.Column="0" 
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0">
+				<ScrollViewer VerticalScrollBarVisibility="Auto">
+					<ItemsControl ItemsSource="{x:Bind ViewModel.ReferenceBlocks, Mode=OneWay}" Margin="0,0,12,0">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="models:CodeBlockItem">
+								<Grid Margin="4,0,4,8" Opacity="0.6">
+									<Grid.RowDefinitions>
+										<RowDefinition Height="Auto"/>
+										<RowDefinition Height="*"/>
+									</Grid.RowDefinitions>
+
+									<Border Background="{ThemeResource SystemControlBackgroundChromeMediumLowBrush}" 
+                                            Padding="6,2" CornerRadius="4">
+										<TextBlock Text="{x:Bind Name}" 
+                                                   FontSize="11" 
+                                                   FontWeight="Bold" 
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+									</Border>
+
+									<TextBlock Grid.Row="1" 
+                                               Text="{x:Bind Content}" 
+                                               FontFamily="Consolas, Courier New, Monospace" 
+                                               FontSize="10" 
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="4,4,0,0"/>
+								</Grid>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</ScrollViewer>
+			</Border>
+
+			<ScrollViewer Grid.Column="1" 
+                          x:Name="MainScrollViewer"
                           Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
                           Padding="0" 
                           VerticalScrollBarVisibility="Auto">
-				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" 
-                              Margin="0">
+
+				<ItemsControl ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}" Margin="0">
 					<ItemsControl.ItemTemplate>
 						<DataTemplate x:DataType="models:CodeBlockItem">
-							<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
-          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
-          BorderThickness="0,0,0,1" 
-          Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-          PointerPressed="OnBlockPointerPressed">
 
-								<Grid.ContextFlyout>
-									<MenuFlyout>
-										<MenuFlyoutItem Text="Inserir Novo Bloco Abaixo" 
-                                Icon="Add"
-                                Command="{Binding DataContext.AddSiblingBlockCommand, ElementName=MainScrollViewer}"
-                                CommandParameter="{x:Bind}"/>
-										<MenuFlyoutSeparator/>
-										<MenuFlyoutItem Text="Excluir Bloco" 
-                                Icon="Delete"
-                                Foreground="Red"
-                                Command="{Binding DataContext.DeleteBlockCommand, ElementName=MainScrollViewer}"
-                                CommandParameter="{x:Bind}"/>
-									</MenuFlyout>
-								</Grid.ContextFlyout>
-								<Grid.ColumnDefinitions>
-									<ColumnDefinition Width="85"/>
-									<ColumnDefinition Width="*"/>
-								</Grid.ColumnDefinitions>
+							<Grid Visibility="{x:Bind IsVisibleInDiff, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
-								<Rectangle x:Name="SelectionIndicator"
-                   Fill="{ThemeResource SystemAccentColor}"
-                   Width="3"
-                   HorizontalAlignment="Left"
-                   Visibility="Collapsed"/>
+								<Grid Visibility="{x:Bind IsGranular, Converter={StaticResource VisibleIfTrue}}"
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                                      BorderThickness="0,0,0,1" 
+                                      Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                      PointerPressed="OnBlockPointerPressed">
 
-								<Grid Grid.Column="0" 
-              Background="{ThemeResource LayerFillColorAltBrush}" 
-              Padding="8,0" 
-              BorderThickness="0,0,1,0" 
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              ToolTipService.ToolTip="{x:Bind Name}">
+									<Grid.ContextFlyout>
+										<MenuFlyout>
+											<MenuFlyoutItem Text="Inserir Bloco Abaixo" Icon="Add"
+                                                            Command="{Binding DataContext.AddSiblingBlockCommand, ElementName=MainScrollViewer}"
+                                                            CommandParameter="{x:Bind}"/>
 
-									<Rectangle HorizontalAlignment="Left" 
-                       Width="3" 
-                       VerticalAlignment="Stretch" 
-                       Fill="{x:Bind HeaderBrush}" 
-                       Margin="-8,0,0,0"/>
+											<MenuFlyoutItem Text="Excluir Bloco" Icon="Delete" Foreground="Red"
+                                                            Command="{Binding DataContext.DeleteBlockCommand, ElementName=MainScrollViewer}"
+                                                            CommandParameter="{x:Bind}"/>
 
-									<StackPanel Orientation="Horizontal" 
-                        Spacing="6" 
-                        VerticalAlignment="Center" 
-                        Opacity="0.9">
-										<FontIcon x:Name="VersionIndicator"
-                          Glyph="&#xE81C;"
-                          FontSize="10"
-                          Foreground="{ThemeResource SystemAccentColor}"
-                          Visibility="{x:Bind HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}"/>
-										<FontIcon Glyph="{x:Bind Icon}" 
-                          Foreground="{x:Bind HeaderBrush}" 
-                          FontSize="10"/>
-										<TextBlock Text="{x:Bind TypeDescription}" 
-                           FontSize="9" 
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
-                           TextTrimming="CharacterEllipsis"/>
-									</StackPanel>
+											<MenuFlyoutSeparator/>
+
+											<MenuFlyoutItem Text="Reverter para Original" Icon="Undo"
+                                                            Command="{Binding DataContext.RevertBlockToOriginalCommand, ElementName=MainScrollViewer}"
+                                                            CommandParameter="{x:Bind}"/>
+
+											<MenuFlyoutItem Text="Desvincular (Tratar como Novo)"
+                                                            Command="{Binding DataContext.PromoteEditToNewBlockCommand, ElementName=MainScrollViewer}"
+                                                            CommandParameter="{x:Bind}">
+												<MenuFlyoutItem.Icon>
+													<FontIcon Glyph="&#xE106;"/>
+												</MenuFlyoutItem.Icon>
+											</MenuFlyoutItem>
+
+										</MenuFlyout>
+									</Grid.ContextFlyout>
+
+									<Grid.ColumnDefinitions>
+										<ColumnDefinition Width="85"/>
+										<ColumnDefinition Width="*"/>
+									</Grid.ColumnDefinitions>
+
+									<Rectangle x:Name="SelectionIndicator"
+                                               Fill="{ThemeResource SystemAccentColor}"
+                                               Width="3"
+                                               HorizontalAlignment="Left"
+                                               Visibility="Collapsed"/>
+
+									<Grid Grid.Column="0" 
+                                          Background="{ThemeResource LayerFillColorAltBrush}" 
+                                          Padding="8,0" 
+                                          BorderThickness="0,0,1,0" 
+                                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                          ToolTipService.ToolTip="{x:Bind Name}">
+
+										<Rectangle HorizontalAlignment="Left" 
+                                                   Width="3" 
+                                                   VerticalAlignment="Stretch" 
+                                                   Fill="{x:Bind HeaderBrush}" 
+                                                   Margin="-8,0,0,0"/>
+
+										<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Opacity="0.9">
+											<FontIcon x:Name="VersionIndicator"
+                                                      Glyph="&#xE81C;"
+                                                      FontSize="10"
+                                                      Foreground="{ThemeResource SystemAccentColor}"
+                                                      Visibility="{x:Bind HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}"/>
+
+											<FontIcon Glyph="{x:Bind Icon}" 
+                                                      Foreground="{x:Bind HeaderBrush}" 
+                                                      FontSize="10"/>
+
+											<TextBlock Text="{x:Bind TypeDescription}" 
+                                                       FontSize="9" 
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                                       TextTrimming="CharacterEllipsis"/>
+										</StackPanel>
+									</Grid>
+
+									<localComp:SegmentCodeViewer Grid.Column="1"
+                                                                 Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                                 FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                                                                 VerticalAlignment="Stretch"
+                                                                 HorizontalAlignment="Stretch"
+                                                                 Margin="0"
+                                                                 SaveRequested="OnSegmentSaveRequested"
+                                                                 ContentModified="OnSegmentContentModified"
+                                                                 GotFocus="OnSegmentGotFocus"/>
 								</Grid>
-
-								<localComp:SegmentCodeViewer Grid.Column="1"
-                                     Text="{x:Bind Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                     FileExtension="{x:Bind FileExtension, Mode=OneWay}"
-                                     VerticalAlignment="Stretch"
-                                     HorizontalAlignment="Stretch"
-                                     Margin="0"
-                                     SaveRequested="OnSegmentSaveRequested"
-                                     ContentModified="OnSegmentContentModified"
-                                     GotFocus="OnSegmentGotFocus"/>
 							</Grid>
 						</DataTemplate>
 					</ItemsControl.ItemTemplate>
 				</ItemsControl>
 			</ScrollViewer>
 
-			<StackPanel x:Name="EmptyMessagePanel"
-                        VerticalAlignment="Center" 
-                        HorizontalAlignment="Center" 
-                        Spacing="16"
+			<StackPanel Grid.Column="1" 
+                        VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
                         Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
-				<TextBlock Text="Nenhum conteúdo granular" 
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				<TextBlock Text="Nenhum conteúdo granular" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 			</StackPanel>
 
-			<Grid x:Name="LoadingOverlay"
-                  Background="{ThemeResource LayerFillColorDefaultBrush}" 
-                  Opacity="0.8"
+			<Grid Grid.ColumnSpan="2"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}" Opacity="0.8"
                   Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
 				<ProgressRing IsActive="True" Width="30" Height="30"/>
 			</Grid>
 		</Grid>
 
 		<versionComp:VersionFooter Grid.Row="1"
-                                    GlobalVersions="{x:Bind ViewModel.GlobalHistory, Mode=OneWay}"
-                                    SelectedGlobalIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=TwoWay}"
-                                    CanSave="{x:Bind ViewModel.HasAnyUnsavedChanges, Mode=OneWay}"
-                                    SaveRequested="OnSaveVersionRequested"
-                                    RestoreOriginalRequested="OnRestoreOriginalRequested"/>
+                                   GlobalVersions="{x:Bind ViewModel.GlobalHistory, Mode=OneWay}"
+                                   SelectedGlobalIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=TwoWay}"
+                                   CanSave="{x:Bind ViewModel.HasAnyUnsavedChanges, Mode=OneWay}"
+                                   
+                                   TargetBlock="{x:Bind ViewModel.SelectedBlock, Mode=OneWay}"
+                                   IsComparisonMode="{x:Bind ViewModel.IsComparisonMode, Mode=TwoWay}"
+                                   
+                                   LeftIndex="{x:Bind ViewModel.CompareLeftIndex, Mode=TwoWay}"
+                                   RightIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=TwoWay}"
+
+                                   SaveNewVersionRequested="OnSaveNewVersionRequested"
+                                   SaveOverwriteRequested="OnSaveOverwriteRequested"
+                                   RestoreOriginalRequested="OnRestoreOriginalRequested" />
 	</Grid>
 </UserControl>

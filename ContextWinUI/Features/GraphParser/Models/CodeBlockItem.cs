@@ -30,6 +30,19 @@ public partial class CodeBlockItem : ObservableObject
 	[ObservableProperty]
 	private int endLine;
 
+	[ObservableProperty]
+	private ObservableCollection<CodeBlockVersion> versions = new();
+
+	[ObservableProperty]
+	private int currentVersionIndex = 0;
+
+	[ObservableProperty]
+	private bool hasUnsavedChanges;
+	public bool IsVisibleInDiff { get; set; } = true;
+
+	private string _originalContent = string.Empty;
+
+
 	public SymbolType SymbolType { get; set; }
 
 	public string FileExtension { get; set; } = ".cs";
@@ -81,18 +94,6 @@ public partial class CodeBlockItem : ObservableObject
 			DepthLevel = this.DepthLevel
 		};
 	}
-
-
-	[ObservableProperty]
-	private ObservableCollection<CodeBlockVersion> versions = new();
-
-	[ObservableProperty]
-	private int currentVersionIndex = 0;
-
-	[ObservableProperty]
-	private bool hasUnsavedChanges;
-
-	private string _originalContent = string.Empty;
 
 
 	public void InitializeVersions(string initialContent)
@@ -204,6 +205,35 @@ public partial class CodeBlockItem : ObservableObject
 		}
 	}
 
-	public bool IsCurrentVersionOriginal =>
-		CurrentVersionIndex == 0 && Versions.Any() && Versions[0].IsOriginal;
+	public bool IsCurrentVersionOriginal =>	CurrentVersionIndex == 0 && Versions.Any() && Versions[0].IsOriginal;
+
+	public string GetContentAtTimestamp(DateTime timestamp)
+	{
+		if (timestamp == DateTime.MinValue)
+		{
+			var original = Versions.FirstOrDefault(v => v.IsOriginal);
+			return original?.Content ?? string.Empty;
+		}
+
+		var cutoff = timestamp.AddMilliseconds(100);
+
+		var version = Versions.LastOrDefault(v => v.IsOriginal || v.Timestamp <= cutoff);
+
+		// Se não encontrou nenhuma versão anterior a essa data, assume que o bloco não existia ou retorna vazio
+		return version?.Content ?? string.Empty;
+	}
+
+	public void CalculateDiffVisibility(bool hideUnchanged)
+	{
+		if (!hideUnchanged)
+		{
+			IsVisibleInDiff = true;
+		}
+		else
+		{
+			// Só mostra se tiver mudanças não salvas OU for um bloco novo (sem histórico profundo)
+			IsVisibleInDiff = HasUnsavedChanges || Versions.Count == 1;
+		}
+		OnPropertyChanged(nameof(IsVisibleInDiff));
+	}
 }

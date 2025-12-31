@@ -1,14 +1,9 @@
-// ARQUIVO: FileSegmentsView.xaml.cs (CORRIGIDO)
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.ViewModels;
-using ContextWinUI.Features.GraphParser.Views.Components;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using System;
-using Windows.UI.Xaml;
 
 namespace ContextWinUI.Features.GraphParser.Views
 {
@@ -26,6 +21,8 @@ namespace ContextWinUI.Features.GraphParser.Views
 		}
 
 		private void OnLoaded(object sender, RoutedEventArgs e) => UpdateSelectionIndicator();
+
+		// --- Eventos de Edição de Segmento ---
 
 		private void OnSegmentContentModified(object sender, EventArgs e)
 		{
@@ -57,6 +54,8 @@ namespace ContextWinUI.Features.GraphParser.Views
 			}
 		}
 
+		// --- Gerenciamento Visual da Seleção ---
+
 		private void UpdateSelectionIndicator()
 		{
 			if (_lastSelectedBlock != null)
@@ -64,9 +63,9 @@ namespace ContextWinUI.Features.GraphParser.Views
 				var container = FindContainerForBlock(_lastSelectedBlock);
 				if (container != null)
 				{
-					var indicator = container.FindName("SelectionIndicator") as Rectangle;
-					if (indicator != null)
-						indicator.Visibility = Visibility.Collapsed;
+					// Nota: O nome deve ser "SelectionIndicator", igual está no XAML
+					var indicator = container.FindName("SelectionIndicator") as Microsoft.UI.Xaml.Shapes.Rectangle;
+					if (indicator != null) indicator.Visibility = Visibility.Collapsed;
 				}
 			}
 
@@ -75,63 +74,72 @@ namespace ContextWinUI.Features.GraphParser.Views
 				var container = FindContainerForBlock(ViewModel.SelectedBlock);
 				if (container != null)
 				{
-					var indicator = container.FindName("SelectionIndicator") as Rectangle;
-					if (indicator != null)
-						indicator.Visibility = Visibility.Visible;
+					var indicator = container.FindName("SelectionIndicator") as Microsoft.UI.Xaml.Shapes.Rectangle;
+					if (indicator != null) indicator.Visibility = Visibility.Visible;
 				}
 			}
-
 			_lastSelectedBlock = ViewModel.SelectedBlock;
 		}
 
 		private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
 		{
-			return FindContainerRecursive(MainScrollViewer.Content as FrameworkElement, block);
+			return FindContainerRecursive(MainScrollViewer, block);
 		}
 
 		private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem block)
 		{
 			if (parent == null) return null;
+			int childrenCount = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
 
-			int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
 			for (int i = 0; i < childrenCount; i++)
 			{
-				var child = VisualTreeHelper.GetChild(parent, i);
+				var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
 
 				if (child is FrameworkElement element && element.DataContext == block)
 				{
-					return element;
+					// Procuramos o Grid que contém os elementos visuais
+					if (element is Grid) return element;
 				}
 
 				var result = FindContainerRecursive(child, block);
-				if (result != null)
-					return result;
+				if (result != null) return result;
 			}
-
 			return null;
 		}
 
-		// ALTERADO: Ao pedir salvar, pede Globalmente
-		private void OnSaveVersionRequested(object sender, EventArgs e)
-		{
-			// Em vez de salvar só este bloco, disparar o Save All
-			ViewModel.TriggerGlobalSave();
+		// --- HANDLERS DO FOOTER (Estes faltavam e causavam o erro CS1061) ---
 
-			// Nota: O método CommitAllPendingChanges do pai vai cuidar de criar 
-			// a versão nova neste bloco e em todos os outros modificados.
+		private void OnSaveNewVersionRequested(object sender, EventArgs e)
+		{
+			if (ViewModel.SaveChangesCommand.CanExecute("NewVersion"))
+			{
+				ViewModel.SaveChangesCommand.Execute("NewVersion");
+			}
 		}
 
+		private void OnSaveOverwriteRequested(object sender, EventArgs e)
+		{
+			if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
+			{
+				ViewModel.SaveChangesCommand.Execute("Overwrite");
+			}
+		}
 
 		private void OnRestoreOriginalRequested(object sender, EventArgs e)
 		{
-			ViewModel.TriggerGlobalRestore(0); // Assume que 0 é sempre o original globalmente
+			ViewModel.TriggerGlobalRestore(0);
 		}
 
+		// Evento antigo do CodeViewer (CTRL+S no editor)
 		private void OnSegmentSaveRequested(object sender, EventArgs e)
 		{
 			if (ViewModel.HasAnyUnsavedChanges)
 			{
-				ViewModel.CommitGlobalVersion("Salvo pelo Editor");
+				// Atalho rápido -> Sobrescrever
+				if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
+				{
+					ViewModel.SaveChangesCommand.Execute("Overwrite");
+				}
 			}
 		}
 	}

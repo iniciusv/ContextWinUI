@@ -4,27 +4,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:models="using:ContextWinUI.Features.GraphParser.Models"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
 		<converters:BoolToVisibilityConverter x:Key="VisibleIfTrue" TrueValue="Visible" FalseValue="Collapsed"/>
-		<converters:BoolToVisibilityConverter x:Key="CollapsedIfTrue" TrueValue="Collapsed" FalseValue="Visible"/>
-
-		<Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-			<Setter Property="Background" Value="Transparent"/>
-			<Setter Property="BorderThickness" Value="0"/>
-			<Setter Property="Padding" Value="4"/>
-			<Setter Property="MinWidth" Value="32"/>
-			<Setter Property="MinHeight" Value="32"/>
-			<Setter Property="VerticalAlignment" Value="Center"/>
-		</Style>
 	</UserControl.Resources>
 
-	<Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-          BorderThickness="0,1,0,0"
+	<Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+          BorderThickness="0,1,0,0" 
           Padding="12,8">
 
 		<Grid.ColumnDefinitions>
@@ -33,99 +22,88 @@
 			<ColumnDefinition Width="Auto"/>
 		</Grid.ColumnDefinitions>
 
-		<StackPanel Grid.Column="0" 
-                    Orientation="Horizontal" 
-                    Spacing="8"
-                    VerticalAlignment="Center">
-
-			<FontIcon Glyph="&#xF133;" 
-                      FontSize="12"
-                      Foreground="Orange"
-                      Visibility="{x:Bind CanSave, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}"/>
-
-			<TextBlock Text="Alterações Pendentes"
-                       Visibility="{x:Bind CanSave, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="Orange"/>
-
-			<TextBlock Text="Sincronizado"
-                       Visibility="{x:Bind CanSave, Mode=OneWay, Converter={StaticResource CollapsedIfTrue}}"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="Green"
-                       Opacity="0.8"/>
-		</StackPanel>
-
-		<StackPanel Grid.Column="1" 
-                    Orientation="Horizontal" 
-                    Spacing="12"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-
-			<Button Click="OnRestoreOriginalClick"
-                    ToolTipService.ToolTip="Restaurar versão original"
-                    IsEnabled="{x:Bind CanNavigatePrevious, Mode=OneWay}"
-                    Style="{StaticResource DefaultButtonStyle}">
-				<StackPanel Orientation="Horizontal" Spacing="4">
-					<FontIcon Glyph="&#xE7B7;" FontSize="12"/>
-					<TextBlock Text="Original"/>
-				</StackPanel>
+		<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+			<Button Style="{StaticResource DateTimePickerFlyoutButtonStyle}" 
+                    Click="OnRestoreOriginalClick"
+                    ToolTipService.ToolTip="Restaurar Tudo para Original">
+				<FontIcon Glyph="&#xE777;" FontSize="14"/>
 			</Button>
 
-			<Button Click="OnPreviousVersionClick"
-                    ToolTipService.ToolTip="Versão anterior"
-                    IsEnabled="{x:Bind CanNavigatePrevious, Mode=OneWay}"
-                    Style="{StaticResource IconButtonStyle}">
+			<AppBarSeparator/>
+
+			<Button Click="OnPreviousVersionClick" IsEnabled="{x:Bind CanNavigatePrevious, Mode=OneWay}">
 				<FontIcon Glyph="&#xE76B;" FontSize="12"/>
 			</Button>
 
-			<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
-                      SelectedIndex="{x:Bind SelectedGlobalIndex, Mode=TwoWay}"
-                      MinWidth="220">
-				<ComboBox.ItemTemplate>
-					<DataTemplate x:DataType="models:GlobalVersion">
-						<StackPanel Margin="4,2">
-							<TextBlock Text="{x:Bind Description}" 
-                                       FontWeight="SemiBold"/>
+			<TextBlock Text="{x:Bind VersionCounterText, Mode=OneWay}" 
+                       VerticalAlignment="Center" 
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Margin="8,0"/>
 
-							<TextBlock Text="{x:Bind Timestamp}"
-                                       FontSize="11"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind IsOriginal, Converter={StaticResource CollapsedIfTrue}}"/>
-						</StackPanel>
-					</DataTemplate>
-				</ComboBox.ItemTemplate>
-			</ComboBox>
-
-			<Button Click="OnNextVersionClick"
-                    ToolTipService.ToolTip="Próxima versão"
-                    IsEnabled="{x:Bind CanNavigateNext, Mode=OneWay}"
-                    Style="{StaticResource IconButtonStyle}">
+			<Button Click="OnNextVersionClick" IsEnabled="{x:Bind CanNavigateNext, Mode=OneWay}">
 				<FontIcon Glyph="&#xE76C;" FontSize="12"/>
 			</Button>
+		</StackPanel>
 
-			<Button Click="OnSaveVersionClick"
-                    ToolTipService.ToolTip="Salvar nova versão global"
-                    IsEnabled="{x:Bind CanSave, Mode=OneWay}"
-                    Style="{StaticResource AccentButtonStyle}">
-				<StackPanel Orientation="Horizontal" Spacing="4">
-					<FontIcon Glyph="&#xE74E;" FontSize="12"/>
-					<TextBlock Text="Salvar Versão"/>
+		<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
+
+			<StackPanel Orientation="Horizontal" Spacing="8" 
+                        Visibility="{x:Bind IsComparisonMode, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+
+				<TextBlock Text="Ref:" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
+				<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
+                          SelectedIndex="{x:Bind LeftIndex, Mode=TwoWay}"
+                          DisplayMemberPath="Description"
+                          Width="140"/>
+
+				<FontIcon Glyph="&#xE117;" FontSize="12" Opacity="0.5"/>
+
+				<TextBlock Text="Edit:" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
+				<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
+                          SelectedIndex="{x:Bind RightIndex, Mode=TwoWay}"
+                          DisplayMemberPath="Description"
+                          IsEnabled="False" 
+                          Width="140"
+                          ToolTipService.ToolTip="A direita sempre mostra a versão atual selecionada globalmente"/>
+			</StackPanel>
+
+			<AppBarSeparator/>
+
+			<ToggleButton IsChecked="{x:Bind IsComparisonMode, Mode=TwoWay}"
+                          ToolTipService.ToolTip="Comparar Versões Lado a Lado">
+				<StackPanel Orientation="Horizontal" Spacing="6">
+					<FontIcon Glyph="&#xE1D3;"/>
+					<TextBlock Text="Comparar"/>
 				</StackPanel>
-			</Button>
+			</ToggleButton>
+
+			<SplitButton IsEnabled="{x:Bind CanSave, Mode=OneWay}"
+                         Click="OnSplitButtonCommit"
+                         ToolTipService.ToolTip="Salvar alterações">
+				<StackPanel Orientation="Horizontal" Spacing="6">
+					<FontIcon Glyph="&#xE74E;"/>
+					<TextBlock Text="Salvar"/>
+				</StackPanel>
+
+				<SplitButton.Flyout>
+					<MenuFlyout>
+						<MenuFlyoutItem Text="Criar Nova Versão Global" 
+                                        Icon="Add"
+                                        Click="OnMenuItemCommit"/>
+
+						<MenuFlyoutSeparator/>
+
+						<MenuFlyoutItem Text="Sobrescrever Versão Atual" 
+                                        Icon="Save"
+                                        Click="OnOverwriteClick">
+							<MenuFlyoutItem.KeyboardAccelerators>
+								<KeyboardAccelerator Key="S" Modifiers="Control"/>
+							</MenuFlyoutItem.KeyboardAccelerators>
+						</MenuFlyoutItem>
+					</MenuFlyout>
+				</SplitButton.Flyout>
+			</SplitButton>
 
 		</StackPanel>
-
-		<StackPanel Grid.Column="2" 
-                    Orientation="Horizontal" 
-                    Spacing="4"
-                    VerticalAlignment="Center">
-			<TextBlock Text="Versão:"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Opacity="0.6"/>
-			<TextBlock Text="{x:Bind VersionCounterText, Mode=OneWay}"
-                       FontWeight="SemiBold"
-                       Style="{StaticResource CaptionTextBlockStyle}"/>
-		</StackPanel>
-
 	</Grid>
 </UserControl>
