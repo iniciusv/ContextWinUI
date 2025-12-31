@@ -3,6 +3,7 @@ using ContextWinUI.Features.GraphParser.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media; // Importante para VisualTreeHelper
 using System;
 
 namespace ContextWinUI.Features.GraphParser.Views
@@ -35,21 +36,43 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
 		{
-			if (sender is FrameworkElement element && element.DataContext is CodeBlockItem block)
+			// O sender é o Grid da coluna direita. O DataContext agora é a LINHA (Wrapper).
+			if (sender is FrameworkElement element && element.DataContext is SegmentRowViewModel row)
 			{
-				ViewModel.SelectedBlock = block;
+				// Extraímos o bloco atual da linha para definir a seleção
+				ViewModel.SelectedBlock = row.Current;
 				UpdateSelectionIndicator();
 			}
 		}
 
 		private void EnsureBlockSelection(object sender)
 		{
-			if (sender is FrameworkElement element && element.DataContext is CodeBlockItem block)
+			// Usado quando o foco vem de dentro do editor de texto
+			// Tenta subir a árvore visual para achar o DataContext da linha
+			if (sender is FrameworkElement element)
 			{
-				if (ViewModel.SelectedBlock != block)
+				// Sobe até achar o DataContext correto (SegmentRowViewModel) ou o CodeBlockItem direto (se estivesse bindado direto)
+				// No nosso caso atual, o SegmentCodeViewer está dentro de um Grid com DataContext=SegmentRowViewModel
+
+				// Hack seguro: Se o DataContext do sender for CodeBlockItem (as vezes acontece dependendo do binding)
+				if (element.DataContext is CodeBlockItem block)
 				{
-					ViewModel.SelectedBlock = block;
-					UpdateSelectionIndicator();
+					if (ViewModel.SelectedBlock != block)
+					{
+						ViewModel.SelectedBlock = block;
+						UpdateSelectionIndicator();
+					}
+					return;
+				}
+
+				// Se não, tentamos achar a Row
+				if (element.DataContext is SegmentRowViewModel row)
+				{
+					if (ViewModel.SelectedBlock != row.Current)
+					{
+						ViewModel.SelectedBlock = row.Current;
+						UpdateSelectionIndicator();
+					}
 				}
 			}
 		}
@@ -58,17 +81,18 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private void UpdateSelectionIndicator()
 		{
+			// 1. Apaga o indicador do antigo
 			if (_lastSelectedBlock != null)
 			{
 				var container = FindContainerForBlock(_lastSelectedBlock);
 				if (container != null)
 				{
-					// Nota: O nome deve ser "SelectionIndicator", igual está no XAML
 					var indicator = container.FindName("SelectionIndicator") as Microsoft.UI.Xaml.Shapes.Rectangle;
 					if (indicator != null) indicator.Visibility = Visibility.Collapsed;
 				}
 			}
 
+			// 2. Acende o indicador do novo
 			if (ViewModel.SelectedBlock != null)
 			{
 				var container = FindContainerForBlock(ViewModel.SelectedBlock);
@@ -83,43 +107,46 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
 		{
+			// Procura dentro do MainScrollViewer (que contém o ItemsControl unificado)
 			return FindContainerRecursive(MainScrollViewer, block);
 		}
 
-		private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem block)
+		private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem targetBlock)
 		{
 			if (parent == null) return null;
-			int childrenCount = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+			int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
 
 			for (int i = 0; i < childrenCount; i++)
 			{
-				var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+				var child = VisualTreeHelper.GetChild(parent, i);
 
-				if (child is FrameworkElement element && element.DataContext == block)
+				// LÓGICA ATUALIZADA:
+				// Verificamos se o elemento visual tem um DataContext do tipo Row
+				// E se essa Row contém o Block que estamos procurando.
+				if (child is FrameworkElement element && element.DataContext is SegmentRowViewModel row)
 				{
-					// Procuramos o Grid que contém os elementos visuais
-					if (element is Grid) return element;
+					if (row.Current == targetBlock)
+					{
+						// Achamos o container da linha!
+						// Verificamos se é o Grid principal do template (que contém o SelectionIndicator)
+						if (element is Grid && element.FindName("SelectionIndicator") != null)
+						{
+							return element;
+						}
+					}
 				}
 
-				var result = FindContainerRecursive(child, block);
+				var result = FindContainerRecursive(child, targetBlock);
 				if (result != null) return result;
 			}
 			return null;
 		}
 
-		private void OnScrollViewerViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
-		{
-			// Sincronia simples: Esquerda -> Direita
-			if (sender == LeftScrollViewer)
-			{
-				MainScrollViewer.ChangeView(null, LeftScrollViewer.VerticalOffset, null, true);
-			}
-		}
-
-		// --- HANDLERS DO FOOTER (Estes faltavam e causavam o erro CS1061) ---
+		// --- HANDLERS DO FOOTER ---
 
 		private void OnSaveNewVersionRequested(object sender, EventArgs e)
 		{
+			// Clique principal do SplitButton ou Menu Item
 			if (ViewModel.SaveChangesCommand.CanExecute("NewVersion"))
 			{
 				ViewModel.SaveChangesCommand.Execute("NewVersion");
@@ -139,12 +166,11 @@ namespace ContextWinUI.Features.GraphParser.Views
 			ViewModel.TriggerGlobalRestore(0);
 		}
 
-		// Evento antigo do CodeViewer (CTRL+S no editor)
+		// --- Atalhos de Teclado (CTRL+S dentro do editor) ---
 		private void OnSegmentSaveRequested(object sender, EventArgs e)
 		{
 			if (ViewModel.HasAnyUnsavedChanges)
 			{
-				// Atalho rápido -> Sobrescrever
 				if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
 				{
 					ViewModel.SaveChangesCommand.Execute("Overwrite");

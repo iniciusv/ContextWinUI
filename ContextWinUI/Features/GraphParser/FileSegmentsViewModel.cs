@@ -7,13 +7,16 @@ using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Services;
 using Microsoft.UI.Xaml; // Necessário para GridLength
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
+
+// Certifique-se de que a classe SegmentRowViewModel existe no mesmo namespace
+// ou está acessível (definida no passo anterior).
 
 public partial class FileSegmentsViewModel : ObservableObject
 {
@@ -24,19 +27,16 @@ public partial class FileSegmentsViewModel : ObservableObject
 	public string FilePath { get; }
 	public string FileName { get; }
 
-	// --- Coleções ---
 
-	// Lista principal (editável - Lado Direito)
 	[ObservableProperty]
-	private ObservableCollection<CodeBlockItem> blocks = new();
+	private ObservableCollection<SegmentRowViewModel> rows = new();
 
-	// Histórico global do arquivo
+	// Propriedade auxiliar para manter compatibilidade com linq queries que buscam apenas os blocos atuais
+	public IEnumerable<CodeBlockItem> Blocks => Rows.Select(r => r.Current);
+
+	// --- Histórico Global ---
 	[ObservableProperty]
 	private ObservableCollection<GlobalVersion> globalHistory;
-
-	// Lista de referência (somente leitura - Lado Esquerdo)
-	[ObservableProperty]
-	private ObservableCollection<CodeBlockItem> referenceBlocks = new();
 
 	// --- Estado de Seleção e UI ---
 	[ObservableProperty]
@@ -60,20 +60,19 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private bool hideUnchangedBlocks;
 
-	// Qual versão global estamos mostrando no lado esquerdo?
 	[ObservableProperty]
 	private int compareLeftIndex = 0;
 
-	// Qual versão global estamos visualizando/editando no lado direito?
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
 
 	// --- Propriedades Calculadas ---
 	public bool HasSelectedBlock => SelectedBlock != null;
-	public bool HasAnyUnsavedChanges => Blocks.Any(b => b.HasUnsavedChanges);
+
+	// Varre as linhas para saber se algum bloco atual tem mudanças
+	public bool HasAnyUnsavedChanges => Rows.Any(r => r.Current.HasUnsavedChanges);
 
 	// Controla a largura da coluna esquerda (1* se ativo, 0 se inativo)
-	// Permite que a View oculte a coluna sem usar conversores complexos
 	public GridLength LeftColumnWidth => IsComparisonMode ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
 
 	// --- Eventos ---
@@ -102,7 +101,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	private async Task LoadBlocksAsync()
 	{
 		IsLoading = true;
-		Blocks.Clear();
+		Rows.Clear();
 		SelectedBlock = null;
 
 		try
@@ -112,14 +111,15 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 			var parsedItems = await _parserService.ParseFileAsync(FilePath, fileContent);
 
+			// Popula a lista de LINHAS
 			foreach (var item in parsedItems)
 			{
-				Blocks.Add(item);
+				Rows.Add(new SegmentRowViewModel(item));
 			}
 
-			if (Blocks.Any())
+			if (Rows.Any())
 			{
-				SelectedBlock = Blocks.First();
+				SelectedBlock = Rows.First().Current;
 			}
 
 			// Restaura para o estado global atual solicitado na abertura
@@ -127,18 +127,20 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 		catch (Exception ex)
 		{
-			Blocks.Add(new CodeBlockItem
+			// Fallback em caso de erro crítico no parse
+			var errorBlock = new CodeBlockItem
 			{
 				Name = "Erro de Leitura",
 				Content = ex.Message,
 				SegmentType = SegmentType.Trivia,
 				TypeDescription = "ERROR"
-			});
+			};
+			Rows.Add(new SegmentRowViewModel(errorBlock));
 		}
 		finally
 		{
 			IsLoading = false;
-			IsEmpty = Blocks.Count == 0;
+			IsEmpty = Rows.Count == 0;
 		}
 	}
 
@@ -148,15 +150,19 @@ public partial class FileSegmentsViewModel : ObservableObject
 	{
 		if (value)
 		{
-			// Carrega os dados da esquerda
-			LoadReferenceBlocks(CompareLeftIndex);
-			// Aplica filtro de visibilidade (caso HideUnchangedBlocks esteja true)
-			UpdateBlocksVisibility();
+			// 1. Preenche a propriedade .Reference de cada linha
+			RefreshReferenceColumns(CompareLeftIndex);
+			// 2. Aplica filtro de visibilidade (esconde o que for igual se a flag estiver ativa)
+			UpdateRowsVisibility();
 		}
 		else
 		{
-			// Ao sair do modo comparação, garante que todos os blocos do editor estejam visíveis
-			foreach (var block in Blocks) block.IsVisibleInDiff = true;
+			// Saiu do modo comparação: Mostra tudo e limpa referências para economizar memória (opcional)
+			foreach (var row in Rows)
+			{
+				row.IsVisible = true;
+				// Opcional: row.Reference = null; 
+			}
 		}
 	}
 
@@ -164,95 +170,98 @@ public partial class FileSegmentsViewModel : ObservableObject
 	{
 		if (IsComparisonMode)
 		{
-			LoadReferenceBlocks(value);
+			RefreshReferenceColumns(value);
+			// Recalcula visibilidade pois a referência mudou, então o status de "igual" pode ter mudado
+			if (HideUnchangedBlocks) UpdateRowsVisibility();
 		}
 	}
 
 	partial void OnHideUnchangedBlocksChanged(bool value)
 	{
-		UpdateBlocksVisibility();
+		UpdateRowsVisibility();
 	}
 
-	private void UpdateBlocksVisibility()
+	private void UpdateRowsVisibility()
 	{
-		foreach (var block in Blocks)
+		foreach (var row in Rows)
 		{
 			if (!HideUnchangedBlocks)
 			{
-				block.IsVisibleInDiff = true;
+				row.IsVisible = true;
 			}
 			else
 			{
-				// Mostra se tem mudanças não salvas OU se é um bloco novo (apenas 1 versão)
-				block.IsVisibleInDiff = block.HasUnsavedChanges || block.Versions.Count <= 1;
-			}
-		}
+				// Mostra se:
+				// 1. Tem mudanças não salvas (Edição em andamento)
+				// 2. É um bloco novo (Versions <= 1)
+				// 3. (Opcional) Se o conteúdo da referência é diferente do atual
 
-		// --- ADIÇÃO: Se estiver no modo comparação, recarrega a esquerda para refletir a visibilidade ---
-		if (IsComparisonMode)
-		{
-			LoadReferenceBlocks(CompareLeftIndex);
+				var block = row.Current;
+				bool isModified = block.HasUnsavedChanges || block.Versions.Count <= 1;
+
+				// Opcional: Checagem de conteúdo exato
+				if (!isModified && row.Reference != null)
+				{
+					isModified = block.Content != row.Reference.Content;
+				}
+
+				row.IsVisible = isModified;
+			}
 		}
 	}
 
-	private void LoadReferenceBlocks(int globalVersionIndex)
+	private void RefreshReferenceColumns(int globalVersionIndex)
 	{
-		ReferenceBlocks.Clear();
-
 		var targetGlobalVersion = GlobalHistory.ElementAtOrDefault(globalVersionIndex);
 		if (targetGlobalVersion == null) return;
 
 		DateTime cutoffTime = targetGlobalVersion.IsOriginal ? DateTime.MinValue : targetGlobalVersion.Timestamp;
 		if (cutoffTime > DateTime.MinValue) cutoffTime = cutoffTime.AddMilliseconds(100);
 
-		foreach (var currentBlock in Blocks)
+		foreach (var row in Rows)
 		{
-			// --- ADIÇÃO: Filtra o que não deve aparecer ---
-			// 1. Se não for granular (ex: using, namespace), geralmente não queremos na comparação visual lado a lado
-			if (!currentBlock.IsGranular) continue;
+			var currentBlock = row.Current;
 
-			// 2. Se o bloco está oculto na direita (pelo filtro "Hide Unchanged"), não mostre na esquerda
-			if (!currentBlock.IsVisibleInDiff) continue;
-			// ------------------------------------------------
-
+			// Busca a versão deste bloco que existia na data solicitada
 			var pastVersion = currentBlock.Versions.LastOrDefault(v =>
 				v.IsOriginal || v.Timestamp <= cutoffTime);
 
 			if (pastVersion != null)
 			{
+				// Cria um clone para exibição na esquerda
 				var refBlock = currentBlock.Clone();
 				refBlock.Content = pastVersion.Content;
+				// Trava o histórico do clone
+				refBlock.InitializeVersions(pastVersion.Content);
 
-				// Ajuste cosmético para diferenciar visualmente se necessário
 				refBlock.TypeDescription = "REF";
-				if (pastVersion.IsOriginal) refBlock.TypeDescription += " (Orig)";
+				if (pastVersion.IsOriginal) refBlock.Name += " (Orig)";
 
-				ReferenceBlocks.Add(refBlock);
+				// Atualiza a ViewModel da linha
+				row.Reference = refBlock;
 			}
 			else
 			{
-				// Opcional: Se o bloco não existia nesta versão antiga, você pode:
-				// A) Não mostrar nada (o bloco alinhará incorretamente se não tiver placeholders)
-				// B) Mostrar um bloco "Vazio" ou "Inexistente" para manter o alinhamento vertical
-
-				// Por enquanto, vamos manter sem adicionar nada (comportamento padrão de diffs compactos)
+				// O bloco não existia nesta versão histórica (é um bloco novo)
+				// Reference = null fará a coluna esquerda ficar vazia/oculta visualmente
+				row.Reference = null;
 			}
 		}
 	}
 
 	// --- Manipulação de Blocos (Add/Delete/Edit) ---
 
-	// Em ContextWinUI.Features.GraphParser.ViewModels.FileSegmentsViewModel.cs
-
 	[RelayCommand]
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)
 	{
 		if (referenceBlock == null) return;
 
-		int index = Blocks.IndexOf(referenceBlock);
-		if (index == -1) return;
+		// Localiza a linha que contém o bloco de referência
+		var parentRow = Rows.FirstOrDefault(r => r.Current == referenceBlock);
+		if (parentRow == null) return;
 
-		// Cria template baseado na indentação do irmão
+		int index = Rows.IndexOf(parentRow);
+
 		string indentation = new string('\t', referenceBlock.DepthLevel);
 		string defaultContent = $"\n{indentation}// Novo Segmento\n{indentation}public void NovaFuncionalidade()\n{indentation}{{\n{indentation}\t\n{indentation}}}";
 
@@ -267,25 +276,24 @@ public partial class FileSegmentsViewModel : ObservableObject
 			TypeDescription = "NOVO MÉTODO"
 		};
 
-		// --- CORREÇÃO AQUI ---
-
-		// 1. Inicializa o histórico (Original) como VAZIO.
-		// Isso garante que a "Referência" (Lado esquerdo) seja vazia.
+		// Inicializa histórico VAZIO para que apareça como "Adição" no diff
 		newBlock.InitializeVersions(string.Empty);
-
+		// Define conteúdo, marcando como UnsavedChanges
 		newBlock.Content = defaultContent;
 
-		// ---------------------
+		// Cria a nova LINHA
+		var newRow = new SegmentRowViewModel(newBlock);
+
+		// Em modo comparação, garantimos que a referência é null
+		if (IsComparisonMode) newRow.Reference = null;
 
 		// Insere na coleção
-		Blocks.Insert(index + 1, newBlock);
+		Rows.Insert(index + 1, newRow);
 
-		// Foca no novo bloco
 		SelectedBlock = newBlock;
 		NotifyUnsavedChanges();
 
-		// Se estiver filtrando, garante que o novo bloco apareça
-		if (IsComparisonMode) UpdateBlocksVisibility();
+		if (IsComparisonMode) UpdateRowsVisibility();
 	}
 
 	[RelayCommand]
@@ -293,18 +301,19 @@ public partial class FileSegmentsViewModel : ObservableObject
 	{
 		if (block == null) return;
 
-		if (Blocks.Contains(block))
+		var row = Rows.FirstOrDefault(r => r.Current == block);
+		if (row != null)
 		{
-			// Tenta manter a seleção em um vizinho
+			// Tenta selecionar vizinho antes de deletar
+			int idx = Rows.IndexOf(row);
 			if (SelectedBlock == block)
 			{
-				var index = Blocks.IndexOf(block);
-				if (index > 0) SelectedBlock = Blocks[index - 1];
-				else if (Blocks.Count > 1) SelectedBlock = Blocks[index + 1];
+				if (idx > 0) SelectedBlock = Rows[idx - 1].Current;
+				else if (Rows.Count > 1) SelectedBlock = Rows[idx + 1].Current;
 				else SelectedBlock = null;
 			}
 
-			Blocks.Remove(block);
+			Rows.Remove(row);
 			NotifyUnsavedChanges();
 		}
 	}
@@ -316,7 +325,8 @@ public partial class FileSegmentsViewModel : ObservableObject
 		{
 			NotifyUnsavedChanges();
 			NotifyChangesChanged();
-			if (IsComparisonMode) UpdateBlocksVisibility();
+			// Se reverteu, pode ter ficado igual à referência, então atualiza visibilidade
+			if (IsComparisonMode) UpdateRowsVisibility();
 		}
 	}
 
@@ -325,18 +335,26 @@ public partial class FileSegmentsViewModel : ObservableObject
 	{
 		if (currentBlock == null) return;
 
-		// Transforma uma edição em um novo bloco (quebra o link de histórico com o bloco anterior)
+		// Quebra o link de histórico
 		currentBlock.Id = Guid.NewGuid().ToString();
-
-		// Reseta histórico: o conteúdo atual passa a ser o "Original" deste novo bloco
+		// O conteúdo atual vira o novo "Original"
 		currentBlock.InitializeVersions(currentBlock.Content);
 
 		currentBlock.TypeDescription += " (Novo)";
 		currentBlock.Name += " *";
 
+		// Se está em modo comparação, a referência (que era do bloco antigo) não faz mais sentido
+		// para este novo bloco. A referência deve virar null (ou o conteúdo atual, dependendo da semântica desejada)
+		var row = Rows.FirstOrDefault(r => r.Current == currentBlock);
+		if (row != null)
+		{
+			// Opção A: Zera a referência (trata como bloco 100% novo)
+			row.Reference = null;
+		}
+
 		NotifyUnsavedChanges();
 		NotifyChangesChanged();
-		if (IsComparisonMode) UpdateBlocksVisibility();
+		if (IsComparisonMode) UpdateRowsVisibility();
 	}
 
 	// --- Gerenciamento de Versão Global ---
@@ -347,8 +365,9 @@ public partial class FileSegmentsViewModel : ObservableObject
 	// Chamado pelo Orchestrator/Pai quando faz um Commit global
 	public void SnapshotBlocksForGlobalVersion(string description, DateTime batchTimestamp)
 	{
-		foreach (var block in Blocks)
+		foreach (var row in Rows)
 		{
+			var block = row.Current;
 			if (block.HasUnsavedChanges)
 			{
 				block.CreateNewVersion(block.Content, description, batchTimestamp);
@@ -370,8 +389,10 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		var safeCutoff = cutoffTime == DateTime.MinValue ? DateTime.MinValue : cutoffTime.AddMilliseconds(100);
 
-		foreach (var block in Blocks)
+		foreach (var row in Rows)
 		{
+			var block = row.Current;
+
 			var bestVersion = block.Versions.LastOrDefault(v =>
 				v.IsOriginal ||
 				v.Timestamp <= safeCutoff);
@@ -383,15 +404,14 @@ public partial class FileSegmentsViewModel : ObservableObject
 			}
 			else
 			{
-				// Se não achou versão compatível, restaura a original (0)
 				block.RestoreVersion(0);
 			}
 		}
 
 		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 
-		// Se estivermos comparando, atualiza a referência da esquerda para garantir consistência
-		if (IsComparisonMode) LoadReferenceBlocks(CompareLeftIndex);
+		// Se estivermos comparando, atualiza também a coluna de referência
+		if (IsComparisonMode) RefreshReferenceColumns(CompareLeftIndex);
 	}
 
 	public void SyncGlobalIndex(int index)
@@ -407,29 +427,25 @@ public partial class FileSegmentsViewModel : ObservableObject
 		GlobalRestoreRequested?.Invoke(this, value);
 	}
 
-	// Método chamado pelo botão de Save no Footer
-	// 'mode' vem do CommandParameter: "NewVersion" ou "Overwrite"
 	[RelayCommand]
 	public void SaveChanges(string mode)
 	{
 		if (mode == "NewVersion")
 		{
-			// Fluxo normal: Cria nova entrada no histórico global
 			CommitGlobalVersion("Versão Manual");
 		}
 		else if (mode == "Overwrite")
 		{
-			// Fluxo Destrutivo: Atualiza a versão ATUAL dos blocos modificados
-			foreach (var block in Blocks)
+			foreach (var row in Rows)
 			{
+				var block = row.Current;
 				if (block.HasUnsavedChanges && block.Versions.Any())
 				{
 					var currentVer = block.Versions[block.CurrentVersionIndex];
 					currentVer.Content = block.Content;
-					currentVer.Timestamp = DateTime.Now; // Atualiza timestamp
+					currentVer.Timestamp = DateTime.Now;
 
-					// Força a UI a reconhecer que não há mais "mudanças não salvas" (pois acabamos de salvar na versão atual)
-					// Truque: Recarrega a própria versão para limpar flags
+					// Recarrega para limpar flags
 					block.RestoreVersion(block.CurrentVersionIndex);
 				}
 			}
@@ -445,7 +461,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
 	public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
 
-	// --- Lógica de Símbolos (Inalterada) ---
+	// --- Lógica de Símbolos ---
 
 	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
 	{

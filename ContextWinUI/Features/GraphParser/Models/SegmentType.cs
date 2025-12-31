@@ -3,8 +3,10 @@ namespace ContextWinUI.Features.GraphParser.Models;
 
 public enum SegmentType
 {
+	Namespace,
+	Using,
+	Class,
 	FileHeader,     // Usings, Comentários de topo
-	NamespaceDecl,  // Declaração de namespace (ex: "namespace Foo {")
 	ClassHeader,    // Assinatura da classe e chave de abertura
 	Method,         // Um método completo (pode ser atômico ou quebrado se quiser profundidade)
 	Property,       // Uma propriedade completa
@@ -12,6 +14,9 @@ public enum SegmentType
 	Trivia,         // Espaços em branco, quebras de linha entre membros
 	CloseBrace,     // Fechamento de escopo '}'
 	Gap,             // Qualquer código não identificado especificamente
-		Enum,
-	Constructor
+	Enum,
+	Constructor,
+	Comment
 }
+
+// Enums de apoio (caso não tenha definido em outro lugar)

@@ -1,6 +1,7 @@
 // ARQUIVO: CodeBlockItem.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Models;
+using Microsoft.UI;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.ObjectModel;
@@ -8,232 +9,190 @@ using System.Linq;
 
 namespace ContextWinUI.Features.GraphParser.Models;
 
+
+// 3. A Classe Principal do Bloco
 public partial class CodeBlockItem : ObservableObject
 {
-	public string Id { get; set; } = string.Empty;
+	// --- Identidade ---
+	public string Id { get; set; } = Guid.NewGuid().ToString();
 
 	[ObservableProperty]
 	private string name = string.Empty;
 
+	// --- Tipagem ---
+	// Define O QUE é semanticamente (para Ícones e Cores)
+	public SymbolType SymbolType { get; set; }
+
+	// Define COMO o parser dividiu (para comportamento de edição)
+	public SegmentType SegmentType { get; set; }
+
+
+	public int AbsoluteStartPosition { get; set; }
+	public int StartLine { get; set; }
+
 	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(HasUnsavedChanges))]
 	private string content = string.Empty;
+
+	public int DepthLevel { get; set; } = 0;
+	public string FileExtension { get; set; } = ".cs";
 
 	[ObservableProperty]
 	private string typeDescription = string.Empty;
 
+	// --- Controle de Diff Visual ---
+	// Usado pelo ViewModel para filtrar o que aparece na lista
 	[ObservableProperty]
-	private string icon = string.Empty;
+	private bool isVisibleInDiff = true;
 
-	[ObservableProperty]
-	private int startLine;
+	// --- Histórico de Versões ---
+	public ObservableCollection<CodeBlockVersion> Versions { get; private set; } = new();
 
-	[ObservableProperty]
-	private int endLine;
+	// Índice da versão atualmente carregada (geralmente a última)
+	public int CurrentVersionIndex { get; private set; } = -1;
 
-	[ObservableProperty]
-	private ObservableCollection<CodeBlockVersion> versions = new();
+	// --- Propriedades Calculadas ---
 
-	[ObservableProperty]
-	private int currentVersionIndex = 0;
-
-	[ObservableProperty]
-	private bool hasUnsavedChanges;
-	public bool IsVisibleInDiff { get; set; } = true;
-
-	private string _originalContent = string.Empty;
-
-
-	public SymbolType SymbolType { get; set; }
-
-	public string FileExtension { get; set; } = ".cs";
-
-	public int AbsoluteStartPosition { get; set; }
-
-	// Propriedade para colorir o cabeçalho do bloco baseado no tipo
-	public SolidColorBrush HeaderBrush => SymbolType switch
-	{
-		SymbolType.Method => new SolidColorBrush(Microsoft.UI.Colors.Goldenrod),
-		SymbolType.Class => new SolidColorBrush(Microsoft.UI.Colors.Teal),
-		SymbolType.Interface => new SolidColorBrush(Microsoft.UI.Colors.DarkSeaGreen),
-		SymbolType.Property => new SolidColorBrush(Microsoft.UI.Colors.SlateGray),
-		_ => new SolidColorBrush(Microsoft.UI.Colors.Gray)
-	};
-
-	public SegmentType SegmentType { get; set; }
-
-	// Nível de profundidade (0 = raiz, 1 = dentro do namespace, 2 = dentro da classe)
-	// Útil para desenhar margem na UI
-	public int DepthLevel { get; set; }
-
-	// Helper para saber se é um bloco de "código real" ou apenas estrutura/espaço
-	public bool IsStructural => SegmentType == SegmentType.ClassHeader ||
-								SegmentType == SegmentType.NamespaceDecl ||
-								SegmentType == SegmentType.CloseBrace ||
-								SegmentType == SegmentType.Trivia;
-
+	// Define se o bloco é "interessante" o suficiente para ser editado isoladamente.
+	// Blocos estruturais (usings, namespace) ou trivia geralmente não são.
 	public bool IsGranular => SegmentType == SegmentType.Method ||
 							  SegmentType == SegmentType.Property ||
-							  SegmentType == SegmentType.Field ||
-							  SegmentType == SegmentType.Constructor ||
-							  SegmentType == SegmentType.Enum;
+							  SegmentType == SegmentType.Class ||
+							  SegmentType == SegmentType.Comment;
 
-	public CodeBlockItem Clone()
+	public bool HasUnsavedChanges
 	{
-		return new CodeBlockItem
+		get
 		{
-			Id = Guid.NewGuid().ToString(), // Novo ID para evitar conflitos de UI
-			Name = this.Name,
-			Content = this.Content, // O conteúdo é string (imutável), então ok
-			TypeDescription = this.TypeDescription,
-			Icon = this.Icon,
-			StartLine = this.StartLine,
-			EndLine = this.EndLine,
-			SymbolType = this.SymbolType,
-			FileExtension = this.FileExtension,
-			SegmentType = this.SegmentType,
-			DepthLevel = this.DepthLevel
-		};
+			if (Versions.Count == 0) return !string.IsNullOrEmpty(Content);
+
+			// Compara o conteúdo atual com a última versão salva
+			// (Assumindo que a última da lista é o estado "salvo" mais recente)
+			var lastSaved = Versions.Last();
+			return Content != lastSaved.Content;
+		}
 	}
 
+	// --- Lógica Visual (Ícones e Cores baseados no SymbolType) ---
+
+	// Fonte: Segoe MDL2 Assets
+	public string Icon => SymbolType switch
+	{
+		SymbolType.Class => "\uEA86",       // Class Icon
+		SymbolType.Interface => "\uE943",   // Interface/Abstract
+		SymbolType.Method => "\uEA37",      // Cube/Method
+		SymbolType.Property => "\uEA39",    // Wrench/Property
+		SymbolType.Field => "\uEA38",       // Field
+		SymbolType.Constructor => "\uEA8C", // Constructor
+		SymbolType.Struct => "\uEA86",      // Struct (usando Class)
+		SymbolType.Enum => "\uE8FD",        // List
+
+		// Granulares
+		SymbolType.ControlFlow => "\uE8A1", // Shuffle/Flow
+		SymbolType.LocalVariable => "\uE71D", // Variable
+		SymbolType.StringLiteral => "\uE8C8", // Font
+
+		_ => "\uE82D" // Code/Script Genérico
+	};
+
+	public SolidColorBrush HeaderBrush => SymbolType switch
+	{
+		SymbolType.Class => new SolidColorBrush(Colors.Orange),
+		SymbolType.Interface => new SolidColorBrush(Colors.LightGreen),
+		SymbolType.Method => new SolidColorBrush(Colors.MediumPurple),
+		SymbolType.Property => new SolidColorBrush(Colors.CornflowerBlue),
+		SymbolType.Constructor => new SolidColorBrush(Colors.Gold),
+		SymbolType.Field => new SolidColorBrush(Colors.CadetBlue),
+		SymbolType.ControlFlow => new SolidColorBrush(Colors.LightGray),
+		_ => new SolidColorBrush(Colors.Gray)
+	};
+
+	// --- Métodos de Gerenciamento de Versão ---
 
 	public void InitializeVersions(string initialContent)
 	{
-		_originalContent = initialContent;
-
-		// 1. Limpa qualquer lixo anterior
 		Versions.Clear();
-
-		// 2. Cria a Versão 0 (Original/Baseline)
 		Versions.Add(new CodeBlockVersion
 		{
-			Id = Guid.NewGuid().ToString(),
 			Content = initialContent,
-			Description = "Versão Original", // Texto padrão para identificar o inicio
-			Timestamp = DateTime.MinValue,
-			IsOriginal = true // <--- ISSO É CRUCIAL
+			Description = "Original",
+			IsOriginal = true,
+			Timestamp = DateTime.MinValue // Marca como início absoluto
 		});
 
-		// 3. Define o ponteiro para a versão 0
+		// Não define o Content aqui propositalmente se você quiser 
+		// criar um bloco "Novo" que já nasce modificado.
 		CurrentVersionIndex = 0;
-
-		// 4. Garante que o sistema saiba que não há pendências
-		HasUnsavedChanges = false;
-
-		// Notifica a UI para atualizar ícones (deve ficar verde/original)
-		OnPropertyChanged(nameof(CurrentVersionDescription));
-		OnPropertyChanged(nameof(IsCurrentVersionOriginal));
 	}
 
-	public void CreateNewVersion(string newContent, string description = "Modificado", DateTime? customTimestamp = null)
+	public void CreateNewVersion(string newContent, string description, DateTime timestamp)
 	{
-		var newVersion = new CodeBlockVersion
+		Versions.Add(new CodeBlockVersion
 		{
 			Content = newContent,
 			Description = description,
-			// Usa o timestamp do lote (global) ou o atual se for um save manual
-			Timestamp = customTimestamp ?? DateTime.Now,
-			IsOriginal = false
-		};
+			IsOriginal = false,
+			Timestamp = timestamp
+		});
 
-		Versions.Add(newVersion);
+		// Atualiza o ponteiro
 		CurrentVersionIndex = Versions.Count - 1;
-		HasUnsavedChanges = false;
-		OnPropertyChanged(nameof(CurrentVersionDescription));
+
+		// Sincroniza o conteúdo atual para bater com a nova versão
+		Content = newContent;
+
+		// Notifica a UI que o estado "Unsaved" mudou (agora está salvo)
+		OnPropertyChanged(nameof(HasUnsavedChanges));
 	}
 
-	public bool RestoreVersion(int versionIndex)
+	public void RestoreVersion(int index)
 	{
-		if (versionIndex >= 0 && versionIndex < Versions.Count)
+		if (index >= 0 && index < Versions.Count)
 		{
-			var version = Versions[versionIndex];
-			Content = version.Content;
-			CurrentVersionIndex = versionIndex;
-			HasUnsavedChanges = versionIndex != 0; // Não é original se não for índice 0
-
-			OnPropertyChanged(nameof(CurrentVersionDescription));
-			return true;
-		}
-		return false;
-	}
-
-	partial void OnContentChanged(string value)
-	{
-		// Verifica se temos versões para comparar
-		if (Versions != null && Versions.Any() && CurrentVersionIndex >= 0 && CurrentVersionIndex < Versions.Count)
-		{
-			var savedContent = Versions[CurrentVersionIndex].Content;
-
-			string currentNormalized = NormalizeLineEndings(value ?? string.Empty);
-			string savedNormalized = NormalizeLineEndings(savedContent ?? string.Empty);
-
-			HasUnsavedChanges = !string.Equals(currentNormalized, savedNormalized, StringComparison.Ordinal);
-
+			Content = Versions[index].Content;
+			CurrentVersionIndex = index;
 			OnPropertyChanged(nameof(HasUnsavedChanges));
 		}
 	}
 
-	private string NormalizeLineEndings(string input)
-	{
-		return input.Replace("\r\n", "\n").Replace("\r", "\n");
-	}
-
 	public bool RestoreOriginal()
 	{
-		var originalVersion = Versions.FirstOrDefault(v => v.IsOriginal);
-		if (originalVersion != null)
+		var original = Versions.FirstOrDefault(v => v.IsOriginal);
+		if (original != null)
 		{
-			Content = originalVersion.Content;
-			CurrentVersionIndex = Versions.IndexOf(originalVersion);
-			HasUnsavedChanges = false;
-
-			OnPropertyChanged(nameof(CurrentVersionDescription));
+			Content = original.Content;
+			// Não mudamos o CurrentVersionIndex para 0 necessariamente,
+			// pois queremos indicar que o TEXTO voltou ao original,
+			// mas o usuário ainda não "Salvou" essa reversão como uma nova versão.
+			// Mas visualmente, HasUnsavedChanges ficará false se bater com a última.
+			OnPropertyChanged(nameof(HasUnsavedChanges));
 			return true;
 		}
 		return false;
 	}
 
-	public string CurrentVersionDescription
+	// --- Clone (Essencial para a Coluna de Referência) ---
+	public CodeBlockItem Clone()
 	{
-		get
+		var newItem = new CodeBlockItem
 		{
-			if (CurrentVersionIndex >= 0 && CurrentVersionIndex < Versions.Count)
-			{
-				var version = Versions[CurrentVersionIndex];
-				return $"{version.Description} ({version.Timestamp:HH:mm:ss})";
-			}
-			return "Sem versões";
-		}
-	}
+			Id = this.Id,
+			Name = this.Name,
+			SymbolType = this.SymbolType,
+			SegmentType = this.SegmentType,
+			Content = this.Content,
+			DepthLevel = this.DepthLevel,
+			FileExtension = this.FileExtension,
+			TypeDescription = this.TypeDescription,
+			// Importante: Não clonamos a referência da coleção, criamos uma nova
+			// para que a UI de referência não afete a de edição se algo bizarro acontecer.
+		};
 
-	public bool IsCurrentVersionOriginal =>	CurrentVersionIndex == 0 && Versions.Any() && Versions[0].IsOriginal;
-
-	public string GetContentAtTimestamp(DateTime timestamp)
-	{
-		if (timestamp == DateTime.MinValue)
+		foreach (var v in this.Versions)
 		{
-			var original = Versions.FirstOrDefault(v => v.IsOriginal);
-			return original?.Content ?? string.Empty;
+			newItem.Versions.Add(v.Clone());
 		}
 
-		var cutoff = timestamp.AddMilliseconds(100);
-
-		var version = Versions.LastOrDefault(v => v.IsOriginal || v.Timestamp <= cutoff);
-
-		// Se não encontrou nenhuma versão anterior a essa data, assume que o bloco não existia ou retorna vazio
-		return version?.Content ?? string.Empty;
-	}
-
-	public void CalculateDiffVisibility(bool hideUnchanged)
-	{
-		if (!hideUnchanged)
-		{
-			IsVisibleInDiff = true;
-		}
-		else
-		{
-			// Só mostra se tiver mudanças não salvas OU for um bloco novo (sem histórico profundo)
-			IsVisibleInDiff = HasUnsavedChanges || Versions.Count == 1;
-		}
-		OnPropertyChanged(nameof(IsVisibleInDiff));
+		return newItem;
 	}
 }
