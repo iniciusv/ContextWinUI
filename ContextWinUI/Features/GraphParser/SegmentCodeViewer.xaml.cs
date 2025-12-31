@@ -17,6 +17,12 @@ using Windows.System;
 namespace ContextWinUI.Features.GraphParser.Views.Components;
 public sealed partial class SegmentCodeViewer : UserControl
 {
+	public bool IsReadOnly
+	{
+		get => (bool)GetValue(IsReadOnlyProperty);
+		set => SetValue(IsReadOnlyProperty, value);
+	}
+	public static readonly DependencyProperty IsReadOnlyProperty =	DependencyProperty.Register(nameof(IsReadOnly), typeof(bool), typeof(SegmentCodeViewer), new PropertyMetadata(false, OnIsReadOnlyChanged));
 	private readonly HighlightingOrchestrator _orchestrator;
 
 	private SemanticHighlightService? _semanticService;
@@ -44,6 +50,18 @@ public sealed partial class SegmentCodeViewer : UserControl
 	{
 		get => (string)GetValue(FileExtensionProperty);
 		set => SetValue(FileExtensionProperty, value);
+	}
+
+	private static void OnIsReadOnlyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	{
+		if (d is SegmentCodeViewer ctrl)
+		{
+			ctrl.CodeEditor.IsReadOnly = (bool)e.NewValue;
+
+			 ctrl.CodeEditor.Background = (bool)e.NewValue
+				? new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(20, 0, 0, 0))
+				: new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+		}
 	}
 
 
@@ -196,13 +214,34 @@ public sealed partial class SegmentCodeViewer : UserControl
 		CodeEditor.Document.GetText(TextGetOptions.None, out string current);
 		string cleanCurrent = CleanRichText(current);
 
-		// Evita atualizar o RichEditBox se o texto for semanticamente idêntico
-		// (RichEditBox adiciona \r no final, o CleanRichText normaliza isso)
+		// Normaliza quebras de linha para comparação
 		if (cleanCurrent != newText.Replace("\r\n", "\n").Replace("\r", "\n"))
 		{
-			_isInternalUpdate = true;
-			CodeEditor.Document.SetText(TextSetOptions.None, newText);
-			_isInternalUpdate = false;
+			// 1. Verifica se estava travado
+			bool wasReadOnly = CodeEditor.IsReadOnly;
+
+			// 2. Se estiver travado, destrava temporariamente para permitir a edição via código
+			if (wasReadOnly)
+			{
+				CodeEditor.IsReadOnly = false;
+			}
+
+			try
+			{
+				_isInternalUpdate = true;
+				CodeEditor.Document.SetText(TextSetOptions.None, newText);
+			}
+			finally
+			{
+				_isInternalUpdate = false;
+
+				// 3. Restaura o estado original (trava novamente se necessário)
+				if (wasReadOnly)
+				{
+					CodeEditor.IsReadOnly = true;
+				}
+			}
+
 			TriggerHighlightUpdate();
 		}
 	}

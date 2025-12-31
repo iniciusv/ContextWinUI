@@ -29,34 +29,63 @@
 			</Grid.ColumnDefinitions>
 
 			<Border Grid.Column="0" 
-                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,1,0">
-				<ScrollViewer VerticalScrollBarVisibility="Auto">
-					<ItemsControl ItemsSource="{x:Bind ViewModel.ReferenceBlocks, Mode=OneWay}" Margin="0,0,12,0">
+        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+        BorderThickness="0,0,1,0">
+
+				<ScrollViewer VerticalScrollBarVisibility="Auto"
+                  ViewChanged="OnScrollViewerViewChanged" 
+                  x:Name="LeftScrollViewer">
+
+					<ItemsControl ItemsSource="{x:Bind ViewModel.ReferenceBlocks, Mode=OneWay}" Margin="0">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:CodeBlockItem">
-								<Grid Margin="4,0,4,8" Opacity="0.6">
-									<Grid.RowDefinitions>
-										<RowDefinition Height="Auto"/>
-										<RowDefinition Height="*"/>
-									</Grid.RowDefinitions>
+								<Grid>
+									<Grid BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
+                              BorderThickness="0,0,0,1" 
+                              Background="{ThemeResource LayerFillColorAltBrush}" 
+                              Opacity="0.8">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="85"/>
+											<ColumnDefinition Width="*"/>
+										</Grid.ColumnDefinitions>
 
-									<Border Background="{ThemeResource SystemControlBackgroundChromeMediumLowBrush}" 
-                                            Padding="6,2" CornerRadius="4">
-										<TextBlock Text="{x:Bind Name}" 
-                                                   FontSize="11" 
-                                                   FontWeight="Bold" 
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-									</Border>
+										<Grid Grid.Column="0" 
+                                  Padding="8,0" 
+                                  BorderThickness="0,0,1,0" 
+                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
 
-									<TextBlock Grid.Row="1" 
-                                               Text="{x:Bind Content}" 
-                                               FontFamily="Consolas, Courier New, Monospace" 
-                                               FontSize="10" 
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               TextWrapping="Wrap"
-                                               Margin="4,4,0,0"/>
+											<Rectangle HorizontalAlignment="Left" 
+                                           Width="3" 
+                                           VerticalAlignment="Stretch" 
+                                           Fill="{ThemeResource SystemControlForegroundBaseLowBrush}" 
+                                           Margin="-8,0,0,0"/>
+
+											<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Opacity="0.7">
+												<FontIcon Glyph="{x:Bind Icon}" 
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                              FontSize="10"/>
+
+												<TextBlock Text="{x:Bind TypeDescription}" 
+                                               FontSize="9" 
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
+                                               TextTrimming="CharacterEllipsis"/>
+											</StackPanel>
+										</Grid>
+
+										<Grid Grid.Column="1" Padding="0">
+
+											<localComp:SegmentCodeViewer 
+                                                Text="{x:Bind Content, Mode=OneWay}" 
+                                                FileExtension="{x:Bind FileExtension, Mode=OneWay}"
+                                                IsReadOnly="True"
+                                                VerticalAlignment="Stretch"
+                                                HorizontalAlignment="Stretch"
+                                                Margin="0"/>
+
+										</Grid>
+									</Grid>
 								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>

@@ -107,6 +107,15 @@ namespace ContextWinUI.Features.GraphParser.Views
 			return null;
 		}
 
+		private void OnScrollViewerViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+		{
+			// Sincronia simples: Esquerda -> Direita
+			if (sender == LeftScrollViewer)
+			{
+				MainScrollViewer.ChangeView(null, LeftScrollViewer.VerticalOffset, null, true);
+			}
+		}
+
 		// --- HANDLERS DO FOOTER (Estes faltavam e causavam o erro CS1061) ---
 
 		private void OnSaveNewVersionRequested(object sender, EventArgs e)

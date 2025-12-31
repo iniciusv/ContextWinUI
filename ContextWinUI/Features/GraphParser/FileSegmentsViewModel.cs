@@ -175,7 +175,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 	private void UpdateBlocksVisibility()
 	{
-		// Itera sobre todos os blocos para definir se devem aparecer na lista da direita
 		foreach (var block in Blocks)
 		{
 			if (!HideUnchangedBlocks)
@@ -184,9 +183,15 @@ public partial class FileSegmentsViewModel : ObservableObject
 			}
 			else
 			{
-				// Mostra se tem mudanças não salvas OU se é um bloco novo (apenas 1 versão no histórico)
+				// Mostra se tem mudanças não salvas OU se é um bloco novo (apenas 1 versão)
 				block.IsVisibleInDiff = block.HasUnsavedChanges || block.Versions.Count <= 1;
 			}
+		}
+
+		// --- ADIÇÃO: Se estiver no modo comparação, recarrega a esquerda para refletir a visibilidade ---
+		if (IsComparisonMode)
+		{
+			LoadReferenceBlocks(CompareLeftIndex);
 		}
 	}
 
@@ -197,34 +202,47 @@ public partial class FileSegmentsViewModel : ObservableObject
 		var targetGlobalVersion = GlobalHistory.ElementAtOrDefault(globalVersionIndex);
 		if (targetGlobalVersion == null) return;
 
-		// Define o tempo de corte para buscar a versão histórica
 		DateTime cutoffTime = targetGlobalVersion.IsOriginal ? DateTime.MinValue : targetGlobalVersion.Timestamp;
-		// Pequena margem de segurança
 		if (cutoffTime > DateTime.MinValue) cutoffTime = cutoffTime.AddMilliseconds(100);
 
 		foreach (var currentBlock in Blocks)
 		{
-			// Tenta encontrar a versão deste bloco que existia na época da versão global selecionada
+			// --- ADIÇÃO: Filtra o que não deve aparecer ---
+			// 1. Se não for granular (ex: using, namespace), geralmente não queremos na comparação visual lado a lado
+			if (!currentBlock.IsGranular) continue;
+
+			// 2. Se o bloco está oculto na direita (pelo filtro "Hide Unchanged"), não mostre na esquerda
+			if (!currentBlock.IsVisibleInDiff) continue;
+			// ------------------------------------------------
+
 			var pastVersion = currentBlock.Versions.LastOrDefault(v =>
 				v.IsOriginal || v.Timestamp <= cutoffTime);
 
 			if (pastVersion != null)
 			{
-				// Criamos um clone visual para exibir na esquerda (não editável)
 				var refBlock = currentBlock.Clone();
 				refBlock.Content = pastVersion.Content;
-				refBlock.TypeDescription = "REFERÊNCIA";
 
-				if (pastVersion.IsOriginal) refBlock.Name += " (Original)";
+				// Ajuste cosmético para diferenciar visualmente se necessário
+				refBlock.TypeDescription = "REF";
+				if (pastVersion.IsOriginal) refBlock.TypeDescription += " (Orig)";
 
 				ReferenceBlocks.Add(refBlock);
 			}
-			// Se pastVersion for null, significa que este bloco não existia naquela época.
-			// Ele simplesmente não aparecerá na lista da esquerda.
+			else
+			{
+				// Opcional: Se o bloco não existia nesta versão antiga, você pode:
+				// A) Não mostrar nada (o bloco alinhará incorretamente se não tiver placeholders)
+				// B) Mostrar um bloco "Vazio" ou "Inexistente" para manter o alinhamento vertical
+
+				// Por enquanto, vamos manter sem adicionar nada (comportamento padrão de diffs compactos)
+			}
 		}
 	}
 
 	// --- Manipulação de Blocos (Add/Delete/Edit) ---
+
+	// Em ContextWinUI.Features.GraphParser.ViewModels.FileSegmentsViewModel.cs
 
 	[RelayCommand]
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)
@@ -242,15 +260,22 @@ public partial class FileSegmentsViewModel : ObservableObject
 		{
 			Id = Guid.NewGuid().ToString(),
 			Name = "NovaFuncionalidade",
-			SegmentType = SegmentType.Method, // IsGranular será true automaticamente
+			SegmentType = SegmentType.Method,
 			SymbolType = SymbolType.Method,
 			DepthLevel = referenceBlock.DepthLevel,
 			FileExtension = referenceBlock.FileExtension,
 			TypeDescription = "NOVO MÉTODO"
 		};
 
-		// Inicializa histórico do novo bloco
-		newBlock.InitializeVersions(defaultContent);
+		// --- CORREÇÃO AQUI ---
+
+		// 1. Inicializa o histórico (Original) como VAZIO.
+		// Isso garante que a "Referência" (Lado esquerdo) seja vazia.
+		newBlock.InitializeVersions(string.Empty);
+
+		newBlock.Content = defaultContent;
+
+		// ---------------------
 
 		// Insere na coleção
 		Blocks.Insert(index + 1, newBlock);

@@ -92,29 +92,68 @@ public class HighlightingOrchestrator
 
 	// --- LÓGICA DE PINTURA (Movida do CodeBehind) ---
 
+	// Em ContextWinUI.Services.HighlightingOrchestrator.cs
+
 	private void ApplyHighlightsToControl(RichEditBox editor, int textLength, List<HighlightSpan> spans, bool isDark)
 	{
+		if (editor == null || spans == null) return;
+
+		// 1. CAPTURA O ESTADO ORIGINAL DE READONLY
+		// O RichEditBox lança UnauthorizedAccessException se tentarmos formatar enquanto estiver travado.
+		bool wasReadOnly = editor.IsReadOnly;
+
+		// 2. DESTRAVA TEMPORARIAMENTE
+		if (wasReadOnly)
+		{
+			editor.IsReadOnly = false;
+		}
+
+		// 3. CONGELA ATUALIZAÇÕES VISUAIS (Performance)
+		// Impede que o controle pisque a cada caractere pintado
+		editor.Document.BatchDisplayUpdates();
+
 		try
 		{
-			// Otimização crucial: BatchDisplayUpdates evita flicker
-			editor.Document.BatchDisplayUpdates();
+			var document = editor.Document;
 
-			var reuseRange = editor.Document.GetRange(0, 0);
-
-			// Reseta a cor base
-			reuseRange.SetRange(0, textLength);
-			reuseRange.CharacterFormat.ForegroundColor = isDark ? Colors.White : Colors.Black;
-			// Se for implementar Diff, talvez queira resetar o BackgroundColor aqui também
-			// reuseRange.CharacterFormat.BackgroundColor = Colors.Transparent; 
+			// (Opcional) Limpeza prévia: Reseta a cor de todo o texto para o padrão do tema
+			// Isso evita que cores antigas fiquem "fantasmas" quando o usuário apaga texto.
+			// var fullRange = document.GetRange(0, textLength);
+			// fullRange.CharacterFormat.ForegroundColor = isDark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
 
 			foreach (var span in spans)
 			{
-				ApplySpanOptimized(reuseRange, span, textLength);
+				// Validação de segurança para não exceder o tamanho do texto
+				if (span.Start < 0 || span.Length <= 0 || (span.Start + span.Length) > textLength)
+					continue;
+
+				// Obtém o intervalo de texto (Range)
+				var range = document.GetRange(span.Start, span.Start + span.Length);
+
+				// APLICA A COR (Isso causava o erro antes)
+				range.CharacterFormat.ForegroundColor = span.Color;
+
+				// Se você tiver suporte a Negrito/Itálico na sua struct HighlightSpan:
+				// if (span.IsBold) range.CharacterFormat.Bold = Microsoft.UI.Text.FormatEffect.On;
+				// if (span.IsItalic) range.CharacterFormat.Italic = Microsoft.UI.Text.FormatEffect.On;
 			}
+		}
+		catch (Exception ex)
+		{
+			// Log de segurança para não derrubar a aplicação se o range for inválido
+			System.Diagnostics.Debug.WriteLine($"[HighlightingOrchestrator] Erro ao aplicar cores: {ex.Message}");
 		}
 		finally
 		{
+			// 4. APLICA AS MUDANÇAS VISUAIS
 			editor.Document.ApplyDisplayUpdates();
+
+			// 5. RESTAURA O ESTADO READONLY ORIGINAL
+			// Isso é crucial para manter a lógica do lado esquerdo (Referência) funcionando corretamente.
+			if (wasReadOnly)
+			{
+				editor.IsReadOnly = true;
+			}
 		}
 	}
 
