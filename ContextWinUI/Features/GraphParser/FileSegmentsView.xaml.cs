@@ -27,7 +27,12 @@ namespace ContextWinUI.Features.GraphParser.Views
 
 		private void OnLoaded(object sender, RoutedEventArgs e) => UpdateSelectionIndicator();
 
-		private void OnSegmentContentModified(object sender, EventArgs e) => EnsureBlockSelection(sender);
+		private void OnSegmentContentModified(object sender, EventArgs e)
+		{
+			EnsureBlockSelection(sender);
+			ViewModel.NotifyUnsavedChanges();
+			ViewModel.NotifyChangesChanged();
+		}
 
 		private void OnSegmentGotFocus(object sender, RoutedEventArgs e) => EnsureBlockSelection(sender);
 

@@ -1,10 +1,9 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
 using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -17,7 +16,6 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 public partial class FileSegmentsViewModel : ObservableObject
 {
 	private readonly IFileSystemService _fileSystemService;
-
 	public string FilePath { get; }
 	public string FileName { get; }
 
@@ -25,10 +23,25 @@ public partial class FileSegmentsViewModel : ObservableObject
 	private ObservableCollection<CodeBlockItem> blocks = new();
 
 	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(HasSelectedBlock))]
+	private CodeBlockItem? selectedBlock;
+
+	[ObservableProperty]
 	private bool isLoading;
 
 	[ObservableProperty]
 	private bool isEmpty;
+
+	// --- CORREÇÃO DO ERRO CS0103: Declarando o Histórico Global ---
+	[ObservableProperty]
+	private ObservableCollection<GlobalVersion> globalHistory = new();
+
+	[ObservableProperty]
+	private int currentGlobalIndex = 0;
+	// -------------------------------------------------------------
+
+	public bool HasSelectedBlock => SelectedBlock != null;
+	public bool HasAnyUnsavedChanges => Blocks.Any(b => b.HasUnsavedChanges);
 
 	public event EventHandler? GlobalSaveRequested;
 	public event EventHandler<int>? GlobalRestoreRequested;
@@ -41,9 +54,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 		_ = LoadBlocksAsync();
 	}
 
-	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
-
-	public void TriggerGlobalRestore(int versionIndex) => GlobalRestoreRequested?.Invoke(this, versionIndex);
+	public void NotifyUnsavedChanges() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 
 	private async Task LoadBlocksAsync()
 	{
@@ -53,19 +64,13 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		try
 		{
-			// 1. Lê o arquivo do disco
 			var fileContent = await _fileSystemService.ReadFileContentAsync(FilePath);
+			if (string.IsNullOrEmpty(fileContent)) return;
 
-			if (string.IsNullOrEmpty(fileContent))
-				return;
-
-			// 2. Parseia com Roslyn
 			var tree = CSharpSyntaxTree.ParseText(fileContent);
 			var root = await tree.GetRootAsync();
-
 			var segments = new List<CodeBlockItem>();
 
-			// 3. Achata a árvore em segmentos lineares
 			FlattenNode(root, fileContent, 0, segments);
 
 			foreach (var seg in segments)
@@ -78,6 +83,9 @@ public partial class FileSegmentsViewModel : ObservableObject
 			{
 				SelectedBlock = Blocks.First();
 			}
+
+			// Inicializa o histórico global após carregar
+			InitializeGlobalHistory();
 		}
 		catch (Exception ex)
 		{
@@ -96,7 +104,66 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 	}
 
-	// Lógica recursiva para quebrar o código em blocos
+	private void InitializeGlobalHistory()
+	{
+		GlobalHistory.Clear();
+		GlobalHistory.Add(new GlobalVersion
+		{
+			Description = "Versão Original",
+			IsOriginal = true,
+			Timestamp = DateTime.MinValue
+		});
+		CurrentGlobalIndex = 0;
+	}
+
+	public void CommitGlobalVersion(string description = "Salvo em lote")
+	{
+		var newVersion = new GlobalVersion
+		{
+			Description = description,
+			Timestamp = DateTime.Now,
+			IsOriginal = false
+		};
+		GlobalHistory.Add(newVersion);
+
+		CurrentGlobalIndex = GlobalHistory.Count - 1;
+
+		foreach (var block in Blocks)
+		{
+			if (block.HasUnsavedChanges)
+			{
+				block.CreateNewVersion(block.Content, description);
+			}
+		}
+		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+	}
+
+	partial void OnCurrentGlobalIndexChanged(int value)
+	{
+		if (GlobalHistory == null || value < 0 || value >= GlobalHistory.Count) return;
+		RestoreGlobalState(value);
+	}
+
+	private void RestoreGlobalState(int globalIndex)
+	{
+		foreach (var block in Blocks)
+		{
+			int targetBlockIndex = Math.Min(globalIndex, block.Versions.Count - 1);
+			if (targetBlockIndex >= 0)
+			{
+				block.RestoreVersion(targetBlockIndex);
+			}
+		}
+	}
+
+	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
+	public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
+
+
+	public void NotifyChangesChanged()
+	{
+		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
+	}
 	private void FlattenNode(SyntaxNode node, string fullText, int depth, List<CodeBlockItem> resultList)
 	{
 		var childrenToProcess = node.ChildNodes()
@@ -109,7 +176,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		foreach (var child in childrenToProcess)
 		{
-			// Captura GAPs (espaços entre métodos, comentários soltos, etc)
 			if (child.SpanStart > cursor)
 			{
 				var gapText = fullText.Substring(cursor, child.SpanStart - cursor);
@@ -119,20 +185,16 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 			if (IsContainerNode(child))
 			{
-				// Recursão para classes/namespaces
 				FlattenNode(child, fullText, depth + 1, resultList);
 			}
 			else
 			{
-				// Nó folha (método, propriedade, field)
 				var childText = fullText.Substring(child.SpanStart, child.Span.Length);
 				resultList.Add(CreateSegment(child, childText, depth + 1, false));
 			}
-
 			cursor = child.Span.End;
 		}
 
-		// Captura o final do bloco (fechamento de chaves, etc)
 		if (cursor < node.Span.End)
 		{
 			var tailText = fullText.Substring(cursor, node.Span.End - cursor);
@@ -140,7 +202,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 				resultList.Add(CreateSegment(node, tailText, depth, true));
 		}
 
-		// Caso especial para final de arquivo
 		if (node is CompilationUnitSyntax && cursor < fullText.Length)
 		{
 			var finalTrivia = fullText.Substring(cursor);
@@ -149,39 +210,27 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 	}
 
-	// Em FileSegmentsViewModel.cs
-
 	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap)
 	{
-		// Lógica existente de identificação de tipo...
 		var type = IdentifySegmentType(node, isGap, content);
-
 		string name = isGap
 			? (content.Trim() == "}" ? "Fechamento" : $"Estrutura ({node.GetType().Name.Replace("DeclarationSyntax", "")})")
 			: (node is MemberDeclarationSyntax m ? GetMemberName(m) : node.GetType().Name);
 
-		// Criação do objeto
 		var item = new CodeBlockItem
 		{
 			Name = name,
-			Content = content, // Conteúdo cru lido do arquivo
+			Content = content,
 			DepthLevel = depth,
 			SegmentType = type,
 			TypeDescription = type.ToString().ToUpperInvariant(),
 			StartLine = content.Count(c => c == '\n') + 1,
-			// Inicializa propriedades visuais padrão
 			FileExtension = Path.GetExtension(FilePath)
 		};
-
-		// --- GARANTIA DA VERSÃO ORIGINAL ---
-		// Assim que o bloco nasce, "carimbamos" o conteúdo atual como a Versão Original.
-		item.InitializeVersions(content);
-		// -----------------------------------
-
+		item.InitializeVersions(content); // Garante versão original
 		return item;
 	}
 
-	// Métodos auxiliares de Roslyn (GetMemberName, IsContainerNode, etc...) mantidos iguais ao original
 	private string GetMemberName(MemberDeclarationSyntax member)
 	{
 		if (member is MethodDeclarationSyntax m) return m.Identifier.Text;
@@ -192,29 +241,24 @@ public partial class FileSegmentsViewModel : ObservableObject
 		if (member is FileScopedNamespaceDeclarationSyntax fn) return fn.Name.ToString();
 		return member.GetType().Name.Replace("DeclarationSyntax", "");
 	}
-
 	private bool IsContainerNode(SyntaxNode node) =>
 		node is ClassDeclarationSyntax || node is NamespaceDeclarationSyntax ||
 		node is FileScopedNamespaceDeclarationSyntax || node is StructDeclarationSyntax ||
 		node is InterfaceDeclarationSyntax;
-
 	private bool IsInterestingNode(SyntaxNode node) =>
 		node is MethodDeclarationSyntax || node is ConstructorDeclarationSyntax ||
 		node is PropertyDeclarationSyntax || node is FieldDeclarationSyntax ||
 		node is EnumDeclarationSyntax || node is UsingDirectiveSyntax;
-
 	private SegmentType IdentifySegmentType(SyntaxNode node, bool isGap, string content)
 	{
 		if (string.IsNullOrWhiteSpace(content)) return SegmentType.Trivia;
 		if (content.Trim() == "}") return SegmentType.CloseBrace;
-
 		if (isGap)
 		{
 			if (node is ClassDeclarationSyntax) return SegmentType.ClassHeader;
 			if (node is NamespaceDeclarationSyntax) return SegmentType.NamespaceDecl;
 			return SegmentType.Gap;
 		}
-
 		return node switch
 		{
 			MethodDeclarationSyntax => SegmentType.Method,
@@ -226,10 +270,4 @@ public partial class FileSegmentsViewModel : ObservableObject
 			_ => SegmentType.Gap
 		};
 	}
-
-	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(HasSelectedBlock))]
-	private CodeBlockItem? selectedBlock;
-
-	public bool HasSelectedBlock => SelectedBlock != null;
 }

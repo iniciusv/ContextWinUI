@@ -115,11 +115,11 @@
 			</Grid>
 		</Grid>
 
-		<versionComp:VersionFooter x:Name="VersionFooterControl"
-                                 Grid.Row="1"
-                                 CurrentBlock="{x:Bind ViewModel.SelectedBlock, Mode=OneWay}"
-                                 VersionRestoreRequested="OnVersionRestoreRequested"
-                                 SaveVersionRequested="OnSaveVersionRequested"
-                                 RestoreOriginalRequested="OnRestoreOriginalRequested"/>
+		<versionComp:VersionFooter Grid.Row="1"
+                                    GlobalVersions="{x:Bind ViewModel.GlobalHistory, Mode=OneWay}"
+                                    SelectedGlobalIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=TwoWay}"
+                                    CanSave="{x:Bind ViewModel.HasAnyUnsavedChanges, Mode=OneWay}"
+                                    SaveRequested="OnSaveVersionRequested"
+                                    RestoreOriginalRequested="OnRestoreOriginalRequested"/>
 	</Grid>
 </UserControl>

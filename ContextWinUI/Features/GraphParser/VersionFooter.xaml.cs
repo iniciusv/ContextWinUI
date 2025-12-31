@@ -1,204 +1,129 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-using ContextWinUI.Core.Contracts;
 using ContextWinUI.Features.GraphParser.Models;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace ContextWinUI.Features.GraphParser.Views.Components
 {
 	public sealed partial class VersionFooter : UserControl, INotifyPropertyChanged
 	{
-		private CodeBlockItem? _currentBlock;
-
-		public event EventHandler<int>? VersionRestoreRequested;
-		public event EventHandler? SaveVersionRequested;
+		public event EventHandler? SaveRequested;
 		public event EventHandler? RestoreOriginalRequested;
+		public event PropertyChangedEventHandler? PropertyChanged;
 
 		public VersionFooter()
 		{
 			this.InitializeComponent();
 		}
 
-		public CodeBlockItem? CurrentBlock
-		{
-			get => _currentBlock;
-			set
-			{
-				if (_currentBlock != value)
-				{
-					if (_currentBlock != null)
-					{
-						_currentBlock.PropertyChanged -= OnBlockPropertyChanged;
-					}
-					_currentBlock = value;
-					if (_currentBlock != null)
-					{
-						_currentBlock.PropertyChanged += OnBlockPropertyChanged;
-					}
+		#region Dependency Properties
 
-					// Agenda a atualização para evitar travamento da UI
-					this.DispatcherQueue.TryEnqueue(() => UpdateUI());
-					OnPropertyChanged();
-				}
+		// 1. LISTA DE VERSÕES (Vem do GlobalHistory do ViewModel)
+		public static readonly DependencyProperty GlobalVersionsProperty =
+			DependencyProperty.Register(nameof(GlobalVersions), typeof(ObservableCollection<GlobalVersion>), typeof(VersionFooter), new PropertyMetadata(null, OnPropertyChangedStatic));
+
+		public ObservableCollection<GlobalVersion> GlobalVersions
+		{
+			get => (ObservableCollection<GlobalVersion>)GetValue(GlobalVersionsProperty);
+			set => SetValue(GlobalVersionsProperty, value);
+		}
+
+		// 2. ÍNDICE SELECIONADO (Vem do CurrentGlobalIndex do ViewModel)
+		public static readonly DependencyProperty SelectedGlobalIndexProperty =
+			DependencyProperty.Register(nameof(SelectedGlobalIndex), typeof(int), typeof(VersionFooter), new PropertyMetadata(0, OnPropertyChangedStatic));
+
+		public int SelectedGlobalIndex
+		{
+			get => (int)GetValue(SelectedGlobalIndexProperty);
+			set => SetValue(SelectedGlobalIndexProperty, value);
+		}
+
+		// 3. PODE SALVAR? (Vem do HasAnyUnsavedChanges do ViewModel)
+		public static readonly DependencyProperty CanSaveProperty =
+			DependencyProperty.Register(nameof(CanSave), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false, OnPropertyChangedStatic));
+
+		public bool CanSave
+		{
+			get => (bool)GetValue(CanSaveProperty);
+			set => SetValue(CanSaveProperty, value);
+		}
+
+		// Callback genérico para avisar a UI interna quando as propriedades externas mudarem
+		private static void OnPropertyChangedStatic(DependencyObject d, DependencyPropertyChangedEventArgs e)
+		{
+			if (d is VersionFooter control)
+			{
+				control.UpdateVisualState();
 			}
 		}
 
-		public ObservableCollection<CodeBlockVersion> Versions { get; } = new ObservableCollection<CodeBlockVersion>();
+		#endregion
 
-		public int SelectedVersionIndex
+		#region UI Logic & Helpers
+
+		private void UpdateVisualState()
 		{
-			get => _currentBlock?.CurrentVersionIndex ?? 0;
-			set
-			{
-				if (_currentBlock != null && _currentBlock.CurrentVersionIndex != value)
-				{
-					VersionRestoreRequested?.Invoke(this, value);
-				}
-			}
-		}
-
-		private string VersionStatus
-		{
-			get
-			{
-				if (_currentBlock == null) return "Nenhum bloco selecionado";
-				if (_currentBlock.IsCurrentVersionOriginal) return "Versão original";
-				return _currentBlock.HasUnsavedChanges ? "Modificações não salvas" : "Versão salva";
-			}
-		}
-
-		private SolidColorBrush VersionIconColor
-		{
-			get
-			{
-				if (_currentBlock == null) return new SolidColorBrush(Colors.Gray);
-				if (_currentBlock.IsCurrentVersionOriginal) return new SolidColorBrush(Colors.Green);
-				return _currentBlock.HasUnsavedChanges ? new SolidColorBrush(Colors.Orange) : new SolidColorBrush(Colors.Blue);
-			}
-		}
-
-		private string VersionCounterText
-		{
-			get
-			{
-				if (_currentBlock == null || !_currentBlock.Versions.Any()) return "0/0";
-				return $"{_currentBlock.CurrentVersionIndex + 1}/{_currentBlock.Versions.Count}";
-			}
-		}
-
-		public bool CanRestoreOriginal =>
-			_currentBlock != null &&
-			_currentBlock.Versions.Any() &&
-			!_currentBlock.IsCurrentVersionOriginal;
-
-		public bool CanNavigatePrevious =>
-			_currentBlock != null &&
-			_currentBlock.CurrentVersionIndex > 0;
-
-		public bool CanNavigateNext =>
-			_currentBlock != null &&
-			_currentBlock.CurrentVersionIndex < _currentBlock.Versions.Count - 1;
-
-		public bool CanSaveVersion =>
-			_currentBlock != null &&
-			_currentBlock.HasUnsavedChanges;
-
-		private void OnBlockPropertyChanged(object? sender, PropertyChangedEventArgs e)
-		{
-			if (e.PropertyName == nameof(CodeBlockItem.Content) ||
-				e.PropertyName == nameof(CodeBlockItem.CurrentVersionIndex) ||
-				e.PropertyName == nameof(CodeBlockItem.Versions) ||
-				e.PropertyName == nameof(CodeBlockItem.HasUnsavedChanges))
-			{
-				this.DispatcherQueue.TryEnqueue(() =>
-				{
-					UpdateUI();
-				});
-			}
-		}
-
-		private void UpdateUI()
-		{
-			if (_currentBlock == null)
-			{
-				Versions.Clear();
-			}
-			else
-			{
-
-				if (Versions.Count != _currentBlock.Versions.Count)
-				{
-					Versions.Clear();
-					foreach (var version in _currentBlock.Versions)
-					{
-						Versions.Add(version);
-					}
-				}
-			}
-
-			// Notifica a View que as propriedades mudaram
-			OnPropertyChanged(nameof(SelectedVersionIndex));
-			OnPropertyChanged(nameof(VersionStatus));
-			OnPropertyChanged(nameof(VersionIconColor));
+			// Atualiza propriedades calculadas visuais
 			OnPropertyChanged(nameof(VersionCounterText));
-			OnPropertyChanged(nameof(CanRestoreOriginal));
 			OnPropertyChanged(nameof(CanNavigatePrevious));
 			OnPropertyChanged(nameof(CanNavigateNext));
-			OnPropertyChanged(nameof(CanSaveVersion));
 		}
 
-		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e)
+		public string VersionCounterText
 		{
-			RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
+			get
+			{
+				if (GlobalVersions == null || GlobalVersions.Count == 0) return "0/0";
+				return $"{SelectedGlobalIndex + 1}/{GlobalVersions.Count}";
+			}
 		}
+
+		public bool CanNavigatePrevious => SelectedGlobalIndex > 0;
+
+		public bool CanNavigateNext => GlobalVersions != null && SelectedGlobalIndex < GlobalVersions.Count - 1;
+
+		#endregion
+
+		#region Event Handlers
 
 		private void OnPreviousVersionClick(object sender, RoutedEventArgs e)
 		{
-			if (_currentBlock != null && _currentBlock.CurrentVersionIndex > 0)
+			if (CanNavigatePrevious)
 			{
-				VersionRestoreRequested?.Invoke(this, _currentBlock.CurrentVersionIndex - 1);
+				SelectedGlobalIndex--; // O TwoWay binding vai atualizar o ViewModel
 			}
 		}
 
 		private void OnNextVersionClick(object sender, RoutedEventArgs e)
 		{
-			if (_currentBlock != null && _currentBlock.CurrentVersionIndex < _currentBlock.Versions.Count - 1)
+			if (CanNavigateNext)
 			{
-				VersionRestoreRequested?.Invoke(this, _currentBlock.CurrentVersionIndex + 1);
+				SelectedGlobalIndex++; // O TwoWay binding vai atualizar o ViewModel
 			}
 		}
 
-		private void OnVersionSelected(object sender, SelectionChangedEventArgs e)
+		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e)
 		{
-			if (e.AddedItems.Count > 0 && e.AddedItems[0] is CodeBlockVersion version)
-			{
-				if (_currentBlock != null && _currentBlock.Versions.Contains(version))
-				{
-					int index = _currentBlock.Versions.IndexOf(version);
-					if (_currentBlock.CurrentVersionIndex != index)
-					{
-						VersionRestoreRequested?.Invoke(this, index);
-					}
-				}
-			}
+			// Opção A: Resetar índice direto (mais simples)
+			// SelectedGlobalIndex = 0; 
+
+			// Opção B: Disparar evento (conforme seu pedido original)
+			RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
 		}
 
 		private void OnSaveVersionClick(object sender, RoutedEventArgs e)
 		{
-			SaveVersionRequested?.Invoke(this, EventArgs.Empty);
+			SaveRequested?.Invoke(this, EventArgs.Empty);
 		}
 
-		public event PropertyChangedEventHandler? PropertyChanged;
 		private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
 		{
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 		}
+
+		#endregion
 	}
 }
