@@ -323,39 +323,6 @@ public sealed partial class SegmentCodeViewer : UserControl
 		}
 	}
 
-	private void ApplySpanOptimized(Microsoft.UI.Text.ITextRange range, HighlightSpan span, string editorText, int editorLength, bool isBackground)
-	{
-		int visualStart = MapRoslynToVisualIndices(span.Start, editorText);
-		int visualEndRaw = MapRoslynToVisualIndices(span.Start + span.Length, editorText);
-		int visualLength = visualEndRaw - visualStart;
-		int safeStart = Math.Clamp(visualStart, 0, editorLength);
-		int safeEnd = Math.Clamp(visualStart + visualLength, 0, editorLength);
-		if (safeEnd > safeStart)
-		{
-			range.SetRange(safeStart, safeEnd);
-			if (isBackground)
-				range.CharacterFormat.BackgroundColor = span.Color;
-			else
-				range.CharacterFormat.ForegroundColor = span.Color;
-		}
-	}
-
-	private int MapRoslynToVisualIndices(int roslynIndex, string editorText)
-	{
-		int currentRoslynCount = 0;
-		int len = editorText.Length;
-		for (int i = 0; i < len; i++)
-		{
-			if (currentRoslynCount >= roslynIndex) return i;
-
-			if (editorText[i] == '\r')
-				currentRoslynCount += 2;
-			else
-				currentRoslynCount += 1;
-		}
-		return len;
-	}
-
 	private void CodeEditor_KeyDown(object sender, KeyRoutedEventArgs e)
 	{
 		var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
