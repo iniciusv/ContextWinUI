@@ -7,35 +7,24 @@
     mc:Ignorable="d">
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
-		<ScrollViewer x:Name="EditorScrollViewer"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Disabled" 
-                      ZoomMode="Enabled"
-                      MinZoomFactor="0.5"
-                      MaxZoomFactor="4.0"
-                      HorizontalContentAlignment="Stretch"
-                      VerticalContentAlignment="Top">
-
-			<Grid Margin="0,0,0,0">
-				<RichEditBox x:Name="CodeEditor"
-                             IsSpellCheckEnabled="False"
-                             IsTextPredictionEnabled="False"
-                             FontFamily="Consolas, Courier New, Monospace"
-                             FontSize="14"
-                             AcceptsReturn="True"
-                             BorderThickness="0"
-                             MinHeight="0"
-                             HorizontalAlignment="Stretch"
-                             VerticalAlignment="Stretch"
-                             ScrollViewer.VerticalScrollBarVisibility="Disabled" 
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             TextWrapping="NoWrap"
-                             TextChanged="CodeEditor_TextChanged"
-                             KeyDown="CodeEditor_KeyDown"
-                             BringIntoViewRequested="CodeEditor_BringIntoViewRequested"
-                             Padding="0,2,0,2"
-                             Background="Transparent"/>
-			</Grid>
-		</ScrollViewer>
+		
+		<RichEditBox x:Name="CodeEditor"
+                 IsSpellCheckEnabled="False"
+                 IsTextPredictionEnabled="False"
+                 FontFamily="Consolas, Courier New, Monospace"
+                 FontSize="14"
+                 AcceptsReturn="True"
+                 BorderThickness="0"
+                 MinHeight="0"
+                 
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Top"  ScrollViewer.VerticalScrollBarVisibility="Hidden" 
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap"
+                 TextChanged="CodeEditor_TextChanged"
+                 KeyDown="CodeEditor_KeyDown"
+                 BringIntoViewRequested="CodeEditor_BringIntoViewRequested"
+                 Padding="0,2,0,2"
+                 Background="Transparent"/>
 	</Grid>
 </UserControl>

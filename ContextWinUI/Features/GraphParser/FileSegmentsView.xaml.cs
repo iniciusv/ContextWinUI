@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Linq;
 
 namespace ContextWinUI.Features.GraphParser.Views;
 
@@ -128,10 +129,45 @@ public sealed partial class FileSegmentsView : UserControl
 			}
 		}
 	}
+	// Em FileSegmentsView.xaml.cs
 
 	private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
 	{
-		return FindContainerRecursive(MainScrollViewer, block);
+		// Verifica se a View e o ViewModel estão prontos
+		if (MainListView == null || ViewModel == null) return null;
+
+		// 1. Encontrar o ViewModel da linha (Wrapper) que contém o bloco desejado
+		var rowViewModel = ViewModel.Rows.FirstOrDefault(r => r.Current == block);
+
+		if (rowViewModel == null) return null;
+
+		// 2. Usar o método nativo do ListView para pegar o elemento visual (ListViewItem)
+		var container = MainListView.ContainerFromItem(rowViewModel) as FrameworkElement;
+
+		// 3. Se o container ainda não foi gerado (virtualização), retorna null
+		if (container == null) return null;
+
+		// 4. Precisamos descer na árvore visual do ListViewItem para achar o Grid com o indicador
+		// O ListViewItem contém o ContentPresenter, que contém o nosso DataTemplate (Grid)
+		return FindElementInVisualTree<Grid>(container, "SelectionIndicator")?.Parent as FrameworkElement;
+	}
+
+	// Método auxiliar genérico mais seguro para achar elemento por nome
+	private T? FindElementInVisualTree<T>(DependencyObject parent, string name) where T : FrameworkElement
+	{
+		int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+		for (int i = 0; i < count; i++)
+		{
+			var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+
+			if (child is T element && element.Name == name)
+				return element;
+
+			var result = FindElementInVisualTree<T>(child, name);
+			if (result != null)
+				return result;
+		}
+		return null;
 	}
 
 	private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem targetBlock)

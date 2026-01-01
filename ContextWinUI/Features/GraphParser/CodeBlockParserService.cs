@@ -169,7 +169,7 @@ public class CodeBlockParserService : ICodeBlockParserService
 			MethodDeclarationSyntax => SegmentType.Method,
 			ConstructorDeclarationSyntax => SegmentType.Method, // Tratamos construtor como método no SegmentType
 			PropertyDeclarationSyntax => SegmentType.Property,
-			FieldDeclarationSyntax => SegmentType.Class, // Fields muitas vezes ficam junto da classe se não forem interessantes
+			FieldDeclarationSyntax => SegmentType.Field, // Altere de SegmentType.Class para SegmentType.Field se existir, ou mantenha Class
 			EnumDeclarationSyntax => SegmentType.Class,
 			ClassDeclarationSyntax => SegmentType.Class,
 			InterfaceDeclarationSyntax => SegmentType.Class,
@@ -209,6 +209,7 @@ public class CodeBlockParserService : ICodeBlockParserService
 		node is MethodDeclarationSyntax ||
 		node is ConstructorDeclarationSyntax ||
 		node is PropertyDeclarationSyntax ||
+		node is FieldDeclarationSyntax ||
 		node is EnumDeclarationSyntax ||
 		node is UsingDirectiveSyntax ||
 		node is DelegateDeclarationSyntax;

@@ -16,20 +16,19 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class FileSegmentsViewModel : ObservableObject
 {
-	// --- Serviços Injetados ---
+	// --- Dependências Injetadas ---
 	private readonly IFileSystemService _fileSystemService;
 	private readonly ICodeBlockParserService _parserService;
-	private readonly ISymbolResolutionService _symbolService; 
+	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
 
-	// --- Propriedades de Estado ---
+	// --- Propriedades Básicas ---
 	public string FilePath { get; }
 	public string FileName { get; }
 
 	[ObservableProperty]
 	private ObservableCollection<SegmentRowViewModel> rows = new();
 
-	// Atalho para pegar apenas os blocos atuais (usado pelo pai)
 	public IEnumerable<CodeBlockItem> Blocks => Rows.Select(r => r.Current);
 
 	[ObservableProperty]
@@ -48,9 +47,15 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private string currentSymbolInfo = string.Empty;
 
-	// --- Controle de Comparação/Diff ---
+	// --- CORREÇÃO DO LAYOUT CYCLE EXCEPTION ---
+
+	// 1. Propriedade Observável Estável (Não use => aqui)
+	// Inicializa com 0 (escondido)
 	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(LeftColumnWidth))]
+	private GridLength leftColumnWidth = new GridLength(0);
+
+	// 2. Propriedade que controla o modo, agora dispara a atualização da largura
+	[ObservableProperty]
 	private bool isComparisonMode;
 
 	[ObservableProperty]
@@ -62,16 +67,15 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
 
+	// Propriedades Computadas Simples
 	public bool HasSelectedBlock => SelectedBlock != null;
 	public bool HasAnyUnsavedChanges => Rows.Any(r => r.Current.HasUnsavedChanges);
 
-	// Controla a largura da coluna de diff na View
-	public GridLength LeftColumnWidth => IsComparisonMode ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-
-	// --- Eventos para o Pai (GraphParserViewModel) ---
+	// Eventos
 	public event EventHandler? GlobalSaveRequested;
 	public event EventHandler<int>? GlobalRestoreRequested;
 
+	// --- Construtor ---
 	public FileSegmentsViewModel(
 		string filePath,
 		IFileSystemService fileSystemService,
@@ -83,16 +87,53 @@ public partial class FileSegmentsViewModel : ObservableObject
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
-
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
 		_symbolService = symbolService;
 		_diffManager = diffManager;
-
 		GlobalHistory = sharedHistory;
 		CurrentGlobalIndex = initialGlobalIndex;
 
+		// Inicia carregamento
 		_ = LoadBlocksAsync();
+	}
+
+	// --- Métodos "Partial" (Hooks de Mudança de Propriedade) ---
+
+	// Este é o método CRÍTICO que corrigimos.
+	// Ao invés de o XAML recalcular a largura a cada frame, nós setamos ela UMA vez aqui.
+	partial void OnIsComparisonModeChanged(bool value)
+	{
+		// Define a largura da coluna: 1* se estiver comparando, 0 se estiver editando.
+		LeftColumnWidth = value ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+
+		if (value)
+		{
+			// Ativa lógica de Diff
+			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
+			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+		}
+		else
+		{
+			// Reseta visibilidade (Modo Edição sempre mostra tudo)
+			foreach (var row in Rows) row.IsVisible = true;
+		}
+	}
+
+	partial void OnCompareLeftIndexChanged(int value)
+	{
+		if (IsComparisonMode)
+		{
+			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, value);
+
+			if (HideUnchangedBlocks)
+				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+		}
+	}
+
+	partial void OnHideUnchangedBlocksChanged(bool value)
+	{
+		_diffManager.UpdateRowsVisibility(Rows, value);
 	}
 
 	private async Task LoadBlocksAsync()
@@ -136,35 +177,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 		}
 	}
 
-	partial void OnIsComparisonModeChanged(bool value)
-	{
-		if (value)
-		{
-			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
-			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
-		}
-		else
-		{
-			foreach (var row in Rows) row.IsVisible = true;
-		}
-	}
-
-	partial void OnCompareLeftIndexChanged(int value)
-	{
-		if (IsComparisonMode)
-		{
-			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, value);
-			if (HideUnchangedBlocks)
-				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
-		}
-	}
-
-	partial void OnHideUnchangedBlocksChanged(bool value)
-	{
-		_diffManager.UpdateRowsVisibility(Rows, value);
-	}
-
-	// --- Comandos de Manipulação de Blocos ---
 
 	[RelayCommand]
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)

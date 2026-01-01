@@ -182,8 +182,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 	{
 		try
 		{
-			double vOffset = EditorScrollViewer.VerticalOffset;
-			double hOffset = EditorScrollViewer.HorizontalOffset;
+
 
 			_isInternalUpdate = true;
 
@@ -194,8 +193,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 			CodeEditor.Document.GetText(TextGetOptions.None, out string txt);
 			Text = CleanRichText(txt);
 
-			// Restaura Scroll
-			EditorScrollViewer.ChangeView(hOffset, vOffset, null, true);
+
 
 			_isInternalUpdate = false;
 
