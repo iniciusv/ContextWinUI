@@ -7,6 +7,7 @@ using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.FileSystem;
 using ContextWinUI.Features.GraphParser;
+using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
@@ -49,12 +50,16 @@ public partial class App : Application
 		// 2. ESTADO CRÍTICO
 		services.AddSingleton<IFileSelectionService, FileSelectionService>();
 		services.AddSingleton<IProjectSessionManager, ProjectSessionManager>();
-		services.AddSingleton<SemanticIndexService>(); // Verifique se existe
+		services.AddSingleton<ISemanticIndexService, SemanticIndexService>();
 
 		// 3. LÓGICA
 		services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe
 		services.AddTransient<DependencyTrackerService>(); // Verifique se existe
 		services.AddTransient<IDependencyAnalysisOrchestrator, DependencyAnalysisOrchestrator>(); // Verifique se existe
+		services.AddTransient<ISymbolResolutionService, SymbolResolutionService>();
+		services.AddTransient<IVersionDiffManager, VersionDiffManager>();
+
+
 
 		// 4. FILE EXPLORER (Refatorado)
 		services.AddSingleton<IFileExplorerDataService, FileExplorerDataService>();

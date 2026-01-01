@@ -16,13 +16,13 @@ namespace ContextWinUI.Features.CodeAnalyses;
 
 public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 {
-	private readonly SemanticIndexService _indexService;
+	private readonly ISemanticIndexService _indexService;
 	private readonly DependencyTrackerService _trackerService;
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IFileSystemService _fileSystemService;
 
 	public DependencyAnalysisOrchestrator(
-		SemanticIndexService indexService,
+		ISemanticIndexService indexService,
 		DependencyTrackerService trackerService,
 		IFileSystemItemFactory itemFactory,
 		IFileSystemService fileSystemService)

@@ -23,7 +23,7 @@ public partial class MainViewModel : ObservableObject
 	// =========================================================
 	// DEPENDÊNCIAS (Injetadas via Construtor)
 	// =========================================================
-	private readonly SemanticIndexService _semanticIndexService;
+	private readonly ISemanticIndexService _semanticIndexService;
 	private readonly IFileSelectionService _fileSelectionService;
 
 	// Dispatcher para atualizações de UI em threads de fundo
@@ -61,7 +61,7 @@ public partial class MainViewModel : ObservableObject
 			FileContentViewModel fileContent,
 			GraphParserViewModel graphParser,
 			IProjectSessionManager sessionManager,      // <--- MUDANÇA 2: Pedir a Interface (I...)
-			SemanticIndexService semanticIndexService,
+			ISemanticIndexService semanticIndexService,
 			IFileSelectionService fileSelectionService) // <--- MUDANÇA 3: Pedir a Interface (I...)
 	{
 		FileExplorer = fileExplorer;

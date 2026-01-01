@@ -1,181 +1,174 @@
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.ViewModels;
+using ContextWinUI.Features.GraphParser.Views.Components;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media; // Importante para VisualTreeHelper
+using Microsoft.UI.Xaml.Media;
 using System;
 
-namespace ContextWinUI.Features.GraphParser.Views
+namespace ContextWinUI.Features.GraphParser.Views;
+
+public sealed partial class FileSegmentsView : UserControl
 {
-	public sealed partial class FileSegmentsView : UserControl
+	private CodeBlockItem? _lastSelectedBlock;
+
+	// Propriedade tipada para facilitar o acesso ao ViewModel no code-behind
+	public FileSegmentsViewModel ViewModel => (FileSegmentsViewModel)DataContext;
+
+	public FileSegmentsView()
 	{
-		private CodeBlockItem? _lastSelectedBlock;
+		this.InitializeComponent();
 
-		public FileSegmentsViewModel ViewModel => (FileSegmentsViewModel)DataContext;
+		// Atualiza indicadores visuais quando o DataContext muda ou quando a view carrega
+		this.DataContextChanged += (s, e) => UpdateSelectionIndicator();
+		this.Loaded += (s, e) => UpdateSelectionIndicator();
+	}
 
-		public FileSegmentsView()
+	// --- Tratamento de Eventos de UI ---
+
+	/// <summary>
+	/// Chamado quando o usuário clica em qualquer parte de uma linha (Bloco)
+	/// </summary>
+	private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
+	{
+		if (sender is FrameworkElement element && element.DataContext is SegmentRowViewModel row)
 		{
-			this.InitializeComponent();
-			this.DataContextChanged += (s, e) => Bindings.Update();
-			this.Loaded += OnLoaded;
+			SetSelectedBlock(row.Current);
 		}
+	}
 
-		private void OnLoaded(object sender, RoutedEventArgs e) => UpdateSelectionIndicator();
+	/// <summary>
+	/// Chamado quando o conteúdo do editor de código é modificado (digitação)
+	/// </summary>
+	private void OnSegmentContentModified(object sender, EventArgs e)
+	{
+		// Se o usuário está digitando, este bloco deve ser o selecionado
+		EnsureBlockSelectionFromSender(sender);
 
-		// --- Eventos de Edição de Segmento ---
+		// Notifica o VM para atualizar estados (ex: mostrar asterisco de não salvo)
+		ViewModel.NotifyUnsavedChanges();
+	}
 
-		private void OnSegmentContentModified(object sender, EventArgs e)
+	/// <summary>
+	/// Chamado quando o editor solicita salvamento (ex: Ctrl+S dentro do editor)
+	/// </summary>
+	private void OnSegmentSaveRequested(object sender, EventArgs e)
+	{
+		EnsureBlockSelectionFromSender(sender);
+
+		// Executa o comando de salvar (Modo Overwrite padrão para Ctrl+S)
+		if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
 		{
-			EnsureBlockSelection(sender);
-			ViewModel.NotifyUnsavedChanges();
-			ViewModel.NotifyChangesChanged();
+			ViewModel.SaveChangesCommand.Execute("Overwrite");
 		}
+	}
 
-		private void OnSegmentGotFocus(object sender, RoutedEventArgs e) => EnsureBlockSelection(sender);
+	// --- Lógica de Seleção Visual ---
 
-		private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
+	private void EnsureBlockSelectionFromSender(object sender)
+	{
+		if (sender is FrameworkElement element)
 		{
-			// O sender é o Grid da coluna direita. O DataContext agora é a LINHA (Wrapper).
-			if (sender is FrameworkElement element && element.DataContext is SegmentRowViewModel row)
+			// Tenta encontrar o bloco associado ao elemento que disparou o evento
+			// O DataContext pode ser o próprio CodeBlockItem (dentro do editor) 
+			// ou o SegmentRowViewModel (container da linha)
+
+			if (element.DataContext is CodeBlockItem block)
 			{
-				// Extraímos o bloco atual da linha para definir a seleção
-				ViewModel.SelectedBlock = row.Current;
-				UpdateSelectionIndicator();
+				SetSelectedBlock(block);
+			}
+			else if (element.DataContext is SegmentRowViewModel row)
+			{
+				SetSelectedBlock(row.Current);
 			}
 		}
+	}
 
-		private void EnsureBlockSelection(object sender)
+	private void SetSelectedBlock(CodeBlockItem block)
+	{
+		if (ViewModel.SelectedBlock != block)
 		{
-			// Usado quando o foco vem de dentro do editor de texto
-			// Tenta subir a árvore visual para achar o DataContext da linha
-			if (sender is FrameworkElement element)
-			{
-				// Sobe até achar o DataContext correto (SegmentRowViewModel) ou o CodeBlockItem direto (se estivesse bindado direto)
-				// No nosso caso atual, o SegmentCodeViewer está dentro de um Grid com DataContext=SegmentRowViewModel
+			ViewModel.SelectedBlock = block;
+			UpdateSelectionIndicator();
+		}
+	}
 
-				// Hack seguro: Se o DataContext do sender for CodeBlockItem (as vezes acontece dependendo do binding)
-				if (element.DataContext is CodeBlockItem block)
-				{
-					if (ViewModel.SelectedBlock != block)
-					{
-						ViewModel.SelectedBlock = block;
-						UpdateSelectionIndicator();
-					}
-					return;
-				}
+	/// <summary>
+	/// Atualiza a barra azul lateral (SelectionIndicator) percorrendo a árvore visual.
+	/// Isso é necessário porque o indicador visual é um elemento de UI, não um estado de dados.
+	/// </summary>
+	private void UpdateSelectionIndicator()
+	{
+		if (ViewModel == null) return;
 
-				// Se não, tentamos achar a Row
-				if (element.DataContext is SegmentRowViewModel row)
-				{
-					if (ViewModel.SelectedBlock != row.Current)
-					{
-						ViewModel.SelectedBlock = row.Current;
-						UpdateSelectionIndicator();
-					}
-				}
-			}
+		// 1. Ocultar indicador do bloco anteriormente selecionado
+		if (_lastSelectedBlock != null)
+		{
+			ToggleIndicatorVisibility(_lastSelectedBlock, Visibility.Collapsed);
 		}
 
-		// --- Gerenciamento Visual da Seleção ---
-
-		private void UpdateSelectionIndicator()
+		// 2. Mostrar indicador no novo bloco selecionado
+		if (ViewModel.SelectedBlock != null)
 		{
-			// 1. Apaga o indicador do antigo
-			if (_lastSelectedBlock != null)
-			{
-				var container = FindContainerForBlock(_lastSelectedBlock);
-				if (container != null)
-				{
-					var indicator = container.FindName("SelectionIndicator") as Microsoft.UI.Xaml.Shapes.Rectangle;
-					if (indicator != null) indicator.Visibility = Visibility.Collapsed;
-				}
-			}
-
-			// 2. Acende o indicador do novo
-			if (ViewModel.SelectedBlock != null)
-			{
-				var container = FindContainerForBlock(ViewModel.SelectedBlock);
-				if (container != null)
-				{
-					var indicator = container.FindName("SelectionIndicator") as Microsoft.UI.Xaml.Shapes.Rectangle;
-					if (indicator != null) indicator.Visibility = Visibility.Visible;
-				}
-			}
+			ToggleIndicatorVisibility(ViewModel.SelectedBlock, Visibility.Visible);
 			_lastSelectedBlock = ViewModel.SelectedBlock;
 		}
+	}
 
-		private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
+	private void ToggleIndicatorVisibility(CodeBlockItem block, Visibility visibility)
+	{
+		var container = FindContainerForBlock(block);
+		if (container != null)
 		{
-			// Procura dentro do MainScrollViewer (que contém o ItemsControl unificado)
-			return FindContainerRecursive(MainScrollViewer, block);
-		}
-
-		private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem targetBlock)
-		{
-			if (parent == null) return null;
-			int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
-
-			for (int i = 0; i < childrenCount; i++)
+			// "SelectionIndicator" é o nome do Rectangle definido no XAML
+			if (container.FindName("SelectionIndicator") is Microsoft.UI.Xaml.Shapes.Rectangle indicator)
 			{
-				var child = VisualTreeHelper.GetChild(parent, i);
+				indicator.Visibility = visibility;
+			}
+		}
+	}
 
-				// LÓGICA ATUALIZADA:
-				// Verificamos se o elemento visual tem um DataContext do tipo Row
-				// E se essa Row contém o Block que estamos procurando.
-				if (child is FrameworkElement element && element.DataContext is SegmentRowViewModel row)
+	private FrameworkElement? FindContainerForBlock(CodeBlockItem block)
+	{
+		return FindContainerRecursive(MainScrollViewer, block);
+	}
+
+	private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem targetBlock)
+	{
+		if (parent == null) return null;
+
+		int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
+		for (int i = 0; i < childrenCount; i++)
+		{
+			var child = VisualTreeHelper.GetChild(parent, i);
+
+			// Verifica se o filho é um container de linha que contém nosso bloco alvo
+			if (child is FrameworkElement element &&
+				element.DataContext is SegmentRowViewModel row &&
+				row.Current == targetBlock)
+			{
+				// Verifica se este elemento possui o indicador visual (é o Grid correto?)
+				if (element is Grid && element.FindName("SelectionIndicator") != null)
 				{
-					if (row.Current == targetBlock)
-					{
-						// Achamos o container da linha!
-						// Verificamos se é o Grid principal do template (que contém o SelectionIndicator)
-						if (element is Grid && element.FindName("SelectionIndicator") != null)
-						{
-							return element;
-						}
-					}
-				}
-
-				var result = FindContainerRecursive(child, targetBlock);
-				if (result != null) return result;
-			}
-			return null;
-		}
-
-		// --- HANDLERS DO FOOTER ---
-
-		private void OnSaveNewVersionRequested(object sender, EventArgs e)
-		{
-			// Clique principal do SplitButton ou Menu Item
-			if (ViewModel.SaveChangesCommand.CanExecute("NewVersion"))
-			{
-				ViewModel.SaveChangesCommand.Execute("NewVersion");
-			}
-		}
-
-		private void OnSaveOverwriteRequested(object sender, EventArgs e)
-		{
-			if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
-			{
-				ViewModel.SaveChangesCommand.Execute("Overwrite");
-			}
-		}
-
-		private void OnRestoreOriginalRequested(object sender, EventArgs e)
-		{
-			ViewModel.TriggerGlobalRestore(0);
-		}
-
-		// --- Atalhos de Teclado (CTRL+S dentro do editor) ---
-		private void OnSegmentSaveRequested(object sender, EventArgs e)
-		{
-			if (ViewModel.HasAnyUnsavedChanges)
-			{
-				if (ViewModel.SaveChangesCommand.CanExecute("Overwrite"))
-				{
-					ViewModel.SaveChangesCommand.Execute("Overwrite");
+					return element;
 				}
 			}
+
+			var result = FindContainerRecursive(child, targetBlock);
+			if (result != null) return result;
 		}
+
+		return null;
+	}
+
+	private void OnEditorCaretPositionChanged(object sender, int cursorPosition)
+	{
+		// 1. Garante que sabemos qual bloco estamos editando
+		EnsureBlockSelectionFromSender(sender);
+
+		// 2. Chama o método no ViewModel que usa o Serviço
+		// O ViewModel vai usar o SelectedBlock atual + a posição do cursor
+		ViewModel.ResolveSymbolHeuristic(cursorPosition);
 	}
 }

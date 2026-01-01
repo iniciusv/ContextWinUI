@@ -32,7 +32,6 @@ public sealed partial class MainWindow : Window
 		}
 	}
 
-	// Seus métodos existentes...
 	private void OnFileExplorer_FileSelected(object sender, FileSystemItem item)
 	{
 		ViewModel.FileExplorer.SelectFile(item); // Ajustado para acessar via FileExplorer

@@ -4,6 +4,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.GraphParser.Models;
+using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
 using System;
 using System.Collections.Generic;
@@ -17,10 +18,12 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class GraphParserViewModel : ObservableObject
 {
-	private readonly SemanticIndexService _indexService;
+	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
 	private string _rootPath;
 	private readonly ICodeBlockParserService _parserService;
+	private readonly ISymbolResolutionService _symbolService;
+	private readonly IVersionDiffManager _diffManager;
 
 	[ObservableProperty]
 	private ObservableCollection<FileSegmentsViewModel> tabs = new();
@@ -46,13 +49,22 @@ public partial class GraphParserViewModel : ObservableObject
 	partial void OnSelectedTabChanged(FileSegmentsViewModel? value) => OnPropertyChanged(nameof(HasTabs));
 
 	public GraphParserViewModel(
-		SemanticIndexService indexService,
+		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
 		IProjectSessionManager sessionManager,
-		ICodeBlockParserService parserService)
+		ICodeBlockParserService parserService,
+		// INJETAR OS NOVOS SERVIÇOS AQUI
+		ISymbolResolutionService symbolService,
+		IVersionDiffManager diffManager)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
+		_parserService = parserService;
+
+		// ATRIBUIR AOS CAMPOS
+		_symbolService = symbolService;
+		_diffManager = diffManager;
+
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		_parserService = parserService;
 
@@ -298,8 +310,9 @@ public partial class GraphParserViewModel : ObservableObject
 		var newTab = new FileSegmentsViewModel(
 			fullPath,
 			_fileSystemService,
-			_indexService,
 			_parserService,
+			_symbolService,  // <--- Passando o serviço injetado
+			_diffManager,    // <--- Passando o serviço injetado
 			GlobalHistory,
 			CurrentGlobalIndex
 		);
