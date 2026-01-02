@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
+using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.Services;
 using Microsoft.UI.Xaml; // Para GridLength
@@ -21,6 +22,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
+	private readonly IAiCodeMerger _mergerService;
 
 	// --- Propriedades Básicas ---
 	public string FilePath { get; }
@@ -83,7 +85,8 @@ public partial class FileSegmentsViewModel : ObservableObject
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager,
 		ObservableCollection<GlobalVersion> sharedHistory,
-		int initialGlobalIndex)
+		int initialGlobalIndex,
+		IAiCodeMerger mergerService)
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
@@ -93,6 +96,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 		_diffManager = diffManager;
 		GlobalHistory = sharedHistory;
 		CurrentGlobalIndex = initialGlobalIndex;
+		_mergerService = mergerService;
 
 		// Inicia carregamento
 		_ = LoadBlocksAsync();
@@ -341,5 +345,27 @@ public partial class FileSegmentsViewModel : ObservableObject
 
 		// Atualiza a propriedade que a UI está observando
 		CurrentSymbolInfo = result ?? string.Empty;
+	}
+
+	public async Task ApplyAiSuggestion(string aiCode)
+	{
+		var result = await _mergerService.MergeAiSnippetAsync(aiCode);
+
+		if (result.Success && this.FilePath == result.FilePath)
+		{
+			// Atualiza a UI na Thread Principal
+			_ = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+			{
+				this.Rows.Clear();
+				foreach (var block in result.MergedBlocks)
+				{
+					this.Rows.Add(new SegmentRowViewModel(block));
+				}
+				NotifyUnsavedChanges();
+
+				if (IsComparisonMode)
+					_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			});
+		}
 	}
 }

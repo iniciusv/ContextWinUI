@@ -7,6 +7,7 @@ using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.FileSystem;
 using ContextWinUI.Features.GraphParser;
+using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Services;
@@ -51,6 +52,7 @@ public partial class App : Application
 		services.AddSingleton<IFileSelectionService, FileSelectionService>();
 		services.AddSingleton<IProjectSessionManager, ProjectSessionManager>();
 		services.AddSingleton<ISemanticIndexService, SemanticIndexService>();
+		services.AddSingleton<IAiCodeMerger, AiCodeMerger>();
 
 		// 3. LÓGICA
 		services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe

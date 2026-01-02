@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
+using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
@@ -24,6 +25,7 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
+	private readonly IAiCodeMerger _aiMergerService;
 
 	[ObservableProperty]
 	private ObservableCollection<FileSegmentsViewModel> tabs = new();
@@ -53,7 +55,7 @@ public partial class GraphParserViewModel : ObservableObject
 		IFileSystemService fileSystemService,
 		IProjectSessionManager sessionManager,
 		ICodeBlockParserService parserService,
-		// INJETAR OS NOVOS SERVIÇOS AQUI
+		IAiCodeMerger aiMergerService,
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager)
 	{
@@ -314,7 +316,8 @@ public partial class GraphParserViewModel : ObservableObject
 			_symbolService,  // <--- Passando o serviço injetado
 			_diffManager,    // <--- Passando o serviço injetado
 			GlobalHistory,
-			CurrentGlobalIndex
+			CurrentGlobalIndex,
+			_aiMergerService
 		);
 
 		// Assinamos os eventos para comunicação bi-direcional

@@ -5,6 +5,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
+using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Models;
 using ContextWinUI.Services; // Necessário para SemanticIndexService concreto, se não tiver interface
@@ -25,6 +26,8 @@ public partial class MainViewModel : ObservableObject
 	// =========================================================
 	private readonly ISemanticIndexService _semanticIndexService;
 	private readonly IFileSelectionService _fileSelectionService;
+	private readonly IAiCodeMerger _aiMergerService;
+
 
 	// Dispatcher para atualizações de UI em threads de fundo
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -60,6 +63,7 @@ public partial class MainViewModel : ObservableObject
 			PrePromptViewModel prePrompt,
 			FileContentViewModel fileContent,
 			GraphParserViewModel graphParser,
+			IAiCodeMerger aiMergerService,
 			IProjectSessionManager sessionManager,      // <--- MUDANÇA 2: Pedir a Interface (I...)
 			ISemanticIndexService semanticIndexService,
 			IFileSelectionService fileSelectionService) // <--- MUDANÇA 3: Pedir a Interface (I...)
@@ -72,6 +76,7 @@ public partial class MainViewModel : ObservableObject
 		SessionManager = sessionManager;
 		_semanticIndexService = semanticIndexService;
 		_fileSelectionService = fileSelectionService;
+		_aiMergerService = aiMergerService;
 
 		RegisterEvents();
 	}
