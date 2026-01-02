@@ -193,6 +193,8 @@ public partial class MainViewModel : ObservableObject
 		}
 	}
 
+
+
 	public void OnFileSelected(FileSystemItem item)
 	{
 		_fileSelectionService.SetSelection(item);
@@ -216,29 +218,6 @@ public partial class MainViewModel : ObservableObject
 				IsLoading = FileExplorer.IsLoading;
 			}
 		};
-	}
-
-	[RelayCommand]
-	private async Task AnalyzeContextAsync()
-	{
-		// Nota: FileExplorer e ContextAnalysis compartilham o ContextSelectionViewModel via DI agora.
-		// O método GetCheckedFiles() funcionará perfeitamente.
-		var selectedFiles = FileExplorer.SelectionViewModel.GetCheckedFiles().ToList();
-		var rootPath = SessionManager.CurrentProjectPath;
-
-		if (selectedFiles.Any() && !string.IsNullOrEmpty(rootPath))
-		{
-			StatusMessage = "Iniciando análise...";
-			IsLoading = true;
-			try
-			{
-				await ContextAnalysis.AnalyzeContextAsync(selectedFiles, rootPath);
-			}
-			finally
-			{
-				IsLoading = false;
-			}
-		}
 	}
 
 	[RelayCommand]

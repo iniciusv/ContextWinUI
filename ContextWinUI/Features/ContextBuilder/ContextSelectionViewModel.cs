@@ -254,21 +254,6 @@ public partial class ContextSelectionViewModel : ObservableObject
 			IsCopying = false;
 		}
 	}
-
-	// Exemplo de como coletar todos os itens para a aba de Seleção
-	public void RefreshSelectedItems(IEnumerable<FileSystemItem> rootItems)
-	{
-		var allChecked = new List<FileSystemItem>();
-		foreach (var root in rootItems)
-		{
-			CollectCheckedRecursive(root, allChecked);
-		}
-
-		// Atualiza a lista da UI (SelectedItemsList)
-		SelectedItemsList.Clear();
-		foreach (var item in allChecked) SelectedItemsList.Add(item);
-	}
-
 	private void CollectCheckedRecursive(FileSystemItem item, List<FileSystemItem> result)
 	{
 		if (item.IsChecked)

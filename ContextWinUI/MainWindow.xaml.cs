@@ -37,17 +37,4 @@ public sealed partial class MainWindow : Window
 		ViewModel.FileExplorer.SelectFile(item); // Ajustado para acessar via FileExplorer
 	}
 
-	[RelayCommand]
-	private async Task AnalyzeContextAsync()
-	{
-		// Acessa a ViewModel de Análise
-		var analysisVM = ViewModel.ContextAnalysis;
-
-		// Verifica se pode executar e executa
-		// O nome aqui deve ser AnalyzeCommand (criado pelo passo 1)
-		if (analysisVM.AnalyzeCommand.CanExecute(null))
-		{
-			await analysisVM.AnalyzeCommand.ExecuteAsync(null);
-		}
-	}
 }

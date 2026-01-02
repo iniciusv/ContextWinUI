@@ -89,7 +89,6 @@
 				<PivotItem Header="Arquivo Atual" Margin="0">
 					<views:FileContentView 
                            ContentViewModel="{x:Bind ViewModel.FileContent}"
-                           AnalyzeCommand="{x:Bind ViewModel.AnalyzeContextCommand}"
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 				</PivotItem>
 
