@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
@@ -148,18 +149,84 @@ public partial class ContextSelectionViewModel : ObservableObject
 	{
 		if (paths == null) return;
 
+		// Obter o caminho raiz do projeto atual
+		string? projectRoot = _sessionManager.CurrentProjectPath;
+
 		foreach (var path in paths)
 		{
-			// Valida existência física
+			string? resolvedPath = null;
+
+			// Caso 1: Caminho absoluto que existe
 			if (System.IO.File.Exists(path))
 			{
-				// Factory garante estado compartilhado (tags) se já estiver na memória
-				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, "\uE943");
+				resolvedPath = path;
+			}
+			// Caso 2: Caminho relativo ao projeto
+			else if (!string.IsNullOrEmpty(projectRoot))
+			{
+				// Tentar como caminho relativo ao projeto
+				string relativePath = System.IO.Path.Combine(projectRoot, path);
+				if (System.IO.File.Exists(relativePath))
+				{
+					resolvedPath = relativePath;
+				}
+				// Caso 3: Apenas nome do arquivo - buscar recursivamente no projeto
+				else
+				{
+					string fileName = path;
 
-				// Marca checkbox visualmente (se existir no Explorer)
+					// Se não tem extensão, adicionar extensões comuns para buscar
+					string fileNameWithoutExtension = System.IO.Path.GetFileNameWithoutExtension(fileName);
+					bool hasExtension = !string.IsNullOrEmpty(System.IO.Path.GetExtension(fileName));
+
+					// Buscar arquivos no projeto
+					try
+					{
+						var allFiles = Directory.EnumerateFiles(projectRoot, "*.*", SearchOption.AllDirectories);
+
+						foreach (var file in allFiles)
+						{
+							string currentFileName = System.IO.Path.GetFileName(file);
+							string currentFileNameWithoutExt = System.IO.Path.GetFileNameWithoutExtension(file);
+
+							// Comparar com ou sem extensão
+							if (hasExtension)
+							{
+								// Com extensão: comparar nomes completos
+								if (string.Equals(currentFileName, fileName, StringComparison.OrdinalIgnoreCase))
+								{
+									resolvedPath = file;
+									break;
+								}
+							}
+							else
+							{
+								// Sem extensão: comparar apenas o nome base
+								if (string.Equals(currentFileNameWithoutExt, fileName, StringComparison.OrdinalIgnoreCase))
+								{
+									resolvedPath = file;
+									break;
+								}
+							}
+						}
+					}
+					catch (Exception ex)
+					{
+						System.Diagnostics.Debug.WriteLine($"Erro ao buscar arquivo {fileName}: {ex.Message}");
+					}
+				}
+			}
+
+			if (!string.IsNullOrEmpty(resolvedPath))
+			{
+				var item = _itemFactory.CreateWrapper(resolvedPath, FileSystemItemType.File, "\uE943");
 				item.IsChecked = true;
-
 				AddItem(item);
+			}
+			else
+			{
+				// Log para debug - arquivo não encontrado
+				System.Diagnostics.Debug.WriteLine($"Arquivo não encontrado: {path}");
 			}
 		}
 	}
