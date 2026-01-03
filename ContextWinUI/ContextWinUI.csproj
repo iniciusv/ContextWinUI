@@ -53,6 +53,9 @@
     <Page Update="Features\ContextBuilder\ContextGitView.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Update="Features\GraphAnalysis\SemanticGraphView.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Features\GraphParser\VersionFooter.xaml">
       <SubType>Designer</SubType>
     </Page>

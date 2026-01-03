@@ -6,6 +6,7 @@ using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.FileSystem;
+using ContextWinUI.Features.GraphAnalysis;
 using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Services;
@@ -72,6 +73,7 @@ public partial class App : Application
 		// 5. VIEWMODELS
 		services.AddSingleton<ContextSelectionViewModel>();
 
+		services.AddTransient<SemanticGraphViewModel>();
 		services.AddTransient<FileExplorerViewModel>();
 		services.AddTransient<ContextAnalysisViewModel>(); // Verifique se existe
 		services.AddTransient<FileContentViewModel>(); // Verifique se existe

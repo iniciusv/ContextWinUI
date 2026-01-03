@@ -5,6 +5,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
+using ContextWinUI.Features.GraphAnalysis;
 using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Models;
@@ -41,6 +42,7 @@ public partial class MainViewModel : ObservableObject
 	public FileContentViewModel FileContent { get; }
 	public GraphParserViewModel GraphParser { get; }
 	public IProjectSessionManager SessionManager { get; }
+	public SemanticGraphViewModel SemanticGraph { get; }
 
 	// Atalho para binding na View (aponta para a instância dentro do Explorer)
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
@@ -58,15 +60,16 @@ public partial class MainViewModel : ObservableObject
 	// CONSTRUTOR (Agora limpo e rápido)
 	// =========================================================
 	public MainViewModel(
-			FileExplorerViewModel fileExplorer,
-			ContextAnalysisViewModel contextAnalysis,
-			PrePromptViewModel prePrompt,
-			FileContentViewModel fileContent,
-			GraphParserViewModel graphParser,
-			IAiCodeMerger aiMergerService,
+				FileExplorerViewModel fileExplorer,
+				ContextAnalysisViewModel contextAnalysis,
+				PrePromptViewModel prePrompt,
+				FileContentViewModel fileContent,
+				GraphParserViewModel graphParser,
+				IAiCodeMerger aiMergerService,
 			IProjectSessionManager sessionManager,      // <--- MUDANÇA 2: Pedir a Interface (I...)
-			ISemanticIndexService semanticIndexService,
-			IFileSelectionService fileSelectionService) // <--- MUDANÇA 3: Pedir a Interface (I...)
+				ISemanticIndexService semanticIndexService,
+			IFileSelectionService fileSelectionService, // <--- MUDANÇA 3: Pedir a Interface (I...)
+				SemanticGraphViewModel semanticGraph)
 	{
 		FileExplorer = fileExplorer;
 		ContextAnalysis = contextAnalysis;
@@ -77,6 +80,8 @@ public partial class MainViewModel : ObservableObject
 		_semanticIndexService = semanticIndexService;
 		_fileSelectionService = fileSelectionService;
 		_aiMergerService = aiMergerService;
+
+		SemanticGraph = semanticGraph;
 
 		RegisterEvents();
 	}

@@ -136,12 +136,24 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 		var symbol = _semanticModel.GetDeclaredSymbol(node);
 		if (symbol == null) return;
 
+		// 1. Criar o nó e adicionar ao grafo global
 		var newNode = CreateNode(symbol, node.Span);
 		_graph.AddNode(newNode);
 
+		// 2. [CRUCIAL] Vincular Hierarquia: Pai (Classe) -> Filho (Método)
+		// Se existe um contexto atual (a Classe), adicionamos este método como filho dela.
+		if (_contextNode != null)
+		{
+			_contextNode.Children.Add(newNode);
+			newNode.Parent = _contextNode;
+		}
+
+		// 3. Mudar o contexto para o método atual
+		// Isso garante que variáveis usadas DENTRO do método sejam ligadas a ELE, e não à Classe.
 		var previousContext = _contextNode;
 		_contextNode = newNode;
 
+		// 4. Buscar parâmetros (já existia no seu código, mantido)
 		foreach (var parameterSyntax in node.ParameterList.Parameters)
 		{
 			var paramSymbol = _semanticModel.GetDeclaredSymbol(parameterSyntax);
@@ -152,7 +164,35 @@ public class GraphBuilderWalker : CSharpSyntaxWalker
 			}
 		}
 
+		// 5. Visitar o corpo do método
 		base.VisitMethodDeclaration(node);
+
+		// 6. Restaurar o contexto anterior (voltar para o escopo da Classe)
+		_contextNode = previousContext;
+	}
+
+	// [NOVO] Adicione este método para pegar Propriedades também
+	public override void VisitPropertyDeclaration(PropertyDeclarationSyntax node)
+	{
+		var symbol = _semanticModel.GetDeclaredSymbol(node);
+		if (symbol == null) return;
+
+		var newNode = CreateNode(symbol, node.Span);
+		_graph.AddNode(newNode);
+
+		// Vincular à Classe Pai
+		if (_contextNode != null)
+		{
+			_contextNode.Children.Add(newNode);
+			newNode.Parent = _contextNode;
+		}
+
+		// Propriedades podem ter lógica no get/set, então visitamos os filhos
+		var previousContext = _contextNode;
+		_contextNode = newNode;
+
+		base.VisitPropertyDeclaration(node);
+
 		_contextNode = previousContext;
 	}
 
