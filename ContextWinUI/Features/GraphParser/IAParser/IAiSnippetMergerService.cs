@@ -3,7 +3,8 @@ using ContextWinUI.Features.GraphParser.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphParser.Services;
+namespace ContextWinUI.Features.GraphParser.IAParser;
+
 
 public interface IAiSnippetMergerService
 {

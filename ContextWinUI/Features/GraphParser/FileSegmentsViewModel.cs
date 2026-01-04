@@ -368,4 +368,26 @@ public partial class FileSegmentsViewModel : ObservableObject
 			});
 		}
 	}
+
+	public void ApplyExternalMerge(List<CodeBlockItem> mergedBlocks)
+	{
+		// Executa na thread de UI para garantir segurança
+		_ = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+		{
+			Rows.Clear();
+			foreach (var block in mergedBlocks)
+			{
+				Rows.Add(new SegmentRowViewModel(block));
+			}
+
+			// Marca que houve alteração para a UI reagir (ícones de disquete, diff, etc)
+			NotifyUnsavedChanges();
+
+			// Se estiver no modo de comparação, atualiza a visualização
+			if (IsComparisonMode)
+			{
+				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			}
+		});
+	}
 }

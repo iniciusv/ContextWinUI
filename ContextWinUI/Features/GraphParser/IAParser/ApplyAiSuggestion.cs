@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphParser.IAParser
+namespace ContextWinUI.Features.GraphParser.IAParser;
+
+
+internal class ApplyAiSuggestion
 {
-	internal class ApplyAiSuggestion
-	{
-	}
 }

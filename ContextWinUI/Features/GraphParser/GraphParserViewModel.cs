@@ -2,8 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
-using ContextWinUI.Features.CodeAnalyses;
-using ContextWinUI.Features.GraphParser.IAParser;
+using ContextWinUI.Features.GraphParser.IAParser; // Namespace das classes novas (IA)
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
@@ -14,6 +13,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
 
@@ -25,50 +25,49 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
-	private readonly IAiCodeMerger _aiMergerService;
+	private readonly IAiCodeMerger _aiMergerService; // Campo adicionado
 
+	// Alterado para 'object' para aceitar FileSegmentsViewModel E AiPreviewViewModel
 	[ObservableProperty]
-	private ObservableCollection<FileSegmentsViewModel> tabs = new();
+	private ObservableCollection<object> tabs = new();
 
+	// Alterado para 'object' para suportar a seleção de diferentes tipos de VM
 	[ObservableProperty]
-	private FileSegmentsViewModel? selectedTab;
+	private object? selectedTab;
 
 	[ObservableProperty]
 	private ObservableCollection<SearchSuggestion> searchSuggestions = new();
 
-	// --- VERSIONAMENTO CENTRALIZADO ---
 	[ObservableProperty]
 	private ObservableCollection<GlobalVersion> globalHistory = new();
 
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
-	// ----------------------------------
 
 	public bool HasTabs => Tabs.Any();
 
-	// Triggers para atualizar a UI quando abas mudam
-	partial void OnTabsChanged(ObservableCollection<FileSegmentsViewModel> value) => OnPropertyChanged(nameof(HasTabs));
-	partial void OnSelectedTabChanged(FileSegmentsViewModel? value) => OnPropertyChanged(nameof(HasTabs));
+	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
+	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
 
 	public GraphParserViewModel(
 		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
 		IProjectSessionManager sessionManager,
 		ICodeBlockParserService parserService,
-		IAiCodeMerger aiMergerService,
+		IAiCodeMerger aiMergerService, // Injeção da dependência
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
-
-		// ATRIBUIR AOS CAMPOS
 		_symbolService = symbolService;
 		_diffManager = diffManager;
 
+		// CORREÇÃO: Atribuição do serviço de IA
+		_aiMergerService = aiMergerService;
+
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
-		_parserService = parserService;
 
 		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
 
@@ -78,8 +77,6 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 
 		sessionManager.ProjectLoaded += OnProjectLoaded;
-
-		// Inicializa o histórico com o estado zero
 		InitializeGlobalHistory();
 	}
 
@@ -95,24 +92,20 @@ public partial class GraphParserViewModel : ObservableObject
 		CurrentGlobalIndex = 0;
 	}
 
-	// --- PONTO CRÍTICO: Implementação do método parcial gerado pelo ObservableProperty ---
 	partial void OnCurrentGlobalIndexChanged(int value)
 	{
-		// Se o índice mudou (seja via UI, seja via código), propagamos para todas as abas
 		RestoreAllToVersion(value);
 	}
 
 	[RelayCommand]
 	public void CommitAllPendingChanges()
 	{
-		// Define um Timestamp ÚNICO para todo o lote
 		var batchTime = DateTime.Now;
 		string batchTimestamp = batchTime.ToString("HH:mm:ss");
 		string description = $"Lote {batchTimestamp}";
 
 		bool anyChange = false;
 
-		// 1. Cria a versão Global
 		var newGlobalVersion = new GlobalVersion
 		{
 			Description = description,
@@ -121,11 +114,9 @@ public partial class GraphParserViewModel : ObservableObject
 		};
 		GlobalHistory.Add(newGlobalVersion);
 
-		// 2. Comanda TODAS as abas a criar snapshot com o MESMO horário
-		foreach (var tab in Tabs)
+		// Filtramos apenas as abas de arquivo, ignorando previews de IA
+		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
-			// Opcional: só snapshotar se tiver mudanças, ou snapshotar tudo para garantir sincronia.
-			// Aqui vamos snapshotar quem tem mudanças.
 			if (tab.HasAnyUnsavedChanges)
 			{
 				tab.SnapshotBlocksForGlobalVersion(description, batchTime);
@@ -138,11 +129,10 @@ public partial class GraphParserViewModel : ObservableObject
 			Debug.WriteLine($"Commit Global realizado: {description}");
 		}
 
-		// 3. Atualiza o índice para a nova versão (isso vai disparar OnCurrentGlobalIndexChanged)
 		CurrentGlobalIndex = GlobalHistory.Count - 1;
 
-		// 4. Força a sincronia visual do índice nas abas (caso OnCurrentGlobalIndexChanged não pegue algo)
-		foreach (var tab in Tabs)
+		// Sincroniza apenas abas de arquivo
+		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
 			tab.SyncGlobalIndex(CurrentGlobalIndex);
 		}
@@ -154,19 +144,20 @@ public partial class GraphParserViewModel : ObservableObject
 
 		Debug.WriteLine($"Restaurando todas as abas para versão global: {versionIndex}");
 
-		// Garante que a propriedade local está correta (evita reentrância se já for igual)
 		if (CurrentGlobalIndex != versionIndex)
 		{
 			CurrentGlobalIndex = versionIndex;
 		}
 
-		foreach (var tab in Tabs)
+		// Restaura apenas abas de arquivo
+		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
 			tab.RestoreToGlobalIndex(versionIndex);
 		}
 	}
 
-	public bool HasAnyUnsavedChanges => Tabs.Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
+	// Verifica alterações apenas em abas de arquivo real
+	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
@@ -188,6 +179,38 @@ public partial class GraphParserViewModel : ObservableObject
 		catch (Exception ex)
 		{
 			Debug.WriteLine($"Erro ao indexar grafo: {ex.Message}");
+		}
+	}
+
+	// --- COMANDO NOVO: SMART PASTE ---
+	[RelayCommand]
+	public async Task PasteAndMergeFromClipboard()
+	{
+		try
+		{
+			var dataPackageView = Clipboard.GetContent();
+			if (!dataPackageView.Contains(StandardDataFormats.Text))
+			{
+				Debug.WriteLine("Clipboard vazio ou sem texto.");
+				return;
+			}
+
+			string snippetText = await dataPackageView.GetTextAsync();
+
+			// 1. Executa a análise no serviço (in-memory merge)
+			var result = await _aiMergerService.MergeAiSnippetAsync(snippetText);
+
+			// 2. Cria a ViewModel de Preview usando o namespace IAParser
+			// Note: AiPreviewViewModel precisa existir e aceitar (AiMergeResult, GraphParserViewModel)
+			var previewVm = new AiPreviewViewModel(result, this);
+
+			// 3. Abre a aba de preview
+			Tabs.Add(previewVm);
+			SelectedTab = previewVm;
+		}
+		catch (Exception ex)
+		{
+			Debug.WriteLine($"Erro crítico ao colar e processar IA: {ex.Message}");
 		}
 	}
 
@@ -247,7 +270,7 @@ public partial class GraphParserViewModel : ObservableObject
 						});
 					}
 				}
-				catch { /* Ignore */ }
+				catch { }
 			}
 
 			suggestions = suggestions.OrderByDescending(s => s.MatchCount).ThenBy(s => s.Title).Take(15).ToList();
@@ -291,7 +314,7 @@ public partial class GraphParserViewModel : ObservableObject
 	}
 
 	[RelayCommand]
-	private void OpenFile(object parameter)
+	public void OpenFile(object parameter)
 	{
 		string? path = null;
 		if (parameter is SearchSuggestion suggestion) path = suggestion.FilePath;
@@ -300,31 +323,28 @@ public partial class GraphParserViewModel : ObservableObject
 
 		if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_rootPath)) return;
 
-		string fullPath = Path.Combine(_rootPath, path);
-		var existingTab = Tabs.FirstOrDefault(t => t.FilePath == fullPath);
+		string fullPath = Path.IsPathRooted(path) ? path : Path.Combine(_rootPath, path);
+
+		// Verifica se a aba já existe (somente entre as FileSegmentsViewModel)
+		var existingTab = Tabs.OfType<FileSegmentsViewModel>().FirstOrDefault(t => t.FilePath == fullPath);
 		if (existingTab != null)
 		{
 			SelectedTab = existingTab;
 			return;
 		}
 
-		// --- AQUI ESTÁ A LIGAÇÃO CHAVE: Passamos o GlobalHistory e CurrentGlobalIndex ---
 		var newTab = new FileSegmentsViewModel(
 			fullPath,
 			_fileSystemService,
 			_parserService,
-			_symbolService,  // <--- Passando o serviço injetado
-			_diffManager,    // <--- Passando o serviço injetado
+			_symbolService,
+			_diffManager,
 			GlobalHistory,
 			CurrentGlobalIndex,
 			_aiMergerService
 		);
 
-		// Assinamos os eventos para comunicação bi-direcional
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
-
-		// Quando a aba pede restore (ex: clicou no footer da aba), atualizamos o índice do pai
-		// Isso vai disparar OnCurrentGlobalIndexChanged do Pai, que vai propagar para todos.
 		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
 
 		Tabs.Add(newTab);
@@ -332,7 +352,7 @@ public partial class GraphParserViewModel : ObservableObject
 	}
 
 	[RelayCommand]
-	private void CloseTab(FileSegmentsViewModel tab)
+	public void CloseTab(object tab)
 	{
 		if (Tabs.Contains(tab))
 		{

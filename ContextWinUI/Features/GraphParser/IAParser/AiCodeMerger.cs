@@ -31,6 +31,8 @@ public class AiCodeMerger : IAiCodeMerger
 		_parserService = parserService;
 	}
 
+	// ARQUIVO: AiCodeMerger.cs
+
 	public async Task<AiMergeResult> MergeAiSnippetAsync(string snippetCode)
 	{
 		var result = new AiMergeResult();
@@ -43,9 +45,11 @@ public class AiCodeMerger : IAiCodeMerger
 
 		try
 		{
-			// 1. Identificar a qual arquivo este snippet pertence
+			// 1. Identifica o arquivo de destino
 			var targetFilePath = await IdentifyTargetFileAsync(snippetCode);
 
+			// Se não achou por identificação automática, tenta usar o que está aberto na UI (se sua arquitetura permitisse passar esse contexto)
+			// Por enquanto, mantemos a lógica original de erro se não achar
 			if (string.IsNullOrEmpty(targetFilePath) || !File.Exists(targetFilePath))
 			{
 				result.Message = "Não foi possível identificar o arquivo de origem correspondente no projeto.";
@@ -53,21 +57,22 @@ public class AiCodeMerger : IAiCodeMerger
 			}
 
 			result.FilePath = targetFilePath;
-
-			// 2. Carregar o conteúdo atual do arquivo (do disco)
 			var originalContent = await _fileSystemService.ReadFileContentAsync(targetFilePath);
+
 			if (string.IsNullOrEmpty(originalContent))
 			{
 				result.Message = "O arquivo identificado está vazio ou não pôde ser lido.";
 				return result;
 			}
 
-			// 3. Transformar ambos (Original e Snippet) em Blocos
-			// Nota: Parseamos o snippet passando o targetFilePath apenas para manter a extensão correta
+			// 2. Parse do arquivo original (Esse funciona bem pois é um arquivo válido)
 			var originalBlocks = await _parserService.ParseFileAsync(targetFilePath, originalContent);
-			var snippetBlocks = await _parserService.ParseFileAsync(targetFilePath, snippetCode);
 
-			// 4. Executar o Merge Lógico
+			// 3. Parse do Snippet (AQUI ESTÁ A CORREÇÃO)
+			// Usamos um método especial que embrulha o código se necessário
+			var snippetBlocks = await ParseSnippetWithFallbackAsync(targetFilePath, snippetCode);
+
+			// 4. Executa o Merge
 			PerformMerge(originalBlocks, snippetBlocks, result);
 
 			result.MergedBlocks = originalBlocks;
@@ -83,19 +88,49 @@ public class AiCodeMerger : IAiCodeMerger
 		return result;
 	}
 
+	// NOVO MÉTODO AUXILIAR
+	private async Task<List<CodeBlockItem>> ParseSnippetWithFallbackAsync(string filePath, string snippetCode)
+	{
+		// Tentativa 1: Parse direto (funciona se for uma classe completa)
+		var blocks = await _parserService.ParseFileAsync(filePath, snippetCode);
+
+		// Verifica se achou algo útil (Métodos, Propriedades, etc)
+		// Se só achou Trivia/Using, provavelmente o parse falhou em reconhecer a estrutura
+		bool hasMeaningfulBlocks = blocks.Any(b => b.IsGranular || b.SegmentType == SegmentType.Class);
+
+		if (hasMeaningfulBlocks)
+		{
+			return blocks;
+		}
+
+		// Tentativa 2: Embrulhar em uma classe fictícia para forçar o Roslyn a reconhecer métodos
+		var wrapperCode = $"public class AiSnippetWrapper_Temp {{ \n{snippetCode}\n }}";
+		var wrappedBlocks = await _parserService.ParseFileAsync(filePath, wrapperCode);
+
+		// Agora precisamos extrair o que está DENTRO do Wrapper e descartar o Wrapper em si
+		var extractedBlocks = wrappedBlocks
+			.Where(b => b.Name != "AiSnippetWrapper_Temp" && b.Name != "Corpo de AiSnippetWrapper_Temp") // Filtra a classe wrapper
+			.Select(b => {
+				// Ajuste opcional de profundidade se necessário, mas para o merge o que importa é Nome e Tipo
+				return b;
+			})
+			.ToList();
+
+		return extractedBlocks;
+	}
+
 	private async Task<string?> IdentifyTargetFileAsync(string snippet)
 	{
+		// 1. Tentativa Direta (caso o usuário tenha colado uma classe inteira)
 		var tree = CSharpSyntaxTree.ParseText(snippet);
 		var root = await tree.GetRootAsync();
-		var graph = _indexService.GetCurrentGraph(); // Acessa o grafo atual
 
-		// Estratégia A: Busca por Declaração de Classe
+		// Verifica se é uma classe
 		var classNode = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
 		if (classNode != null)
 		{
 			var className = classNode.Identifier.Text;
-
-			// Busca no grafo um nó que seja Classe e tenha esse nome
+			var graph = _indexService.GetCurrentGraph();
 			var symbolNode = graph.Nodes.Values
 				.FirstOrDefault(n => n.Name == className &&
 								   (n.Type == SymbolType.Class || n.Type == SymbolType.Interface));
@@ -106,33 +141,49 @@ public class AiCodeMerger : IAiCodeMerger
 			}
 		}
 
-		// Estratégia B: Heurística por Métodos (caso o snippet seja apenas métodos soltos)
+		// 2. TÉCNICA DO WRAPPER: Se não achou classe, pode ser um método solto.
+		// O Roslyn tem dificuldade de identificar 'MethodDeclarationSyntax' solto na raiz 
+		// se tiver modificadores (private/public). Vamos embrulhar numa classe falsa.
+
+		var textToParse = snippet;
+		if (classNode == null)
+		{
+			// Embrulha o código para garantir que o parse identifique os métodos corretamente
+			textToParse = $"class DummyWrapper {{ {snippet} }}";
+			tree = CSharpSyntaxTree.ParseText(textToParse);
+			root = await tree.GetRootAsync();
+		}
+
+		// Agora buscamos os métodos (seja no root original ou dentro do Wrapper)
 		var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
 		var fileVotes = new Dictionary<int, int>();
+		var graphInstance = _indexService.GetCurrentGraph();
 
 		foreach (var method in methods)
 		{
 			var methodName = method.Identifier.Text;
-			// Encontra todos os arquivos que possuem um método com este nome
-			var candidates = graph.Nodes.Values
+
+			// Busca quem tem esse método no projeto
+			var candidates = graphInstance.Nodes.Values
 				.Where(n => n.Name == methodName && n.Type == SymbolType.Method);
 
 			foreach (var candidate in candidates)
 			{
 				if (!fileVotes.ContainsKey(candidate.FileId))
 					fileVotes[candidate.FileId] = 0;
-
 				fileVotes[candidate.FileId]++;
 			}
 		}
 
 		if (fileVotes.Any())
 		{
-			// O arquivo com mais "hits" vence
 			var winnerId = fileVotes.MaxBy(kv => kv.Value).Key;
-			return graph.GetFilePath(winnerId);
+			return graphInstance.GetFilePath(winnerId);
 		}
 
+		// Fallback: Se o método for NOVO (não existe no grafo), a votação retornará 0.
+		// Nesse caso, o ideal seria o ViewModel passar o arquivo atualmente aberto 
+		// como sugestão padrão, mas aqui no serviço retornamos null.
 		return null;
 	}
 

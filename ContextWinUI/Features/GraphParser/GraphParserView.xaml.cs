@@ -1,11 +1,10 @@
-// Code Behind: GraphParserView.xaml.cs
-using ContextWinUI.Features.GraphParser.Models;
-using ContextWinUI.Features.GraphParser.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using ContextWinUI.Features.GraphParser.ViewModels;
+using ContextWinUI.Features.GraphParser.Models; // Para SearchSuggestion
 using System.Diagnostics;
 
-namespace ContextWinUI.Features.GraphParser.Views;
+namespace ContextWinUI.Features.GraphParser;
 
 public sealed partial class GraphParserView : UserControl
 {
@@ -33,23 +32,16 @@ public sealed partial class GraphParserView : UserControl
 	}
 
 	private void AutoSuggestBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
-{
-		Debug.WriteLine($"TextChanged: {sender.Text}, Reason: {args.Reason}");
-
+	{
 		if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
 		{
 			if (ViewModel != null && ViewModel.UpdateSearchCommand.CanExecute(sender.Text))
 			{
 				ViewModel.UpdateSearchCommand.Execute(sender.Text);
 			}
-			else
-			{
-				Debug.WriteLine("ViewModel ou Command é null");
-			}
 		}
 	}
 
-	// ARQUIVO: GraphParserView.xaml.cs (atualizado)
 	private void AutoSuggestBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
 	{
 		if (args.SelectedItem is SearchSuggestion suggestion)
@@ -59,7 +51,6 @@ public sealed partial class GraphParserView : UserControl
 		}
 		else if (args.SelectedItem is string filePath)
 		{
-			// Mantenha compatibilidade com versões anteriores
 			ViewModel.OpenFileCommand.Execute(filePath);
 			sender.Text = string.Empty;
 		}
@@ -67,9 +58,10 @@ public sealed partial class GraphParserView : UserControl
 
 	private void TabView_TabCloseRequested(TabView sender, TabViewTabCloseRequestedEventArgs args)
 	{
-		if (args.Item is FileSegmentsViewModel tabVm)
+		// Como agora a coleção Tabs é de 'object', passamos o item direto
+		if (args.Item != null)
 		{
-			ViewModel.CloseTabCommand.Execute(tabVm);
+			ViewModel.CloseTabCommand.Execute(args.Item);
 		}
 	}
 }

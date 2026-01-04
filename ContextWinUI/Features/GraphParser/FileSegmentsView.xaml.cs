@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using System;
 using System.Linq;
 
-namespace ContextWinUI.Features.GraphParser.Views;
+namespace ContextWinUI.Features.GraphParser;
 
 public sealed partial class FileSegmentsView : UserControl
 {

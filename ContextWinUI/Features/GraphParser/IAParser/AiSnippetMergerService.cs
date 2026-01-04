@@ -12,7 +12,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphParser.Services;
+namespace ContextWinUI.Features.GraphParser.IAParser;
+
 
 public class AiSnippetMergerService : IAiSnippetMergerService
 {
