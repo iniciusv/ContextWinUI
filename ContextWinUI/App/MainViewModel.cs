@@ -6,6 +6,7 @@ using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.ContextBuilder;
 using ContextWinUI.Features.GraphAnalysis;
+using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Models;
@@ -43,9 +44,8 @@ public partial class MainViewModel : ObservableObject
 	public GraphParserViewModel GraphParser { get; }
 	public IProjectSessionManager SessionManager { get; }
 	public SemanticGraphViewModel SemanticGraph { get; }
-
-	// Atalho para binding na View (aponta para a instância dentro do Explorer)
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
+	private readonly IBlockEditorService _blockEditorService;
 
 	// =========================================================
 	// ESTADO DA UI
@@ -66,10 +66,11 @@ public partial class MainViewModel : ObservableObject
 				FileContentViewModel fileContent,
 				GraphParserViewModel graphParser,
 				IAiCodeMerger aiMergerService,
-			IProjectSessionManager sessionManager,      // <--- MUDANÇA 2: Pedir a Interface (I...)
+			IProjectSessionManager sessionManager,
 				ISemanticIndexService semanticIndexService,
-			IFileSelectionService fileSelectionService, // <--- MUDANÇA 3: Pedir a Interface (I...)
-				SemanticGraphViewModel semanticGraph)
+			IFileSelectionService fileSelectionService,
+				SemanticGraphViewModel semanticGraph,
+				IBlockEditorService blockEditorService)
 	{
 		FileExplorer = fileExplorer;
 		ContextAnalysis = contextAnalysis;
@@ -80,6 +81,7 @@ public partial class MainViewModel : ObservableObject
 		_semanticIndexService = semanticIndexService;
 		_fileSelectionService = fileSelectionService;
 		_aiMergerService = aiMergerService;
+		_blockEditorService = blockEditorService;
 
 		SemanticGraph = semanticGraph;
 

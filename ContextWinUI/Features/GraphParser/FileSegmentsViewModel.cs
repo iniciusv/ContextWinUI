@@ -23,6 +23,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
 	private readonly IAiCodeMerger _mergerService;
+	private readonly IBlockEditorService _editorService;
 
 	// --- Propriedades Básicas ---
 	public string FilePath { get; }
@@ -49,14 +50,9 @@ public partial class FileSegmentsViewModel : ObservableObject
 	[ObservableProperty]
 	private string currentSymbolInfo = string.Empty;
 
-	// --- CORREÇÃO DO LAYOUT CYCLE EXCEPTION ---
-
-	// 1. Propriedade Observável Estável (Não use => aqui)
-	// Inicializa com 0 (escondido)
 	[ObservableProperty]
 	private GridLength leftColumnWidth = new GridLength(0);
 
-	// 2. Propriedade que controla o modo, agora dispara a atualização da largura
 	[ObservableProperty]
 	private bool isComparisonMode;
 
@@ -86,7 +82,8 @@ public partial class FileSegmentsViewModel : ObservableObject
 		IVersionDiffManager diffManager,
 		ObservableCollection<GlobalVersion> sharedHistory,
 		int initialGlobalIndex,
-		IAiCodeMerger mergerService)
+		IAiCodeMerger mergerService,
+		IBlockEditorService editorService)
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
@@ -97,15 +94,12 @@ public partial class FileSegmentsViewModel : ObservableObject
 		GlobalHistory = sharedHistory;
 		CurrentGlobalIndex = initialGlobalIndex;
 		_mergerService = mergerService;
+		_editorService = editorService;
 
 		// Inicia carregamento
 		_ = LoadBlocksAsync();
 	}
 
-	// --- Métodos "Partial" (Hooks de Mudança de Propriedade) ---
-
-	// Este é o método CRÍTICO que corrigimos.
-	// Ao invés de o XAML recalcular a largura a cada frame, nós setamos ela UMA vez aqui.
 	partial void OnIsComparisonModeChanged(bool value)
 	{
 		// Define a largura da coluna: 1* se estiver comparando, 0 se estiver editando.
@@ -186,83 +180,81 @@ public partial class FileSegmentsViewModel : ObservableObject
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)
 	{
 		if (referenceBlock == null) return;
-		var parentRow = Rows.FirstOrDefault(r => r.Current == referenceBlock);
-		if (parentRow == null) return;
 
-		int index = Rows.IndexOf(parentRow);
+		var newBlock = _editorService.AddSiblingBlock(Rows, referenceBlock);
 
-		// Cria novo bloco
-		var newBlock = new CodeBlockItem
+		if (newBlock != null)
 		{
-			Name = "NovaFuncionalidade",
-			SegmentType = SegmentType.Method,
-			SymbolType = SymbolType.Method,
-			DepthLevel = referenceBlock.DepthLevel,
-			FileExtension = referenceBlock.FileExtension,
-			TypeDescription = "NOVO MÉTODO",
-			Content = $"\n{new string('\t', referenceBlock.DepthLevel)}// Novo Código..."
-		};
-		newBlock.InitializeVersions(string.Empty);
-
-		var newRow = new SegmentRowViewModel(newBlock);
-		Rows.Insert(index + 1, newRow);
-
-		SelectedBlock = newBlock;
-		NotifyUnsavedChanges();
-
-		if (IsComparisonMode) _diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			SelectedBlock = newBlock;
+			NotifyUnsavedChanges();
+			RefreshDiffVisibility();
+		}
 	}
 
 	[RelayCommand]
 	public void DeleteBlock(CodeBlockItem? block)
 	{
 		if (block == null) return;
-		var row = Rows.FirstOrDefault(r => r.Current == block);
-		if (row != null)
-		{
-			// Ajusta seleção antes de remover
-			int idx = Rows.IndexOf(row);
-			if (SelectedBlock == block)
-			{
-				if (idx > 0) SelectedBlock = Rows[idx - 1].Current;
-				else if (Rows.Count > 1) SelectedBlock = Rows[idx + 1].Current;
-				else SelectedBlock = null;
-			}
 
-			Rows.Remove(row);
-			NotifyUnsavedChanges();
-		}
+		UpdateSelectionBeforeDelete(block);
+
+		_editorService.DeleteBlock(Rows, block);
+
+		NotifyUnsavedChanges();
+		RefreshDiffVisibility();
+	}
+
+	[RelayCommand]
+	public void LinkBlocks(Tuple<CodeBlockItem, CodeBlockItem> items)
+	{
+		_editorService.LinkBlocks(Rows, items.Item1, items.Item2);
+
+		NotifyUnsavedChanges();
+		RefreshDiffVisibility();
 	}
 
 	[RelayCommand]
 	public void RevertBlockToOriginal(CodeBlockItem? currentBlock)
 	{
-		if (currentBlock != null && currentBlock.RestoreOriginal())
+		if (currentBlock == null) return;
+
+		// Delega para o serviço (que retorna true se algo mudou)
+		bool changed = _editorService.RevertBlockToOriginal(currentBlock);
+
+		if (changed)
 		{
 			NotifyUnsavedChanges();
-			if (IsComparisonMode) _diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			RefreshDiffVisibility();
 		}
 	}
 
 	[RelayCommand]
 	public void PromoteEditToNewBlock(CodeBlockItem? currentBlock)
 	{
-		if (currentBlock == null) return;
-
-		// Lógica de "Fork" do bloco
-		currentBlock.Id = Guid.NewGuid().ToString();
-		currentBlock.InitializeVersions(currentBlock.Content);
-		currentBlock.TypeDescription += " (Novo)";
-		currentBlock.Name += " *";
-
-		var row = Rows.FirstOrDefault(r => r.Current == currentBlock);
-		if (row != null) row.Reference = null;
-
+		_editorService.PromoteEditToNewBlock(Rows, currentBlock);
 		NotifyUnsavedChanges();
-		if (IsComparisonMode) _diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+		RefreshDiffVisibility();
 	}
 
-	// --- Persistência e Histórico ---
+	private void RefreshDiffVisibility()
+	{
+		if (IsComparisonMode)
+			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+	}
+
+	private void UpdateSelectionBeforeDelete(CodeBlockItem blockToDelete)
+	{
+		if (SelectedBlock == blockToDelete)
+		{
+			var row = Rows.FirstOrDefault(r => r.Current == blockToDelete);
+			if (row == null) return;
+
+			int idx = Rows.IndexOf(row);
+			if (idx > 0) SelectedBlock = Rows[idx - 1].Current;
+			else if (Rows.Count > 1) SelectedBlock = Rows[idx + 1].Current; // Pega o próximo já que o atual vai mudar/sumir
+			else SelectedBlock = null;
+		}
+	}
 
 	[RelayCommand]
 	public void SaveChanges(string mode)
@@ -292,10 +284,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 	}
 
 	[RelayCommand]
-	public void CommitAllPendingChanges()
-	{
-		TriggerGlobalSave();
-	}
+	public void CommitAllPendingChanges() => TriggerGlobalSave();
 
 	public void RestoreToGlobalIndex(int globalIndex)
 	{
@@ -322,11 +311,9 @@ public partial class FileSegmentsViewModel : ObservableObject
 		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 	}
 
-	// --- Helpers de Notificação ---
 	public void NotifyUnsavedChanges() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 	public void NotifyChangesChanged() => OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 
-	// --- Comunicação com Pai ---
 	public void SyncGlobalIndex(int index) => SetProperty(ref currentGlobalIndex, index, nameof(CurrentGlobalIndex));
 	partial void OnCurrentGlobalIndexChanged(int value) => GlobalRestoreRequested?.Invoke(this, value);
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);

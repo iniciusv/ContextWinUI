@@ -6,13 +6,17 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace ContextWinUI.Features.GraphParser;
 
 public sealed partial class FileSegmentsView : UserControl
 {
 	private CodeBlockItem? _lastSelectedBlock;
+
+	private SegmentRowViewModel? _draggedItem;
 
 	// Propriedade tipada para facilitar o acesso ao ViewModel no code-behind
 	public FileSegmentsViewModel ViewModel => (FileSegmentsViewModel)DataContext;
@@ -210,5 +214,96 @@ public sealed partial class FileSegmentsView : UserControl
 		// 2. Chama o método no ViewModel que usa o Serviço
 		// O ViewModel vai usar o SelectedBlock atual + a posição do cursor
 		ViewModel.ResolveSymbolHeuristic(cursorPosition);
+	}
+
+	// 1. INÍCIO: Disparado pela ListView quando você começa a arrastar
+	// IMPORTANTE: Adicione DragItemsStarting="OnDragItemsStarting" no XAML da ListView
+	private void OnDragItemsStarting(object sender, DragItemsStartingEventArgs e)
+	{
+		// Limpa estado anterior por segurança
+		_draggedItem = null;
+
+		if (e.Items.Count > 0)
+		{
+			// Captura o objeto real que está sendo arrastado
+			_draggedItem = e.Items[0] as SegmentRowViewModel;
+
+			// Define a operação permitida
+			e.Data.RequestedOperation = DataPackageOperation.Move;
+		}
+	}
+
+	// 2. DURANTE: Disparado pelo Grid do ItemTemplate enquanto o mouse passa por cima
+	private void OnItemDragOver(object sender, DragEventArgs e)
+	{
+		// Se não sabemos o que está sendo arrastado, cancela.
+		if (_draggedItem == null)
+		{
+			e.AcceptedOperation = DataPackageOperation.None;
+			e.Handled = true;
+			return;
+		}
+
+		// Tenta identificar o alvo (onde o mouse está agora)
+		if (sender is FrameworkElement targetElement &&
+			targetElement.DataContext is SegmentRowViewModel targetRow)
+		{
+			// BLOQUEIO: Não permitir soltar o item nele mesmo
+			if (targetRow == _draggedItem)
+			{
+				e.AcceptedOperation = DataPackageOperation.None;
+				e.Handled = true;
+				return;
+			}
+
+			// SUCESSO: É um alvo válido
+			e.AcceptedOperation = DataPackageOperation.Move;
+
+			// Feedback Visual Customizado (opcional, mas recomendado)
+			if (e.DragUIOverride != null)
+			{
+				e.DragUIOverride.Caption = $"Vincular a '{targetRow.Current.Name}'";
+				e.DragUIOverride.IsCaptionVisible = true;
+				e.DragUIOverride.IsContentVisible = false; // Esconde o "fantasma" do item arrastado para limpar a visão
+				e.DragUIOverride.IsGlyphVisible = true;
+			}
+		}
+		else
+		{
+			e.AcceptedOperation = DataPackageOperation.None;
+		}
+
+		e.Handled = true;
+	}
+
+	// 3. FINAL: Disparado quando o usuário solta o botão do mouse
+	private void OnItemDrop(object sender, DragEventArgs e)
+	{
+		try
+		{
+			if (_draggedItem != null &&
+				sender is FrameworkElement targetElement &&
+				targetElement.DataContext is SegmentRowViewModel targetRow)
+			{
+				// Validação final para garantir que não é o mesmo item
+				if (targetRow != _draggedItem)
+				{
+					// Prepara os argumentos (Origem -> Destino)
+					var args = new Tuple<CodeBlockItem, CodeBlockItem>(_draggedItem.Current, targetRow.Current);
+
+					// Executa o comando no ViewModel
+					if (ViewModel.LinkBlocksCommand.CanExecute(args))
+					{
+						ViewModel.LinkBlocksCommand.Execute(args);
+					}
+				}
+			}
+		}
+		finally
+		{
+			// LIMPEZA CRÍTICA: Sempre limpe a variável ao terminar
+			_draggedItem = null;
+			e.Handled = true;
+		}
 	}
 }

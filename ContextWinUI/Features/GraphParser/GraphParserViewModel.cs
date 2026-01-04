@@ -25,7 +25,8 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
-	private readonly IAiCodeMerger _aiMergerService; // Campo adicionado
+	private readonly IAiCodeMerger _aiMergerService;
+	private readonly IBlockEditorService _blockEditorService;
 
 	// Alterado para 'object' para aceitar FileSegmentsViewModel E AiPreviewViewModel
 	[ObservableProperty]
@@ -56,18 +57,17 @@ public partial class GraphParserViewModel : ObservableObject
 		ICodeBlockParserService parserService,
 		IAiCodeMerger aiMergerService, // Injeção da dependência
 		ISymbolResolutionService symbolService,
-		IVersionDiffManager diffManager)
+		IVersionDiffManager diffManager,
+		IBlockEditorService blockEditorService)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
 		_symbolService = symbolService;
 		_diffManager = diffManager;
-
-		// CORREÇÃO: Atribuição do serviço de IA
 		_aiMergerService = aiMergerService;
-
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
+		_blockEditorService = blockEditorService;
 
 		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
 
@@ -334,15 +334,16 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 
 		var newTab = new FileSegmentsViewModel(
-			fullPath,
-			_fileSystemService,
-			_parserService,
-			_symbolService,
-			_diffManager,
-			GlobalHistory,
-			CurrentGlobalIndex,
-			_aiMergerService
-		);
+					fullPath,
+					_fileSystemService,
+					_parserService,
+					_symbolService,
+					_diffManager,
+					GlobalHistory,
+					CurrentGlobalIndex,
+					_aiMergerService,
+					_blockEditorService
+				);
 
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
 		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
