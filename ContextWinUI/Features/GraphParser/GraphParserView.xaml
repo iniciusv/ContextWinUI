@@ -19,21 +19,19 @@
 		<views:TabHeaderTemplateSelector x:Key="HeaderSelector">
 			<views:TabHeaderTemplateSelector.FileHeaderTemplate>
 				<DataTemplate x:DataType="vm:FileSegmentsViewModel">
-					<TabViewItem Header="{x:Bind FileName}">
-						<TabViewItem.IconSource>
-							<SymbolIconSource Symbol="Document"/>
-						</TabViewItem.IconSource>
-					</TabViewItem>
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<SymbolIcon Symbol="Document" />
+						<TextBlock Text="{x:Bind FileName}" VerticalAlignment="Center"/>
+					</StackPanel>
 				</DataTemplate>
 			</views:TabHeaderTemplateSelector.FileHeaderTemplate>
 
 			<views:TabHeaderTemplateSelector.PreviewHeaderTemplate>
 				<DataTemplate x:DataType="iap:AiPreviewViewModel">
-					<TabViewItem Header="{x:Bind Title}">
-						<TabViewItem.IconSource>
-							<SymbolIconSource Symbol="Highlight" Foreground="{ThemeResource SystemAccentColor}"/>
-						</TabViewItem.IconSource>
-					</TabViewItem>
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<SymbolIcon Symbol="Highlight" Foreground="{ThemeResource SystemAccentColor}"/>
+						<TextBlock Text="{x:Bind Title}" VerticalAlignment="Center"/>
+					</StackPanel>
 				</DataTemplate>
 			</views:TabHeaderTemplateSelector.PreviewHeaderTemplate>
 		</views:TabHeaderTemplateSelector>

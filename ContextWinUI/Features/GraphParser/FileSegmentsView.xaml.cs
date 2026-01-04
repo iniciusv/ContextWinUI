@@ -21,8 +21,12 @@ public sealed partial class FileSegmentsView : UserControl
 	{
 		this.InitializeComponent();
 
-		// Atualiza indicadores visuais quando o DataContext muda ou quando a view carrega
-		this.DataContextChanged += (s, e) => UpdateSelectionIndicator();
+		this.DataContextChanged += (s, e) =>
+		{
+			Bindings.Update(); // <--- O PULO DO GATO
+			UpdateSelectionIndicator();
+		};
+
 		this.Loaded += (s, e) => UpdateSelectionIndicator();
 	}
 
