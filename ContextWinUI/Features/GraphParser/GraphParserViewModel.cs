@@ -27,6 +27,7 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly IVersionDiffManager _diffManager;
 	private readonly IAiCodeMerger _aiMergerService;
 	private readonly IBlockEditorService _blockEditorService;
+	private readonly IBlockLoaderService _blockLoaderService;
 
 	// Alterado para 'object' para aceitar FileSegmentsViewModel E AiPreviewViewModel
 	[ObservableProperty]
@@ -58,6 +59,7 @@ public partial class GraphParserViewModel : ObservableObject
 		IAiCodeMerger aiMergerService, // Injeção da dependência
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager,
+		IBlockLoaderService blockLoaderService,
 		IBlockEditorService blockEditorService)
 	{
 		_indexService = indexService;
@@ -68,6 +70,7 @@ public partial class GraphParserViewModel : ObservableObject
 		_aiMergerService = aiMergerService;
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		_blockEditorService = blockEditorService;
+		_blockLoaderService = blockLoaderService;
 
 		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
 
@@ -156,7 +159,6 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 	}
 
-	// Verifica alterações apenas em abas de arquivo real
 	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
@@ -342,6 +344,7 @@ public partial class GraphParserViewModel : ObservableObject
 					GlobalHistory,
 					CurrentGlobalIndex,
 					_aiMergerService,
+					_blockLoaderService,
 					_blockEditorService
 				);
 

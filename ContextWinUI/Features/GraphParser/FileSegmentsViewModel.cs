@@ -24,6 +24,8 @@ public partial class FileSegmentsViewModel : ObservableObject
 	private readonly IVersionDiffManager _diffManager;
 	private readonly IAiCodeMerger _mergerService;
 	private readonly IBlockEditorService _editorService;
+	private readonly IBlockLoaderService _loaderService;
+
 
 	// --- Propriedades Básicas ---
 	public string FilePath { get; }
@@ -83,6 +85,7 @@ public partial class FileSegmentsViewModel : ObservableObject
 		ObservableCollection<GlobalVersion> sharedHistory,
 		int initialGlobalIndex,
 		IAiCodeMerger mergerService,
+		IBlockLoaderService loaderService,
 		IBlockEditorService editorService)
 	{
 		FilePath = filePath;
@@ -95,25 +98,22 @@ public partial class FileSegmentsViewModel : ObservableObject
 		CurrentGlobalIndex = initialGlobalIndex;
 		_mergerService = mergerService;
 		_editorService = editorService;
+		_loaderService = loaderService;
 
-		// Inicia carregamento
 		_ = LoadBlocksAsync();
 	}
 
 	partial void OnIsComparisonModeChanged(bool value)
 	{
-		// Define a largura da coluna: 1* se estiver comparando, 0 se estiver editando.
 		LeftColumnWidth = value ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
 
 		if (value)
 		{
-			// Ativa lógica de Diff
 			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
 			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 		}
 		else
 		{
-			// Reseta visibilidade (Modo Edição sempre mostra tudo)
 			foreach (var row in Rows) row.IsVisible = true;
 		}
 	}
@@ -139,34 +139,28 @@ public partial class FileSegmentsViewModel : ObservableObject
 		IsLoading = true;
 		Rows.Clear();
 		SelectedBlock = null;
-
 		try
 		{
-			var fileContent = await _fileSystemService.ReadFileContentAsync(FilePath);
-			if (string.IsNullOrEmpty(fileContent)) return;
+			// O serviço faz todo o trabalho pesado
+			var items = await _loaderService.LoadAndProcessFileAsync(FilePath);
 
-			var parsedItems = await _parserService.ParseFileAsync(FilePath, fileContent);
-
-			foreach (var item in parsedItems)
+			foreach (var item in items)
 			{
 				Rows.Add(new SegmentRowViewModel(item));
 			}
 
 			if (Rows.Any()) SelectedBlock = Rows.First().Current;
-
-			// Aplica estado inicial (histórico global)
 			RestoreToGlobalIndex(CurrentGlobalIndex);
 		}
 		catch (Exception ex)
 		{
-			var errorBlock = new CodeBlockItem
+			// Tratamento de erro de UI continua aqui
+			Rows.Add(new SegmentRowViewModel(new CodeBlockItem
 			{
-				Name = "Erro de Leitura",
+				Name = "Erro",
 				Content = ex.Message,
-				SegmentType = SegmentType.Trivia,
-				TypeDescription = "ERROR"
-			};
-			Rows.Add(new SegmentRowViewModel(errorBlock));
+				SegmentType = SegmentType.Trivia
+			}));
 		}
 		finally
 		{
@@ -174,7 +168,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 			IsEmpty = Rows.Count == 0;
 		}
 	}
-
 
 	[RelayCommand]
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)
