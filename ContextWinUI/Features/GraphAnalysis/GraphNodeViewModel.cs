@@ -1,8 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI;
 
 namespace ContextWinUI.Features.GraphAnalysis;
 
@@ -12,11 +14,7 @@ public partial class GraphNodeViewModel : ObservableObject
 	private readonly IDependencyGraph _graph;
 	private bool _childrenLoaded = false;
 
-	// --- NOVA PROPRIEDADE ---
-	// Precisamos expor o nó interno para acessar o FileId na navegação
 	public SymbolNode InternalNode => _node;
-	// ------------------------
-
 	public string Name => _node.Name;
 	public string Details => $"{_node.Type} (ID: {_node.Id})";
 
@@ -27,7 +25,7 @@ public partial class GraphNodeViewModel : ObservableObject
 		SymbolType.Method => "\uEA2C",
 		SymbolType.Property => "\uEA19",
 		SymbolType.Field => "\uEA1C",
-		SymbolType.Constructor => "\uEA2C", // Usando ícone de método para construtor
+		SymbolType.Constructor => "\uEA2C",
 		_ => "\uE82D"
 	};
 
@@ -37,6 +35,14 @@ public partial class GraphNodeViewModel : ObservableObject
 	[ObservableProperty]
 	private string extraInfo;
 
+	[ObservableProperty]
+	private bool isVisible = true;
+
+	[ObservableProperty]
+	private bool isSelected;
+
+	public SolidColorBrush TitleBrush => IsSelected ? new SolidColorBrush(Colors.Orange) : new SolidColorBrush(Colors.White);
+
 	public ObservableCollection<GraphNodeViewModel> Children { get; } = new();
 
 	public GraphNodeViewModel(SymbolNode node, IDependencyGraph graph)
@@ -44,12 +50,16 @@ public partial class GraphNodeViewModel : ObservableObject
 		_node = node;
 		_graph = graph;
 
-		// Adiciona placeholder se tiver filhos ou links para permitir expansão
 		if ((_node.Children != null && _node.Children.Any()) ||
 			(_node.OutgoingLinks != null && _node.OutgoingLinks.Any()))
 		{
 			Children.Add(null);
 		}
+	}
+
+	partial void OnIsSelectedChanged(bool value)
+	{
+		OnPropertyChanged(nameof(TitleBrush));
 	}
 
 	partial void OnIsExpandedChanged(bool value)
@@ -66,11 +76,15 @@ public partial class GraphNodeViewModel : ObservableObject
 		}
 	}
 
+	public void EnsureChildrenLoaded()
+	{
+		if (!_childrenLoaded) LoadChildren();
+	}
+
 	private void LoadChildren()
 	{
 		Children.Clear();
 
-		// 1. Estrutura Interna (Métodos, Propriedades)
 		if (_node.Children != null && _node.Children.Count > 0)
 		{
 			var sortedChildren = _node.Children.OrderBy(c => c.StartPosition);
@@ -80,7 +94,6 @@ public partial class GraphNodeViewModel : ObservableObject
 			}
 		}
 
-		// 2. Dependências Externas (Links)
 		if (_node.OutgoingLinks != null && _node.OutgoingLinks.Count > 0)
 		{
 			var uniqueLinks = _node.OutgoingLinks
@@ -91,7 +104,6 @@ public partial class GraphNodeViewModel : ObservableObject
 			{
 				if (_graph.Nodes.TryGetValue(link.TargetId, out var targetNode))
 				{
-					// Evita referência circular visual direta (filho apontando pra pai)
 					if (_node.Children != null && _node.Children.Any(c => c.Id == targetNode.Id)) continue;
 
 					var vm = new GraphNodeViewModel(targetNode, _graph);
@@ -100,7 +112,20 @@ public partial class GraphNodeViewModel : ObservableObject
 				}
 			}
 		}
-
 		_childrenLoaded = true;
+	}
+
+	public void SetVisibilityRecursive(bool visible)
+	{
+		IsVisible = visible;
+
+		// Se já carregou os filhos, propaga o estado
+		if (_childrenLoaded)
+		{
+			foreach (var child in Children)
+			{
+				child?.SetVisibilityRecursive(visible);
+			}
+		}
 	}
 }
