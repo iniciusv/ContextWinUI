@@ -1,14 +1,20 @@
+using ColorCode.Styling;
 using ContextWinUI.Features.CodeEditor;
 using ContextWinUI.Features.CodeEditor.Highlight;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using Microsoft.UI.Xaml.Controls;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.GraphParser;
 
 public interface IHighlightingOrchestrator
 {
-	Task<List<HighlightSpan>> CalculateHighlightsAsync(string text, string extension, bool isDarkTheme, SemanticHighlightService? semanticService, Dictionary<string, object> themeStyles);
+	Task HighlightEditorAsync(
+		RichEditBox editor,
+		string text,
+		string extension,
+		SemanticHighlightService? semanticService,
+		bool isDarkTheme,
+		StyleDictionary themeStyles,
+		CancellationToken token);
 }

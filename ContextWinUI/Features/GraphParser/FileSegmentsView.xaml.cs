@@ -178,34 +178,6 @@ public sealed partial class FileSegmentsView : UserControl
 		return null;
 	}
 
-	private FrameworkElement? FindContainerRecursive(DependencyObject parent, CodeBlockItem targetBlock)
-	{
-		if (parent == null) return null;
-
-		int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
-		for (int i = 0; i < childrenCount; i++)
-		{
-			var child = VisualTreeHelper.GetChild(parent, i);
-
-			// Verifica se o filho é um container de linha que contém nosso bloco alvo
-			if (child is FrameworkElement element &&
-				element.DataContext is SegmentRowViewModel row &&
-				row.Current == targetBlock)
-			{
-				// Verifica se este elemento possui o indicador visual (é o Grid correto?)
-				if (element is Grid && element.FindName("SelectionIndicator") != null)
-				{
-					return element;
-				}
-			}
-
-			var result = FindContainerRecursive(child, targetBlock);
-			if (result != null) return result;
-		}
-
-		return null;
-	}
-
 	private void OnEditorCaretPositionChanged(object sender, int cursorPosition)
 	{
 		// 1. Garante que sabemos qual bloco estamos editando

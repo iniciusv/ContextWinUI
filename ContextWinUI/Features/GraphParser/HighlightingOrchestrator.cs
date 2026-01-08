@@ -3,6 +3,7 @@ using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared; // Para ThemeHelper
 using ContextWinUI.Features.CodeEditor;
 using ContextWinUI.Features.CodeEditor.Highlight;
+using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Helpers;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching; // Necessário para voltar à UI Thread
@@ -16,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
 
-public class HighlightingOrchestrator
+public class HighlightingOrchestrator : IHighlightingOrchestrator
 {
 	private readonly FastEditorHighlightService _fastEditorService;
 	private readonly RegexHighlightService _regexHighlightService;
@@ -157,24 +158,7 @@ public class HighlightingOrchestrator
 		}
 	}
 
-	private void ApplySpanOptimized(ITextRange range, HighlightSpan span, int maxLen)
-	{
-		int safeStart = Math.Clamp(span.Start, 0, maxLen);
-		int safeEnd = Math.Clamp(span.Start + span.Length, 0, maxLen);
 
-		if (safeEnd > safeStart)
-		{
-			range.SetRange(safeStart, safeEnd);
-
-			// Aqui está preparado para o seu futuro DiffViewer:
-			// Se o span definir cor de fundo (ex: diff removal/addition), aplicamos.
-			// Caso contrário, aplicamos apenas o foreground (syntax highlighting).
-
-			// Exemplo hipotético para o futuro: if (span.IsBackground) ...
-
-			range.CharacterFormat.ForegroundColor = span.Color;
-		}
-	}
 
 	private void MergeHighlights(List<HighlightSpan> basic, List<HighlightSpan> semantic)
 	{

@@ -310,7 +310,6 @@ public partial class FileSegmentsViewModel : ObservableObject
 	public void SyncGlobalIndex(int index) => SetProperty(ref currentGlobalIndex, index, nameof(CurrentGlobalIndex));
 	partial void OnCurrentGlobalIndexChanged(int value) => GlobalRestoreRequested?.Invoke(this, value);
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
-	public void TriggerGlobalRestore(int index) => GlobalRestoreRequested?.Invoke(this, index);
 	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
 	{
 		if (SelectedBlock == null) return;
