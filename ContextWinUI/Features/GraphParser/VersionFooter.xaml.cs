@@ -1,16 +1,15 @@
-using ContextWinUI.Features.GraphParser.Models;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls; // Necessário para SplitButton e SplitButtonClickEventArgs
+using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using ContextWinUI.Features.GraphParser.Models;
 
 namespace ContextWinUI.Features.GraphParser.Views.Components
 {
 	public sealed partial class VersionFooter : UserControl, INotifyPropertyChanged
 	{
-		// Eventos que o FileSegmentsView vai escutar
 		public event EventHandler? SaveNewVersionRequested;
 		public event EventHandler? SaveOverwriteRequested;
 		public event EventHandler? RestoreOriginalRequested;
@@ -22,6 +21,16 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		}
 
 		#region Dependency Properties
+
+		// New: Symbol Info Text to allow full-width footer management
+		public static readonly DependencyProperty SymbolInfoProperty =
+			DependencyProperty.Register(nameof(SymbolInfo), typeof(string), typeof(VersionFooter), new PropertyMetadata(string.Empty));
+
+		public string SymbolInfo
+		{
+			get => (string)GetValue(SymbolInfoProperty);
+			set => SetValue(SymbolInfoProperty, value);
+		}
 
 		public static readonly DependencyProperty GlobalVersionsProperty =
 			DependencyProperty.Register(nameof(GlobalVersions), typeof(ObservableCollection<GlobalVersion>), typeof(VersionFooter), new PropertyMetadata(null, OnPropertyChangedStatic));
@@ -50,22 +59,23 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			set => SetValue(CanSaveProperty, value);
 		}
 
-		public static readonly DependencyProperty TargetBlockProperty =
-			DependencyProperty.Register(nameof(TargetBlock), typeof(CodeBlockItem), typeof(VersionFooter), new PropertyMetadata(null));
-
-		public CodeBlockItem TargetBlock
-		{
-			get => (CodeBlockItem)GetValue(TargetBlockProperty);
-			set => SetValue(TargetBlockProperty, value);
-		}
-
 		public static readonly DependencyProperty IsComparisonModeProperty =
-			DependencyProperty.Register(nameof(IsComparisonMode), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false));
+			DependencyProperty.Register(nameof(IsComparisonMode), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false, OnPropertyChangedStatic));
 
 		public bool IsComparisonMode
 		{
 			get => (bool)GetValue(IsComparisonModeProperty);
 			set => SetValue(IsComparisonModeProperty, value);
+		}
+
+		// New: Hide Unchanged Property moved to footer
+		public static readonly DependencyProperty HideUnchangedProperty =
+			DependencyProperty.Register(nameof(HideUnchanged), typeof(bool), typeof(VersionFooter), new PropertyMetadata(false));
+
+		public bool HideUnchanged
+		{
+			get => (bool)GetValue(HideUnchangedProperty);
+			set => SetValue(HideUnchangedProperty, value);
 		}
 
 		public static readonly DependencyProperty LeftIndexProperty =
@@ -136,22 +146,16 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
 		}
 
-		// --- HANDLERS DO SPLIT BUTTON (Aqui estava o erro CS0123) ---
-
-		// SplitButton requer 'SplitButtonClickEventArgs', não 'RoutedEventArgs'
 		private void OnSplitButtonCommit(SplitButton sender, SplitButtonClickEventArgs args)
 		{
 			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
 		}
 
-		// 2. Handler exclusivo para o ITEM DE MENU dentro do Flyout
-		// Assinatura: (object, RoutedEventArgs)
 		private void OnMenuItemCommit(object sender, RoutedEventArgs e)
 		{
 			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
 		}
 
-		// Handler do botão "Sobrescrever" (já estava correto, usa RoutedEventArgs)
 		private void OnOverwriteClick(object sender, RoutedEventArgs e)
 		{
 			SaveOverwriteRequested?.Invoke(this, EventArgs.Empty);

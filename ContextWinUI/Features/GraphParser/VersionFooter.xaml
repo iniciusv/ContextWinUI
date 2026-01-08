@@ -14,7 +14,7 @@
 	<Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" 
           BorderThickness="0,1,0,0" 
-          Padding="12,8">
+          Padding="12,6">
 
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="Auto"/>
@@ -25,7 +25,7 @@
 		<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
 			<Button Style="{StaticResource DateTimePickerFlyoutButtonStyle}" 
                     Click="OnRestoreOriginalClick"
-                    ToolTipService.ToolTip="Restaurar Tudo para Original">
+                    ToolTipService.ToolTip="Restore All to Original">
 				<FontIcon Glyph="&#xE777;" FontSize="14"/>
 			</Button>
 
@@ -45,55 +45,70 @@
 			</Button>
 		</StackPanel>
 
+		<TextBlock Grid.Column="1"
+                   Text="{x:Bind SymbolInfo, Mode=OneWay}" 
+                   Style="{StaticResource CaptionTextBlockStyle}" 
+                   Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Left"
+                   Margin="24,0,12,0"
+                   TextTrimming="CharacterEllipsis"/>
+
 		<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
 
 			<StackPanel Orientation="Horizontal" Spacing="8" 
-                        Visibility="{x:Bind IsComparisonMode, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}">
+                        Visibility="{x:Bind IsComparisonMode, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}"
+                        VerticalAlignment="Center">
 
 				<TextBlock Text="Ref:" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
 				<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
                           SelectedIndex="{x:Bind LeftIndex, Mode=TwoWay}"
                           DisplayMemberPath="Description"
-                          Width="140"/>
+                          Width="120" FontSize="12" Height="30"/>
 
-				<FontIcon Glyph="&#xE117;" FontSize="12" Opacity="0.5"/>
+				<FontIcon Glyph="&#xE117;" FontSize="12" Opacity="0.5" Margin="4,0"/>
 
 				<TextBlock Text="Edit:" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
 				<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
                           SelectedIndex="{x:Bind RightIndex, Mode=TwoWay}"
                           DisplayMemberPath="Description"
                           IsEnabled="False" 
-                          Width="140"
-                          ToolTipService.ToolTip="A direita sempre mostra a versão atual selecionada globalmente"/>
+                          Width="120" FontSize="12" Height="30"
+                          ToolTipService.ToolTip="Right side always shows current global selection"/>
+
+				<AppBarSeparator/>
+
+				<ToggleButton IsChecked="{x:Bind HideUnchanged, Mode=TwoWay}"
+                              ToolTipService.ToolTip="Hide Unchanged Blocks"
+                              Height="32" Padding="8,4">
+					<FontIcon Glyph="&#xE898;" FontSize="14"/>
+				</ToggleButton>
 			</StackPanel>
 
-			<AppBarSeparator/>
+			<AppBarSeparator Visibility="{x:Bind IsComparisonMode, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}"/>
 
 			<ToggleButton IsChecked="{x:Bind IsComparisonMode, Mode=TwoWay}"
-                          ToolTipService.ToolTip="Comparar Versões Lado a Lado">
+                          ToolTipService.ToolTip="Toggle Comparison Mode">
 				<StackPanel Orientation="Horizontal" Spacing="6">
 					<FontIcon Glyph="&#xE1D3;"/>
-					<TextBlock Text="Comparar"/>
+					<TextBlock Text="Compare"/>
 				</StackPanel>
 			</ToggleButton>
 
 			<SplitButton IsEnabled="{x:Bind CanSave, Mode=OneWay}"
                          Click="OnSplitButtonCommit"
-                         ToolTipService.ToolTip="Salvar alterações">
+                         ToolTipService.ToolTip="Save Changes">
 				<StackPanel Orientation="Horizontal" Spacing="6">
 					<FontIcon Glyph="&#xE74E;"/>
-					<TextBlock Text="Salvar"/>
+					<TextBlock Text="Save"/>
 				</StackPanel>
-
 				<SplitButton.Flyout>
 					<MenuFlyout>
-						<MenuFlyoutItem Text="Criar Nova Versão Global" 
+						<MenuFlyoutItem Text="Create New Global Version" 
                                         Icon="Add"
                                         Click="OnMenuItemCommit"/>
-
 						<MenuFlyoutSeparator/>
-
-						<MenuFlyoutItem Text="Sobrescrever Versão Atual" 
+						<MenuFlyoutItem Text="Overwrite Current Version" 
                                         Icon="Save"
                                         Click="OnOverwriteClick">
 							<MenuFlyoutItem.KeyboardAccelerators>
@@ -103,7 +118,6 @@
 					</MenuFlyout>
 				</SplitButton.Flyout>
 			</SplitButton>
-
 		</StackPanel>
 	</Grid>
 </UserControl>

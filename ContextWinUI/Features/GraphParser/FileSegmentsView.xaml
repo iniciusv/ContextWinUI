@@ -26,22 +26,14 @@
 		</Grid.RowDefinitions>
 
 		<CommandBar Grid.Row="0" DefaultLabelPosition="Right" IsOpen="True">
-			<AppBarElementContainer>
-				<StackPanel Orientation="Horizontal" Spacing="12" Padding="0,0,12,0">
-					<ToggleSwitch OnContent="Comparação" 
-                                  OffContent="Edição"
-                                  IsOn="{x:Bind ViewModel.IsComparisonMode, Mode=TwoWay}" 
-                                  MinWidth="120"/>
-					<ToggleSwitch OnContent="Ocultar Inalterados" 
-                                  OffContent="Mostrar Tudo"
-                                  IsOn="{x:Bind ViewModel.HideUnchangedBlocks, Mode=TwoWay}"
-                                  Visibility="{x:Bind ViewModel.IsComparisonMode, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                                  MinWidth="140"/>
-				</StackPanel>
-			</AppBarElementContainer>
-			<AppBarSeparator />
-			<AppBarButton Icon="Save" Label="Salvar Versão Global" Command="{x:Bind ViewModel.CommitAllPendingChangesCommand}" />
-			<AppBarButton Icon="Undo" Label="Restaurar Original" Command="{x:Bind ViewModel.RevertBlockToOriginalCommand}" CommandParameter="{x:Bind ViewModel.SelectedBlock, Mode=OneWay}" />
+			<AppBarButton Icon="Save" 
+                          Label="Save Global Version" 
+                          Command="{x:Bind ViewModel.CommitAllPendingChangesCommand}" />
+
+			<AppBarButton Icon="Undo" 
+                          Label="Restore Original" 
+                          Command="{x:Bind ViewModel.RevertBlockToOriginalCommand}" 
+                          CommandParameter="{x:Bind ViewModel.SelectedBlock, Mode=OneWay}" />
 		</CommandBar>
 
 		<ListView x:Name="MainListView"
@@ -90,6 +82,7 @@
                               BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                               BorderThickness="0,0,1,0"
                               Visibility="{x:Bind HasReference, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+
 							<components:SegmentCodeViewer 
                                     Text="{x:Bind Reference.Content, Mode=OneWay}" 
                                     FileExtension="{x:Bind Reference.FileExtension, Mode=OneWay}"
@@ -108,17 +101,21 @@
 
 							<Grid.ContextFlyout>
 								<MenuFlyout>
-									<MenuFlyoutItem Text="Inserir Bloco Abaixo" Icon="Add"
+									<MenuFlyoutItem Text="Insert Block Below" Icon="Add"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.AddSiblingBlockCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
-									<MenuFlyoutItem Text="Excluir Bloco" Icon="Delete" Foreground="Red"
+
+									<MenuFlyoutItem Text="Delete Block" Icon="Delete" Foreground="Red"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.DeleteBlockCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
+
 									<MenuFlyoutSeparator/>
-									<MenuFlyoutItem Text="Reverter para Original" Icon="Undo"
+
+									<MenuFlyoutItem Text="Revert to Original" Icon="Undo"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.RevertBlockToOriginalCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
-									<MenuFlyoutItem Text="Desvincular (Tratar como Novo)"
+
+									<MenuFlyoutItem Text="Unlink (Treat as New)"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.PromoteEditToNewBlockCommand}"
                                                     CommandParameter="{x:Bind Current}">
 										<MenuFlyoutItem.Icon>
@@ -129,16 +126,17 @@
 							</Grid.ContextFlyout>
 
 							<Rectangle x:Name="SelectionIndicator"
-                                     Fill="{ThemeResource SystemAccentColor}"
-                                     Width="3" HorizontalAlignment="Left" Visibility="Collapsed"
-                                     Canvas.ZIndex="10"
-                                     Margin="-8,0,0,0"/>
+                                       Fill="{ThemeResource SystemAccentColor}"
+                                       Width="3" HorizontalAlignment="Left" Visibility="Collapsed"
+                                       Canvas.ZIndex="10"
+                                       Margin="-8,0,0,0"/>
 
 							<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
-                                     Fill="{x:Bind ext:CodeBlockUiExtensions.GetHeaderBrush(Current)}" 
-                                     Margin="-8,0,0,0"/>
+                                       Fill="{x:Bind ext:CodeBlockUiExtensions.GetHeaderBrush(Current)}" 
+                                       Margin="-8,0,0,0"/>
 
 							<StackPanel Orientation="Vertical" Spacing="4" VerticalAlignment="Center" Opacity="0.9">
+
 								<FontIcon Glyph="&#xE81C;" FontSize="10" Foreground="Orange"
                                           HorizontalAlignment="Left"
                                           Visibility="{x:Bind Current.HasUnsavedChanges, Converter={StaticResource BoolToVis}}"/>
@@ -173,6 +171,7 @@
                               BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                               BorderThickness="0,0,1,0"
                               PointerPressed="OnBlockPointerPressed">
+
 							<components:SegmentCodeViewer 
                                     x:Name="CodeEditor"
                                     Text="{x:Bind Current.Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
@@ -189,14 +188,21 @@
 		<StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16"
                     Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
 			<FontIcon Glyph="&#xE9CE;" FontSize="40" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"/>
-			<TextBlock Text="Nenhum bloco de código encontrado" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+			<TextBlock Text="No code blocks found" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 		</StackPanel>
 
-		<Grid Grid.Row="2" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="12,4" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}">
-			<TextBlock Text="{x:Bind ViewModel.CurrentSymbolInfo, Mode=OneWay}" 
-                       Style="{StaticResource CaptionTextBlockStyle}" 
-                       Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
-		</Grid>
+		<components:VersionFooter Grid.Row="2"
+                                  SymbolInfo="{x:Bind ViewModel.CurrentSymbolInfo, Mode=OneWay}"
+                                  GlobalVersions="{x:Bind ViewModel.GlobalHistory, Mode=OneWay}"
+                                  SelectedGlobalIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=TwoWay}"
+                                  CanSave="{x:Bind ViewModel.HasAnyUnsavedChanges, Mode=OneWay}"
+                                  IsComparisonMode="{x:Bind ViewModel.IsComparisonMode, Mode=TwoWay}"
+                                  HideUnchanged="{x:Bind ViewModel.HideUnchangedBlocks, Mode=TwoWay}"
+                                  LeftIndex="{x:Bind ViewModel.CompareLeftIndex, Mode=TwoWay}"
+                                  RightIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=OneWay}"
+                                  SaveNewVersionRequested="OnFooterSaveNewVersion"
+                                  SaveOverwriteRequested="OnFooterSaveOverwrite"
+                                  RestoreOriginalRequested="OnFooterRestoreOriginal"/>
 
 		<Grid Grid.RowSpan="3" 
               Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Opacity="0.8"
