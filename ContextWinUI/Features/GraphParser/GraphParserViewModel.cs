@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
-using ContextWinUI.Features.GraphParser.IAParser; // Namespace das classes novas (IA)
+using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
@@ -17,7 +17,7 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
 
-public partial class GraphParserViewModel : ObservableObject
+public partial class GraphParserViewModel : ObservableObject, IGraphParserContract
 {
 	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
@@ -29,11 +29,9 @@ public partial class GraphParserViewModel : ObservableObject
 	private readonly IBlockEditorService _blockEditorService;
 	private readonly IBlockLoaderService _blockLoaderService;
 
-	// Alterado para 'object' para aceitar FileSegmentsViewModel E AiPreviewViewModel
 	[ObservableProperty]
 	private ObservableCollection<object> tabs = new();
 
-	// Alterado para 'object' para suportar a seleção de diferentes tipos de VM
 	[ObservableProperty]
 	private object? selectedTab;
 
@@ -46,6 +44,8 @@ public partial class GraphParserViewModel : ObservableObject
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
 
+	public event EventHandler<int>? CurrentGlobalIndexChanged;
+
 	public bool HasTabs => Tabs.Any();
 
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
@@ -56,7 +56,7 @@ public partial class GraphParserViewModel : ObservableObject
 		IFileSystemService fileSystemService,
 		IProjectSessionManager sessionManager,
 		ICodeBlockParserService parserService,
-		IAiCodeMerger aiMergerService, // Injeção da dependência
+		IAiCodeMerger aiMergerService,
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager,
 		IBlockLoaderService blockLoaderService,
@@ -168,7 +168,7 @@ public partial class GraphParserViewModel : ObservableObject
 		_ = InitializeGraphAsync();
 	}
 
-	private async Task InitializeGraphAsync()
+	public async Task InitializeGraphAsync()
 	{
 		try
 		{
@@ -184,7 +184,6 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 	}
 
-	// --- COMANDO NOVO: SMART PASTE ---
 	[RelayCommand]
 	public async Task PasteAndMergeFromClipboard()
 	{
@@ -217,7 +216,7 @@ public partial class GraphParserViewModel : ObservableObject
 	}
 
 	[RelayCommand]
-	private void UpdateSearch(string query)
+	public void UpdateSearch(string query)
 	{
 		if (string.IsNullOrWhiteSpace(query) || string.IsNullOrEmpty(_rootPath))
 		{
@@ -289,7 +288,7 @@ public partial class GraphParserViewModel : ObservableObject
 		}
 	}
 
-	private void SearchInDirectoryAsSuggestions(string query)
+	public void SearchInDirectoryAsSuggestions(string query)
 	{
 		try
 		{
@@ -363,4 +362,5 @@ public partial class GraphParserViewModel : ObservableObject
 			Tabs.Remove(tab);
 		}
 	}
+
 }

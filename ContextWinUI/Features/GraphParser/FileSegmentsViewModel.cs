@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
 
-public partial class FileSegmentsViewModel : ObservableObject
+public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsContract
 {
 	// --- Dependências Injetadas ---
 	private readonly IFileSystemService _fileSystemService;
