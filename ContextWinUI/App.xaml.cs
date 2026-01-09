@@ -1,6 +1,4 @@
-// ARQUIVO: App.xaml.cs
 using ContextWinUI;
-using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
@@ -56,7 +54,7 @@ public partial class App : Application
 		services.AddSingleton<IAiCodeMerger, AiCodeMerger>();
 
 		// 3. LÓGICA
-		services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe
+		//services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe
 		services.AddTransient<DependencyTrackerService>(); // Verifique se existe
 		services.AddTransient<IDependencyAnalysisOrchestrator, DependencyAnalysisOrchestrator>(); // Verifique se existe
 		services.AddTransient<ISymbolResolutionService, SymbolResolutionService>();

@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
@@ -35,10 +35,19 @@ namespace ContextWinUI.Features.ContextBuilder
 
 			if (string.IsNullOrEmpty(rootPath) || !_gitService.IsGitRepository(rootPath)) return;
 
+			// Agora recebe tuplas (path, isDeleted)
 			var changedFiles = await _gitService.GetModifiedFilesAsync(rootPath);
-			foreach (var path in changedFiles)
+
+			foreach (var (path, isDeleted) in changedFiles)
 			{
-				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, "\uE70F");
+				// Ícone: Se deletado usa Lixeira, senão usa ícone padrão de arquivo
+				string icon = isDeleted ? "\uE74D" : "\uE70F";
+
+				var item = _itemFactory.CreateWrapper(path, FileSystemItemType.File, icon);
+
+				// Define a propriedade visual
+				item.IsDeleted = isDeleted;
+
 				ModifiedItems.Add(item);
 			}
 		}

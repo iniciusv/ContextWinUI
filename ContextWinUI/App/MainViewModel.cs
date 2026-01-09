@@ -218,25 +218,28 @@ public partial class MainViewModel : ObservableObject
 
 		try
 		{
-			// Verifica se é um repositório Git
 			if (!_gitService.IsGitRepository(SessionManager.CurrentProjectPath))
 			{
-				StatusMessage = "A pasta atual não é um repositório Git. Não é possível detectar alterações automaticamente.";
+				StatusMessage = "A pasta atual não é um repositório Git.";
 				return;
 			}
 
-			// Obtém arquivos modificados (staged ou working directory)
+			// CORREÇÃO DO ERRO 2: Recebendo a Tupla (Path, IsDeleted)
 			var modifiedFiles = await _gitService.GetModifiedFilesAsync(SessionManager.CurrentProjectPath);
 			var fileList = modifiedFiles.ToList();
 
 			if (fileList.Any())
 			{
-				StatusMessage = $"Atualizando grafo para {fileList.Count} arquivo(s) alterado(s)...";
+				StatusMessage = $"Atualizando grafo para {fileList.Count} arquivo(s)...";
 
-				// 
+				// Mapeia a lista de tuplas apenas para caminhos (strings) para o ReloadFilesAsync
+				// O ReloadFilesAsync que criamos já checa File.Exists internamente, então passar o path basta.
+				var pathsOnly = fileList.Select(x => x.Path);
 
-				// Chama o método que criamos no passo 1
-				await _semanticIndexService.ReloadFilesAsync(fileList);
+				await _semanticIndexService.ReloadFilesAsync(pathsOnly);
+
+				// Opcional: Atualizar a aba de Status do Git também se necessário
+				// await ContextGitViewModel.RefreshChangesCommand.ExecuteAsync(null);
 
 				StatusMessage = "Grafo atualizado com sucesso.";
 			}

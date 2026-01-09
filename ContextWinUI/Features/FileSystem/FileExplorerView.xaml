@@ -6,9 +6,15 @@
     xmlns:models="using:ContextWinUI.Models"
     xmlns:components="using:ContextWinUI.Views.Components"
     xmlns:views="using:ContextWinUI.Views"
+    xmlns:converters="using:ContextWinUI.Helpers.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+
+	<UserControl.Resources>
+		<converters:BoolToTextDecorationsConverter x:Key="BoolToDecConverter"/>
+		<x:Double x:Key="TreeViewItemMinHeight">24</x:Double>
+	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
 		<Grid.RowDefinitions>
@@ -23,7 +29,6 @@
 				<ColumnDefinition Width="*"/>
 				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
-
 			<StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 				<FontIcon Glyph="&#xE838;" FontSize="16"/>
 				<TextBlock Text="Explorador" Style="{StaticResource SubtitleTextBlockStyle}"/>
@@ -36,10 +41,10 @@
 		</Grid>
 
 		<components:SearchBar Grid.Row="1" 
-                      SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
-                      SubmitCommand="{x:Bind ExplorerViewModel.SubmitSearchCommand}"
-                      AvailableTags="{x:Bind ExplorerViewModel.AllProjectTags, Mode=OneWay}" 
-                      Margin="16,0,16,8"/>
+                              SearchCommand="{x:Bind ExplorerViewModel.SearchCommand}" 
+                              SubmitCommand="{x:Bind ExplorerViewModel.SubmitSearchCommand}"
+                              AvailableTags="{x:Bind ExplorerViewModel.AllProjectTags, Mode=OneWay}" 
+                              Margin="16,0,16,8"/>
 
 		<Grid Grid.Row="2" Padding="16,8" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
 			<Grid.ColumnDefinitions>
@@ -47,17 +52,14 @@
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="*"/>
 			</Grid.ColumnDefinitions>
-
 			<Button Content="Todos" 
-        Command="{x:Bind ExplorerViewModel.SelectAllCommand}" 
-        Style="{StaticResource AccentButtonStyle}" 
-        Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
-
+                    Command="{x:Bind ExplorerViewModel.SelectAllCommand}" 
+                    Style="{StaticResource AccentButtonStyle}" 
+                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 			<Button Grid.Column="1" 
-        Content="Nenhum" 
-        Command="{x:Bind ExplorerViewModel.UnselectAllCommand}" 
-        Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
-
+                    Content="Nenhum" 
+                    Command="{x:Bind ExplorerViewModel.UnselectAllCommand}" 
+                    Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 			<StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
 				<TextBlock Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}" FontWeight="SemiBold"/>
 				<TextBlock Text="selecionados" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -74,7 +76,7 @@
 			<TreeView.Resources>
 				<x:Double x:Key="TreeViewItemMinHeight">24</x:Double>
 			</TreeView.Resources>
-
+			
 			<TreeView.ItemContainerStyle>
 				<Style TargetType="TreeViewItem">
 					<Setter Property="MinHeight" Value="24" />
@@ -86,26 +88,19 @@
 			<TreeView.ItemTemplate>
 				<DataTemplate x:DataType="models:FileSystemItem">
 					<TreeViewItem ItemsSource="{x:Bind views:FileExplorerView.GetExplorerChildren(Children, IsDirectory), Mode=OneWay}" 
-                      IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}" 
-                      Visibility="{x:Bind Visibility, Mode=OneWay}"
-                      HasUnrealizedChildren="{x:Bind IsDirectory}"
-                      MinHeight="24"
-                      Padding="0">
+                                  IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}" 
+                                  Visibility="{x:Bind Visibility, Mode=OneWay}"
+                                  HasUnrealizedChildren="{x:Bind IsDirectory}"
+                                  MinHeight="24"
+                                  Padding="0">
+
 						<TreeViewItem.ContextFlyout>
 							<MenuFlyout>
-								<MenuFlyoutItem Text="Novo Arquivo" Icon="Add" Click="OnCreateFileClick">
-								</MenuFlyoutItem>
-
-								<MenuFlyoutItem Text="Nova Pasta" Icon="Folder" Click="OnCreateFolderClick">
-								</MenuFlyoutItem>
-
+								<MenuFlyoutItem Text="Novo Arquivo" Icon="Add" Click="OnCreateFileClick"/>
+								<MenuFlyoutItem Text="Nova Pasta" Icon="Folder" Click="OnCreateFolderClick"/>
 								<MenuFlyoutSeparator />
-
-								<MenuFlyoutItem Text="Excluir" Icon="Delete" Click="OnDeleteClick">
-								</MenuFlyoutItem>
-
+								<MenuFlyoutItem Text="Excluir" Icon="Delete" Click="OnDeleteClick"/>
 								<MenuFlyoutSeparator />
-
 								<MenuFlyoutItem Text="Gerenciar Tags..." Icon="Tag" Click="OnManageTagsClick" />
 							</MenuFlyout>
 						</TreeViewItem.ContextFlyout>
@@ -116,7 +111,6 @@
 								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="*"/>
-								<ColumnDefinition Width="Auto"/>
 								<ColumnDefinition Width="Auto"/>
 							</Grid.ColumnDefinitions>
 
@@ -130,10 +124,14 @@
 							<FontIcon Grid.Column="1" Glyph="{x:Bind Icon}" FontSize="14" Margin="0,0,8,0" 
                                       Foreground="{x:Bind views:FileExplorerView.GetIconColor(IsDirectory, SharedState.IsIgnored), Mode=OneWay}"/>
 
-							<TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" FontSize="13"/>
+							<TextBlock Grid.Column="2" 
+                                       Text="{x:Bind Name}" 
+                                       VerticalAlignment="Center" 
+                                       FontSize="13"
+                                       TextDecorations="{x:Bind IsDeleted, Converter={StaticResource BoolToDecConverter}, Mode=OneWay}"/>
 
 							<components:TagChipsControl Grid.Column="3" 
-                                                        TagsSource="{x:Bind SharedState.Tags, Mode=OneWay}" 
+                                                        TagsSource="{x:Bind Tags, Mode=OneWay}" 
                                                         Margin="8,0,0,0" 
                                                         VerticalAlignment="Center"/>
 

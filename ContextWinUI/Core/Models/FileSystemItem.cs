@@ -1,24 +1,21 @@
-// ==================== ContextWinUI\Core\Models\FileSystemItem.cs ====================
-
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextWinUI.Core.Contracts;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
-using Windows.UI;
 
 namespace ContextWinUI.Models;
 
 public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystemItem
 {
-
 	public FileSharedState SharedState { get; }
+
+	// CORREÇÃO XLS0519: Expondo Tags diretamente para facilitar o acesso via x:Bind
+	public ObservableCollection<string> Tags => SharedState.Tags;
 
 	public FileSystemItem(FileSharedState sharedState)
 	{
@@ -40,9 +37,14 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 			if (SharedState.IsChecked != value)
 			{
 				SharedState.IsChecked = value;
+				OnPropertyChanged(nameof(IsChecked));
 			}
 		}
 	}
+
+	// CORREÇÃO: Propriedade necessária para o efeito de tachado (Strikethrough)
+	[ObservableProperty]
+	private bool isDeleted;
 
 	[ObservableProperty]
 	private FileSystemItemType type;
@@ -67,30 +69,30 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 	private ObservableCollection<FileSystemItem> children = new();
 
 	public Visibility Visibility => IsVisibleInSearch ? Visibility.Visible : Visibility.Collapsed;
+
 	public bool CanDeepAnalyze => Type == FileSystemItemType.File && IsCodeFile;
+
 	public Visibility DeepAnalyzeVisibility =>
 		(Type == FileSystemItemType.File || Type == FileSystemItemType.Dependency || Type == FileSystemItemType.Class)
 		? Visibility.Visible : Visibility.Collapsed;
 
-	// Adicione também uma visibilidade para o botão de grupo
 	public Visibility GroupAnalyzeVisibility =>
 		(Type == FileSystemItemType.LogicalGroup && Name.Contains("Estrutura"))
 		? Visibility.Visible : Visibility.Collapsed;
 
-	// Define o recuo visual: se for arquivo = 0, se for subitem = 24px
 	public Thickness SelectionMargin =>
 		(Type == FileSystemItemType.File) ? new Thickness(0) : new Thickness(24, 2, 0, 2);
 
-	// Define uma cor de fundo sutil para subitens
 	public Brush SelectionBackground =>
 		(Type == FileSystemItemType.File)
-			? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent)
-			: (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+			? new SolidColorBrush(Microsoft.UI.Colors.Transparent)
+			: (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
 
-	// Propriedade para ajudar na UI do ListView
 	public Visibility IsSubItemVisibility =>
 		(Type != FileSystemItemType.File) ? Visibility.Visible : Visibility.Collapsed;
+
 	public bool CanAnalyzeMethodFlow => Type == FileSystemItemType.Method && !string.IsNullOrEmpty(FullPath);
+
 	public Visibility MethodFlowVisibility => CanAnalyzeMethodFlow ? Visibility.Visible : Visibility.Collapsed;
 
 	public bool IsDirectory => Type == FileSystemItemType.Directory;
@@ -111,16 +113,25 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 	IFileSharedState IFileSystemItem.SharedStateInfo => SharedState;
 	IEnumerable<IFileSystemItem> IFileSystemItem.ChildrenItems => Children.Cast<IFileSystemItem>();
 
-    private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
+	private void OnSharedStateChanged(object? sender, PropertyChangedEventArgs e)
 	{
 		if (e.PropertyName == nameof(FileSharedState.IsChecked))
 		{
+			// Notifica a View que IsChecked mudou
 			OnPropertyChanged(nameof(IsChecked));
+
+			// Propaga para os filhos (Lógica manual conforme seu código original)
+			foreach (var child in Children)
+			{
+				child.IsChecked = this.IsChecked;
+			}
 		}
 		else if (e.PropertyName == nameof(FileSharedState.Name))
 		{
 			OnPropertyChanged(nameof(Name));
 		}
+		// Se a coleção de tags mudar, a propriedade Tags já aponta para ela, 
+		// mas se a instância mudar, precisamos notificar.
 	}
 
 	private static readonly HashSet<string> _codeExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -140,7 +151,7 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 			".xml" => "\uE8A5",
 			".txt" => "\uE8A5",
 			".md" => "\uE8A5",
-			".js" or ".jsx" => "\uE943", // Code Icon
+			".js" or ".jsx" => "\uE943",
 			".ts" or ".tsx" => "\uE943",
 			".vue" => "\uE8A5",
 			_ => "\uE8A5"
@@ -181,20 +192,4 @@ public partial class FileSystemItem : ObservableObject, IDisposable, IFileSystem
 	{
 		SharedState.PropertyChanged -= OnSharedStateChanged;
 	}
-	// O toolkit gera este método automaticamente para nós
-// Dentro de FileSystemItem.cs
-protected override void OnPropertyChanged(PropertyChangedEventArgs e)
-{
-    base.OnPropertyChanged(e);
-
-    // Verifica se a propriedade que mudou foi o IsChecked
-    if (e.PropertyName == nameof(IsChecked))
-    {
-        // Propaga para os filhos
-        foreach (var child in Children)
-        {
-            child.IsChecked = this.IsChecked;
-        }
-    }
-}
 }

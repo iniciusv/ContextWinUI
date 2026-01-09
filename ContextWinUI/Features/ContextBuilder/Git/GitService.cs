@@ -14,13 +14,14 @@ public class GitService : IGitService
 		return Repository.IsValid(rootPath);
 	}
 
-	public Task<IEnumerable<string>> GetModifiedFilesAsync(string rootPath)
+	public Task<IEnumerable<(string Path, bool IsDeleted)>> GetModifiedFilesAsync(string rootPath)
 	{
 		return Task.Run(() =>
 		{
-			var modifiedFiles = new List<string>();
+			var modifiedFiles = new List<(string Path, bool IsDeleted)>();
+
 			if (!Repository.IsValid(rootPath))
-				return Enumerable.Empty<string>();
+				return Enumerable.Empty<(string, bool)>();
 
 			using (var repo = new Repository(rootPath))
 			{
@@ -31,21 +32,25 @@ public class GitService : IGitService
 
 				foreach (var item in status)
 				{
+					// Verifica status de deleção
+					bool isDeleted = item.State == FileStatus.DeletedFromIndex ||
+									 item.State == FileStatus.DeletedFromWorkdir;
+
 					if (item.State == FileStatus.ModifiedInIndex ||
 						item.State == FileStatus.ModifiedInWorkdir ||
 						item.State == FileStatus.NewInIndex ||
 						item.State == FileStatus.NewInWorkdir ||
 						item.State == FileStatus.RenamedInIndex ||
 						item.State == FileStatus.RenamedInWorkdir ||
-						item.State == FileStatus.DeletedFromIndex ||   // <--- Novo
-						item.State == FileStatus.DeletedFromWorkdir)   // <--- Novo
+						isDeleted) // Inclui deletados
 					{
 						var fullPath = Path.Combine(rootPath, item.FilePath);
-						modifiedFiles.Add(fullPath.Replace("/", "\\"));
+						// Adiciona tupla (Caminho, Flag Deletado)
+						modifiedFiles.Add((fullPath.Replace("/", "\\"), isDeleted));
 					}
 				}
 			}
-			return (IEnumerable<string>)modifiedFiles;
+			return (IEnumerable<(string, bool)>)modifiedFiles;
 		});
 	}
 }
