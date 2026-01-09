@@ -96,6 +96,7 @@
     <None Include="C:\Users\vinic\source\repos\ContextWinUI\ContextWinUI\.editorconfig" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Core\Algorithms\" />
     <Folder Include="Features\CodeEditor\View\" />
     <Folder Include="Features\Parser\" />
   </ItemGroup>

@@ -18,4 +18,6 @@ public interface ISemanticIndexService
 
 	SymbolType? GetSymbolType(string word);
 	Task UpdateSourceFileAsync(string filePath, string newContent);
+
+	Task ReloadFilesAsync(IEnumerable<string> filePaths);
 }

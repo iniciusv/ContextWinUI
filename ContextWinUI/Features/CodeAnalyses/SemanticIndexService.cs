@@ -150,7 +150,64 @@ public class SemanticIndexService : ISemanticIndexService
 			walker.Visit(root);
 		});
 	}
+	public async Task ReloadFilesAsync(IEnumerable<string> filePaths)
+	{
+		if (_cachedCompilation == null || _cachedGraph == null) return;
 
+		foreach (var path in filePaths)
+		{
+			try
+			{
+				// Verifica a existência física do arquivo para decidir a ação
+				if (File.Exists(path))
+				{
+					// ARQUIVO EXISTE -> ATUALIZA (Update)
+					var newContent = await File.ReadAllTextAsync(path);
+					await UpdateSourceFileAsync(path, newContent);
+				}
+				else
+				{
+					// ARQUIVO NÃO EXISTE -> REMOVE (Delete)
+					await RemoveSourceFileAsync(path);
+				}
+			}
+			catch (Exception ex)
+			{
+				// Log de erro (pode ser ajustado conforme sua infra de log)
+				System.Diagnostics.Debug.WriteLine($"Erro ao processar arquivo {path}: {ex.Message}");
+			}
+		}
+	}
+
+	// Método privado para remover o arquivo do Roslyn e do Grafo
+	private async Task RemoveSourceFileAsync(string filePath)
+	{
+		if (_cachedCompilation == null || _cachedGraph == null) return;
+
+		// 1. Encontrar e remover a árvore de sintaxe do Compilation (Roslyn)
+		var oldTree = _cachedCompilation.SyntaxTrees.FirstOrDefault(t =>
+			string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+		if (oldTree != null)
+		{
+			// RemoveSyntaxTrees cria uma nova compilação imutável sem aquela árvore
+			_cachedCompilation = _cachedCompilation.RemoveSyntaxTrees(oldTree);
+		}
+
+		// 2. Remover do Grafo de Dependências Customizado
+		// Obtém o ID do arquivo (mesmo que não exista mais no disco, o ID existe no cache)
+		int fileId = _cachedGraph.GetOrAddFileId(filePath);
+
+		// Remove todos os nós associados a este arquivo
+		_cachedGraph.RemoveNodesForFile(fileId);
+
+		// Opcional: Remover o ID do índice de arquivos do grafo para não crescer indefinidamente
+		// _cachedGraph.FileIndex.TryRemove(fileId, out _); 
+		// Nota: Dependendo da implementação do IDependencyGraph, pode ser necessário um método específico
+		// para remover a entrada do dicionário de caminhos se quiser limpar totalmente.
+
+		await Task.CompletedTask; // Mantém a assinatura async para consistência
+	}
 	public SymbolType? GetSymbolType(string word)
 	{
 		if (_cachedGraph == null) return null;

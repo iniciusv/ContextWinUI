@@ -1,4 +1,4 @@
-﻿using ContextWinUI.Core.Contracts;
+using ContextWinUI.Core.Contracts;
 using LibGit2Sharp;
 using System.Collections.Generic;
 using System.IO;
@@ -19,35 +19,32 @@ public class GitService : IGitService
 		return Task.Run(() =>
 		{
 			var modifiedFiles = new List<string>();
-
 			if (!Repository.IsValid(rootPath))
 				return Enumerable.Empty<string>();
 
 			using (var repo = new Repository(rootPath))
 			{
-				// Verifica status (Staged e Unstaged)
 				var status = repo.RetrieveStatus(new StatusOptions
 				{
-					IncludeUntracked = true // Inclui arquivos novos não comitados
+					IncludeUntracked = true
 				});
 
 				foreach (var item in status)
 				{
-					// Filtra apenas o que nos interessa (Modificado, Novo, Renomeado)
 					if (item.State == FileStatus.ModifiedInIndex ||
 						item.State == FileStatus.ModifiedInWorkdir ||
 						item.State == FileStatus.NewInIndex ||
 						item.State == FileStatus.NewInWorkdir ||
 						item.State == FileStatus.RenamedInIndex ||
-						item.State == FileStatus.RenamedInWorkdir)
+						item.State == FileStatus.RenamedInWorkdir ||
+						item.State == FileStatus.DeletedFromIndex ||   // <--- Novo
+						item.State == FileStatus.DeletedFromWorkdir)   // <--- Novo
 					{
 						var fullPath = Path.Combine(rootPath, item.FilePath);
-						// Normaliza separadores de caminho
 						modifiedFiles.Add(fullPath.Replace("/", "\\"));
 					}
 				}
 			}
-
 			return (IEnumerable<string>)modifiedFiles;
 		});
 	}

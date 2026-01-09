@@ -30,6 +30,8 @@ public partial class MainViewModel : ObservableObject
 	private readonly IFileSelectionService _fileSelectionService;
 	private readonly IAiCodeMerger _aiMergerService;
 
+	private readonly IGitService _gitService;
+
 
 	// Dispatcher para atualizações de UI em threads de fundo
 	private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -70,7 +72,8 @@ public partial class MainViewModel : ObservableObject
 				ISemanticIndexService semanticIndexService,
 			IFileSelectionService fileSelectionService,
 				SemanticGraphViewModel semanticGraph,
-				IBlockEditorService blockEditorService)
+				IBlockEditorService blockEditorService,
+				IGitService gitService)
 	{
 		FileExplorer = fileExplorer;
 		ContextAnalysis = contextAnalysis;
@@ -84,6 +87,7 @@ public partial class MainViewModel : ObservableObject
 		_blockEditorService = blockEditorService;
 
 		SemanticGraph = semanticGraph;
+		_gitService = gitService;
 
 		RegisterEvents();
 	}
@@ -200,7 +204,56 @@ public partial class MainViewModel : ObservableObject
 		}
 	}
 
+	[RelayCommand]
+	private async Task RefreshGraphAsync()
+	{
+		if (!SessionManager.IsProjectLoaded || SessionManager.CurrentProjectPath == null)
+		{
+			StatusMessage = "Nenhum projeto carregado.";
+			return;
+		}
 
+		IsLoading = true;
+		StatusMessage = "Verificando alterações no código...";
+
+		try
+		{
+			// Verifica se é um repositório Git
+			if (!_gitService.IsGitRepository(SessionManager.CurrentProjectPath))
+			{
+				StatusMessage = "A pasta atual não é um repositório Git. Não é possível detectar alterações automaticamente.";
+				return;
+			}
+
+			// Obtém arquivos modificados (staged ou working directory)
+			var modifiedFiles = await _gitService.GetModifiedFilesAsync(SessionManager.CurrentProjectPath);
+			var fileList = modifiedFiles.ToList();
+
+			if (fileList.Any())
+			{
+				StatusMessage = $"Atualizando grafo para {fileList.Count} arquivo(s) alterado(s)...";
+
+				// 
+
+				// Chama o método que criamos no passo 1
+				await _semanticIndexService.ReloadFilesAsync(fileList);
+
+				StatusMessage = "Grafo atualizado com sucesso.";
+			}
+			else
+			{
+				StatusMessage = "Nenhuma alteração detectada pelo Git.";
+			}
+		}
+		catch (Exception ex)
+		{
+			StatusMessage = $"Erro ao atualizar grafo: {ex.Message}";
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
 
 	public void OnFileSelected(FileSystemItem item)
 	{
