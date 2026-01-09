@@ -17,4 +17,5 @@ public interface IDependencyGraph
 	// Manipulação
 	void AddNode(SymbolNode node);
 	void Clear();
+	void RemoveNodesForFile(int fileId);
 }

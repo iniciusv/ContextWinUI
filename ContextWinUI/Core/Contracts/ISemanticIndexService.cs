@@ -17,4 +17,5 @@ public interface ISemanticIndexService
 	SymbolNode? InferSymbolFromGraph(string word, string filePath, int absolutePosition);
 
 	SymbolType? GetSymbolType(string word);
+	Task UpdateSourceFileAsync(string filePath, string newContent);
 }

@@ -21,6 +21,9 @@ public class SemanticIndexService : ISemanticIndexService
 	private DependencyGraph _cachedGraph = new();
 	private string _cachedRootPath = string.Empty;
 
+	private CSharpCompilation? _cachedCompilation;
+	private CSharpParseOptions _parseOptions = new(LanguageVersion.Latest, DocumentationMode.None);
+
 	// Adicione este método que estava faltando
 	public async Task<DependencyGraph> GetOrIndexProjectAsync(string rootPath)
 	{
@@ -34,47 +37,40 @@ public class SemanticIndexService : ISemanticIndexService
 
 	public async Task<DependencyGraph> IndexProjectAsync(string rootPath)
 	{
-		// 1. Leitura rápida dos arquivos (mantém como estava)
 		var filePaths = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
 				.Where(f => !f.Contains("obj") && !f.Contains("bin"));
 
 		var syntaxTrees = new ConcurrentBag<SyntaxTree>();
 
-		// Configuração de parse otimizada
-		var parseOptions = new CSharpParseOptions(LanguageVersion.Latest, DocumentationMode.None);
-
+		// Usar as opções salvas no campo da classe
 		await Parallel.ForEachAsync(filePaths, async (path, ct) =>
 		{
 			var text = await File.ReadAllTextAsync(path, ct);
-			var tree = CSharpSyntaxTree.ParseText(text, parseOptions, path: path, cancellationToken: ct);
+			var tree = CSharpSyntaxTree.ParseText(text, _parseOptions, path: path, cancellationToken: ct);
 			syntaxTrees.Add(tree);
 		});
 
-		// 2. Criação da Compilação (Isso é Single Threaded por natureza do Roslyn, não tem jeito)
-		var compilation = CSharpCompilation.Create("ContextAnalysis_Session")
+		// Criar e armazenar a compilação no campo privado
+		_cachedCompilation = CSharpCompilation.Create("ContextAnalysis_Session")
 			.AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
 			.AddSyntaxTrees(syntaxTrees);
 
 		var graph = new DependencyGraph();
 
-		// 3. OTIMIZAÇÃO CRÍTICA: Processamento Paralelo dos Modelos Semânticos
-		// Em vez de foreach simples, usamos Parallel para visitar as árvores simultaneamente
 		await Task.Run(() =>
 		{
-			Parallel.ForEach(syntaxTrees, tree =>
+			// Nota: Para acesso concorrente seguro, é melhor iterar a lista fixa da compilação
+			Parallel.ForEach(_cachedCompilation.SyntaxTrees, tree =>
 			{
-				// GetSemanticModel pode ser chamado concorrentemente
-				var model = compilation.GetSemanticModel(tree);
+				var model = _cachedCompilation.GetSemanticModel(tree);
 				var walker = new GraphBuilderWalker(graph, model, tree.FilePath);
-
-				// GetRoot é rápido pois a árvore já está em memória
 				var root = tree.GetRoot();
 				walker.Visit(root);
 			});
 		});
 
 		_cachedGraph = graph;
-		_cachedRootPath = rootPath; // Cache o path para evitar re-indexação desnecessária
+		_cachedRootPath = rootPath;
 		return graph;
 	}
 
@@ -119,6 +115,40 @@ public class SemanticIndexService : ISemanticIndexService
 								 n.Type == SymbolType.Struct));
 
 		return globalType;
+	}
+	public async Task UpdateSourceFileAsync(string filePath, string newContent)
+	{
+		if (_cachedCompilation == null || _cachedGraph == null) return;
+
+		// 1. Identificar a SyntaxTree antiga
+		var oldTree = _cachedCompilation.SyntaxTrees.FirstOrDefault(t =>
+			string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+		// 2. Criar a nova SyntaxTree
+		var newTree = CSharpSyntaxTree.ParseText(newContent, _parseOptions, path: filePath);
+
+		// 3. Atualizar a Compilação (Imutável: retorna uma nova instância)
+		if (oldTree != null)
+		{
+			_cachedCompilation = _cachedCompilation.ReplaceSyntaxTree(oldTree, newTree);
+		}
+		else
+		{
+			_cachedCompilation = _cachedCompilation.AddSyntaxTrees(newTree);
+		}
+
+		// 4. Limpar dados antigos do Grafo para este arquivo
+		int fileId = _cachedGraph.GetOrAddFileId(filePath);
+		_cachedGraph.RemoveNodesForFile(fileId);
+
+		// 5. Re-analisar apenas este arquivo usando a NOVA compilação
+		await Task.Run(() =>
+		{
+			var model = _cachedCompilation.GetSemanticModel(newTree);
+			var walker = new GraphBuilderWalker(_cachedGraph, model, filePath);
+			var root = newTree.GetRoot();
+			walker.Visit(root);
+		});
 	}
 
 	public SymbolType? GetSymbolType(string word)

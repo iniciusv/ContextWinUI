@@ -64,7 +64,6 @@ public class DependencyGraph : IDependencyGraph
 		return _fileIdToPath.TryGetValue(fileId, out var path) ? path : string.Empty;
 	}
 
-	// --- Métodos de Manipulação do Grafo ---
 
 	public void AddNode(SymbolNode node)
 	{
@@ -125,5 +124,48 @@ public class DependencyGraph : IDependencyGraph
 			   type == SymbolType.Enum ||
 			   type == SymbolType.Struct ||
 			   type == SymbolType.Constructor;
+	}
+
+	public void RemoveNodesForFile(int fileId)
+	{
+		if (fileId <= 0) return;
+
+		// 1. Remover do FileIndex e obter os nós afetados
+		if (FileIndex.TryRemove(fileId, out var nodesToRemove))
+		{
+			foreach (var node in nodesToRemove)
+			{
+				// 2. Remover do Dicionário principal de Nós
+				Nodes.TryRemove(node.Id, out _);
+
+				// 3. Remover do NameIndex (pode ser custoso se houver colisão de nomes, mas necessário)
+				if (!string.IsNullOrEmpty(node.Name) && NameIndex.TryGetValue(node.Name, out var nameList))
+				{
+					lock (nameList)
+					{
+						nameList.RemoveAll(n => n.Id == node.Id);
+					}
+				}
+
+				// 4. Remover do GlobalSymbolCache se necessário
+				if (IsGlobalType(node.Type))
+				{
+					// Nota: Isso é uma simplificação. Em um cenário ideal, verificaríamos se outra definição existe.
+					// Para incremental, deixamos o cache sobrescrever depois.
+				}
+
+				// 5. Remover implementações de interface
+				if (node.Type == SymbolType.Class)
+				{
+					foreach (var key in InterfaceImplementations.Keys)
+					{
+						if (InterfaceImplementations.TryGetValue(key, out var implList))
+						{
+							lock (implList) { implList.Remove(node.Id); }
+						}
+					}
+				}
+			}
+		}
 	}
 }
