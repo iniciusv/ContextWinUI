@@ -83,16 +83,30 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		InitializeGlobalHistory();
 	}
 
+
 	private void InitializeGlobalHistory()
 	{
 		GlobalHistory.Clear();
+
+		// Estado 0: Original do Git (Passado)
 		GlobalHistory.Add(new GlobalVersion
 		{
-			Description = "Estado Inicial",
+			Description = "Base (Git HEAD)",
 			IsOriginal = true,
-			Timestamp = DateTime.MinValue
+			Timestamp = DateTime.MinValue // Garante que pega apenas versões marcadas como originais
 		});
-		CurrentGlobalIndex = 0;
+
+		// Estado 1: Trabalho em Andamento (Presente)
+		GlobalHistory.Add(new GlobalVersion
+		{
+			Description = "Atual (Working Copy)",
+			IsOriginal = false,
+			// Usamos MaxValue para garantir que este estado "capture" qualquer edição feita agora ou no futuro
+			Timestamp = DateTime.MaxValue
+		});
+
+		// Define o índice padrão para 1 (O estado Atual)
+		CurrentGlobalIndex = 1;
 	}
 
 	partial void OnCurrentGlobalIndexChanged(int value)

@@ -26,7 +26,7 @@ public partial class CodeBlockItem : ObservableObject
 	public int DepthLevel { get; set; } = 0;
 	public string FileExtension { get; set; } = ".cs";
 	public DateTime Timestamp { get; set; } = DateTime.Now;
-	public int CurrentVersionIndex { get; private set; } = -1;
+	public int CurrentVersionIndex { get; set; } = -1;
 
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(HasUnsavedChanges))]
@@ -46,13 +46,17 @@ public partial class CodeBlockItem : ObservableObject
 	{
 		get
 		{
+			var original = Versions.FirstOrDefault(v => v.IsOriginal);
+			if (original != null)
+			{
+				return Content != original.Content;
+			}
+
 			if (Versions.Count == 0) return !string.IsNullOrEmpty(Content);
-			var lastSaved = Versions.Last();
-			return Content != lastSaved.Content;
+			return Content != Versions.Last().Content;
 		}
 	}
 
-	// --- Métodos de Versionamento ---
 	public void InitializeVersions(string initialContent)
 	{
 		Versions.Clear();

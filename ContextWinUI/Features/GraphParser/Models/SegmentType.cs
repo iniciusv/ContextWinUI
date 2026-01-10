@@ -16,7 +16,8 @@ public enum SegmentType
 	Gap,             // Qualquer código não identificado especificamente
 	Enum,
 	Constructor,
-	Comment
+	Comment,
+	Interface
 }
 
 // Enums de apoio (caso não tenha definido em outro lugar)

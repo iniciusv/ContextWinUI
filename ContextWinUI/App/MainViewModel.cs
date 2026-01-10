@@ -214,43 +214,41 @@ public partial class MainViewModel : ObservableObject
 		}
 
 		IsLoading = true;
-		StatusMessage = "Verificando alterações no código...";
 
 		try
 		{
+			// 1. ATUALIZAÇÃO VISUAL (O que faltava)
+			// Atualiza a árvore de arquivos para mostrar novos arquivos criados externamente
+			StatusMessage = "Sincronizando arquivos...";
+			await FileExplorer.RefreshTreeAsync();
+
+			// 2. ATUALIZAÇÃO LÓGICA (Grafo e Git)
+			StatusMessage = "Verificando alterações no código...";
+
 			if (!_gitService.IsGitRepository(SessionManager.CurrentProjectPath))
 			{
-				StatusMessage = "A pasta atual não é um repositório Git.";
+				StatusMessage = "Árvore atualizada (Pasta não é um repositório Git).";
 				return;
 			}
 
-			// CORREÇÃO DO ERRO 2: Recebendo a Tupla (Path, IsDeleted)
 			var modifiedFiles = await _gitService.GetModifiedFilesAsync(SessionManager.CurrentProjectPath);
 			var fileList = modifiedFiles.ToList();
 
 			if (fileList.Any())
 			{
 				StatusMessage = $"Atualizando grafo para {fileList.Count} arquivo(s)...";
-
-				// Mapeia a lista de tuplas apenas para caminhos (strings) para o ReloadFilesAsync
-				// O ReloadFilesAsync que criamos já checa File.Exists internamente, então passar o path basta.
 				var pathsOnly = fileList.Select(x => x.Path);
-
 				await _semanticIndexService.ReloadFilesAsync(pathsOnly);
-
-				// Opcional: Atualizar a aba de Status do Git também se necessário
-				// await ContextGitViewModel.RefreshChangesCommand.ExecuteAsync(null);
-
-				StatusMessage = "Grafo atualizado com sucesso.";
+				StatusMessage = "Grafo e árvore atualizados com sucesso.";
 			}
 			else
 			{
-				StatusMessage = "Nenhuma alteração detectada pelo Git.";
+				StatusMessage = "Árvore atualizada (Nenhuma alteração lógica detectada pelo Git).";
 			}
 		}
 		catch (Exception ex)
 		{
-			StatusMessage = $"Erro ao atualizar grafo: {ex.Message}";
+			StatusMessage = $"Erro ao atualizar: {ex.Message}";
 		}
 		finally
 		{

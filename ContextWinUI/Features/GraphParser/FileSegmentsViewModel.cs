@@ -141,7 +141,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		SelectedBlock = null;
 		try
 		{
-			// O serviço faz todo o trabalho pesado
+			// Carrega Git + Disco
 			var items = await _loaderService.LoadAndProcessFileAsync(FilePath);
 
 			foreach (var item in items)
@@ -150,7 +150,20 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			}
 
 			if (Rows.Any()) SelectedBlock = Rows.First().Current;
+
+			// --- COLOQUE DE VOLTA ESTA LINHA ---
+			// Agora ela é útil! Como CurrentGlobalIndex é 1, 
+			// ela vai selecionar a versão "Working Copy" do bloco.
 			RestoreToGlobalIndex(CurrentGlobalIndex);
+			// -----------------------------------
+
+			NotifyUnsavedChanges();
+
+			if (IsComparisonMode)
+			{
+				_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
+				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			}
 		}
 		catch (Exception ex)
 		{

@@ -1,117 +1,227 @@
 using ContextWinUI.Core.Contracts;
+using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.Models;
-using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
-namespace ContextWinUI.Features.GraphParser;
-
-public class BlockLoaderService : IBlockLoaderService
+namespace ContextWinUI.Services
 {
-	private readonly IFileSystemService _fileSystemService;
-	private readonly ICodeBlockParserService _parserService;
-
-	public BlockLoaderService(
-		IFileSystemService fileSystemService,
-		ICodeBlockParserService parserService)
+	public class BlockLoaderService : IBlockLoaderService
 	{
-		_fileSystemService = fileSystemService;
-		_parserService = parserService;
-	}
+		private readonly ICodeBlockParserService _parserService;
+		private readonly IGitService _gitService;
+		private readonly IProjectSessionManager _sessionManager;
 
-	public async Task<List<CodeBlockItem>> LoadAndProcessFileAsync(string filePath)
-	{
-		// 1. Leitura bruta do arquivo
-		var fileContent = await _fileSystemService.ReadFileContentAsync(filePath);
-
-		if (string.IsNullOrEmpty(fileContent))
-			return new List<CodeBlockItem>();
-
-		// 2. Parsing (identificação dos blocos lógicos)
-		// Nota: O parser geralmente remove a indentação inicial da primeira linha.
-		var parsedItems = await _parserService.ParseFileAsync(filePath, fileContent);
-
-		// 3. Pós-processamento: Correção de Indentação e Offsets
-		foreach (var item in parsedItems)
+		public BlockLoaderService(
+			ICodeBlockParserService parserService,
+			IGitService gitService,
+			IProjectSessionManager sessionManager)
 		{
-			RecoverBlockIndentation(item, fileContent);
+			_parserService = parserService;
+			_gitService = gitService;
+			_sessionManager = sessionManager;
 		}
 
-		return parsedItems;
-	}
-
-	/// <summary>
-	/// Recupera a indentação original da primeira linha do bloco olhando para o arquivo original.
-	/// Ajusta o Conteúdo e o AbsoluteStartPosition.
-	/// </summary>
-	private void RecoverBlockIndentation(CodeBlockItem block, string fullFileContent)
-	{
-		// Validações de segurança
-		if (string.IsNullOrEmpty(block.Content) ||
-			char.IsWhiteSpace(block.Content[0]) ||
-			block.AbsoluteStartPosition <= 0 ||
-			block.AbsoluteStartPosition > fullFileContent.Length)
+		public async Task<List<CodeBlockItem>> LoadAndProcessFileAsync(string filePath)
 		{
-			return;
-		}
-
-		int currentPos = block.AbsoluteStartPosition - 1;
-		int whitespaceCount = 0;
-
-		// "Walk backwards": Varre para trás a partir do início do bloco até achar o começo da linha
-		while (currentPos >= 0)
-		{
-			char c = fullFileContent[currentPos];
-
-			// Se achou quebra de linha, paramos (chegamos no início da linha)
-			if (c == '\n' || c == '\r') break;
-
-			// Se achou algo que não é espaço (ex: código na mesma linha), 
-			// aborta a correção pois não é apenas indentação.
-			if (!char.IsWhiteSpace(c))
+			// 1. Carrega e parseia o conteúdo ATUAL do DISCO
+			string diskContent = string.Empty;
+			if (File.Exists(filePath))
 			{
-				return;
+				diskContent = await File.ReadAllTextAsync(filePath);
+			}
+			// Lista principal de blocos (versão atual)
+			var currentBlocks = await _parserService.ParseFileAsync(filePath, diskContent);
+
+			// 2. Verifica Git e tenta pegar a versão HEAD
+			string? rootPath = _sessionManager.CurrentProjectPath;
+			string? gitContent = null;
+
+			if (!string.IsNullOrEmpty(rootPath) && _gitService.IsGitRepository(rootPath))
+			{
+				gitContent = await _gitService.GetFileContentFromHeadAsync(rootPath, filePath);
 			}
 
-			whitespaceCount++;
-			currentPos--;
+			// Se não tem conteúdo no Git ou é igual, retorna o que temos
+			if (string.IsNullOrEmpty(gitContent) || gitContent == diskContent)
+			{
+				return currentBlocks;
+			}
+
+			// 3. Parseia a versão do Git (Snapshot antigo)
+			var gitBlocks = await _parserService.ParseFileAsync(filePath, gitContent);
+
+			// 4. MERGE: Processar Modificados e Deletados
+
+			// Lista para rastrear quais blocos do Git foram encontrados no disco
+			var matchedGitBlockIds = new HashSet<string>();
+
+			// A) Percorre os blocos do DISCO para encontrar correspondências no Git
+			foreach (var diskBlock in currentBlocks)
+			{
+				// Tenta achar o bloco correspondente no Git pela assinatura (Nome + Tipo)
+				// Usamos FirstOrDefault pois a posição pode ter mudado
+				var matchingGitBlock = gitBlocks.FirstOrDefault(gb =>
+					gb.Name == diskBlock.Name &&
+					gb.TypeDescription == diskBlock.TypeDescription &&
+					// Opcional: checar DepthLevel para garantir que não é um método com mesmo nome em classe interna diferente
+					gb.DepthLevel == diskBlock.DepthLevel
+				);
+
+				if (matchingGitBlock != null)
+				{
+					matchedGitBlockIds.Add(matchingGitBlock.Id); // Marca como encontrado (mesmo que Id seja novo, usamos a ref do obj)
+
+					// Se o conteúdo é diferente, configuramos o histórico
+					if (matchingGitBlock.Content != diskBlock.Content)
+					{
+						SetupBlockHistory(diskBlock, matchingGitBlock.Content, diskBlock.Content);
+					}
+				}
+				else
+				{
+					SetupNewBlockHistory(diskBlock);
+				}
+			}
+
+
+
+			// B) Identificar Blocos DELETADOS (Existem no Git, mas não foram achados no loop acima)
+			// Filtramos apenas blocos "relevantes" (Métodos, Classes, Propriedades) para evitar ruído com Trivia/Espaços
+			var deletedBlocks = gitBlocks
+				.Where(gb => !matchedGitBlockIds.Contains(gb.Id) && IsSignificantBlock(gb))
+				.ToList();
+
+			foreach (var deletedBlock in deletedBlocks)
+			{
+				// Precisamos "ressuscitar" este bloco para mostrar na lista
+				// Ele terá:
+				// Versão 0 (Original): Conteúdo do Git
+				// Versão 1 (Atual): VAZIO ou NULL (representando a deleção)
+
+				// Clona o bloco do Git para não afetar referências
+				var ghostBlock = deletedBlock.Clone();
+
+				// Configura o histórico de deleção
+				ghostBlock.Versions.Clear();
+
+				// Versão Git (O que existia)
+				ghostBlock.Versions.Add(new CodeBlockVersion
+				{
+					Content = deletedBlock.Content,
+					Description = "Original (Git)",
+					IsOriginal = true,
+					Timestamp = System.DateTime.MinValue
+				});
+
+				// Versão Disco (Deletado)
+				ghostBlock.Versions.Add(new CodeBlockVersion
+				{
+					Content = string.Empty, // Conteúdo vazio representa deleção
+					Description = "Deletado",
+					IsOriginal = false,
+					Timestamp = System.DateTime.Now
+				});
+
+				// Define o estado atual como deletado
+				ghostBlock.Content = string.Empty;
+				ghostBlock.CurrentVersionIndex = 1;
+				ghostBlock.Name += " (Deletado)"; // Opcional: Marcador visual no nome
+
+				// Adiciona à lista final. 
+				// DESAFIO: Onde inserir? Como não sabemos a posição exata nova, 
+				// tentamos colocar próximo de onde estava (baseado no StartPosition original do Git),
+				// ou apenas no final se for muito complexo calcular.
+				InsertBlockSorted(currentBlocks, ghostBlock);
+			}
+
+			return currentBlocks;
 		}
 
-		// Se detectou indentação perdida, aplica a correção
-		if (whitespaceCount > 0)
+
+
+		private void SetupNewBlockHistory(CodeBlockItem block)
 		{
-			// A. Reconstrói a string de indentação baseada no original
-			string indentation = fullFileContent.Substring(block.AbsoluteStartPosition - whitespaceCount, whitespaceCount);
+			// Salva o conteúdo atual (que é o novo método)
+			string currentContent = block.Content;
 
-			// B. Anexa a indentação ao conteúdo
-			string newContent = indentation + block.Content;
-			block.Content = newContent;
+			block.Versions.Clear();
 
-			// C. CRÍTICO: Recua o AbsoluteStartPosition.
-			// Se adicionamos 'N' espaços no início, o ponto de partida visual do bloco
-			// deve recuar 'N' caracteres para alinhar com o índice absoluto do arquivo.
-			block.AbsoluteStartPosition -= whitespaceCount;
+			// 1. Versão Original (Git) -> VAZIA
+			// Isso garante que a coluna da esquerda mostre um espaço vazio/gap
+			block.Versions.Add(new CodeBlockVersion
+			{
+				Content = string.Empty,
+				Description = "Inexistente (Git)",
+				IsOriginal = true, // O DiffManager vai pegar este aqui como referência
+				Timestamp = System.DateTime.MinValue
+			});
 
-			// D. Atualiza o sistema de versionamento do bloco
-			UpdateBlockVersions(block, newContent);
+			// 2. Versão Atual (Disco) -> CONTEÚDO NOVO
+			block.Versions.Add(new CodeBlockVersion
+			{
+				Content = currentContent,
+				Description = "Novo (Adicionado)",
+				IsOriginal = false,
+				Timestamp = System.DateTime.Now
+			});
+
+			// Aponta para a versão atual e notifica a UI
+			block.RestoreVersion(1);
+
+			// Opcional: Adicionar um indicador visual no nome
+			// block.Name += " (Novo)"; 
 		}
-	}
-
-	private void UpdateBlockVersions(CodeBlockItem block, string newContent)
-	{
-		var originalVer = block.Versions.FirstOrDefault(v => v.IsOriginal);
-
-		if (originalVer != null)
+		private void SetupBlockHistory(CodeBlockItem block, string gitContent, string diskContent)
 		{
-			// Atualiza a versão original para não parecer que houve edição
-			originalVer.Content = newContent;
+			// IMPORTANTE: Limpar as versões iniciais criadas pelo Parser
+			block.Versions.Clear();
+
+			// 1. Versão Original (Git - HEAD)
+			block.Versions.Add(new CodeBlockVersion
+			{
+				Content = gitContent,
+				Description = "HEAD (Git)",
+				IsOriginal = true, // Isso permite que o DiffManager ache essa versão
+				Timestamp = System.DateTime.MinValue
+			});
+
+			// 2. Versão Atual (Disco - Working Copy)
+			block.Versions.Add(new CodeBlockVersion
+			{
+				Content = diskContent,
+				Description = "Working Copy",
+				IsOriginal = false,
+				Timestamp = System.DateTime.Now
+			});
+
+			// Aponta para a versão do disco para edição
+			block.RestoreVersion(1);
+
 		}
-		else
+
+		private bool IsSignificantBlock(CodeBlockItem block)
 		{
-			// Inicializa o histórico se estiver vazio
-			block.InitializeVersions(newContent);
+			// Ignora Trivia, Gaps, Usings e Namespaces soltos na detecção de "Deletados"
+			// para não poluir a visualização com chaves de fechamento perdidas.
+			return block.SegmentType == SegmentType.Method ||
+				   block.SegmentType == SegmentType.Property ||
+				   block.SegmentType == SegmentType.Class ||
+				   block.SegmentType == SegmentType.Constructor ||
+				   block.SegmentType == SegmentType.Enum ||
+				   block.SegmentType == SegmentType.Interface;
+		}
+
+		private void InsertBlockSorted(List<CodeBlockItem> list, CodeBlockItem item)
+		{
+			// Tenta inserir baseado na posição original absoluta para manter a ordem de leitura
+			int index = list.FindIndex(b => b.AbsoluteStartPosition > item.AbsoluteStartPosition);
+			if (index == -1)
+				list.Add(item);
+			else
+				list.Insert(index, item);
 		}
 	}
 }

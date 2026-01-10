@@ -1,5 +1,6 @@
 using ContextWinUI.Core.Contracts;
 using LibGit2Sharp;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,10 +48,65 @@ public class GitService : IGitService
 						var fullPath = Path.Combine(rootPath, item.FilePath);
 						// Adiciona tupla (Caminho, Flag Deletado)
 						modifiedFiles.Add((fullPath.Replace("/", "\\"), isDeleted));
-					}
+	}
 				}
 			}
 			return (IEnumerable<(string, bool)>)modifiedFiles;
+		});
+	}
+	public Task<string?> GetFileContentFromHeadAsync(string rootPath, string filePath)
+	{
+		return Task.Run(() =>
+		{
+			if (!Repository.IsValid(rootPath)) return null;
+
+			try
+			{
+				using (var repo = new Repository(rootPath))
+				{
+					var headCommit = repo.Head.Tip;
+					if (headCommit == null) return null;
+
+					// 1. Gera o caminho relativo padrão do Windows
+					var relativePath = Path.GetRelativePath(rootPath, filePath);
+
+					// 2. Normaliza para o padrão Git (Barras normais /)
+					var gitPath = relativePath.Replace("\\", "/");
+
+					// 3. Tenta obter o Entry diretamente
+					var treeEntry = headCommit[gitPath];
+
+					// 4. FALLBACK: Se falhar (por casing C:\ vs c:\), procura insensível a caixa
+					if (treeEntry == null)
+					{
+						treeEntry = headCommit.Tree.FirstOrDefault(e =>
+							string.Equals(e.Path, gitPath, StringComparison.OrdinalIgnoreCase));
+
+						// Se ainda não achou e o arquivo está em subpastas, o LibGit2Sharp
+						// às vezes precisa navegar na árvore. Mas para arquivos na raiz ou 
+						// caminhos diretos, o indexador costuma funcionar se o Path estiver exato.
+					}
+
+					if (treeEntry == null || treeEntry.TargetType != TreeEntryTargetType.Blob)
+					{
+						System.Diagnostics.Debug.WriteLine($"[GitService] Arquivo não encontrado no HEAD: {gitPath}");
+						return null;
+					}
+
+					var blob = (Blob)treeEntry.Target;
+
+					using (var contentStream = blob.GetContentStream())
+					using (var reader = new StreamReader(contentStream, System.Text.Encoding.UTF8))
+					{
+						return reader.ReadToEnd();
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				System.Diagnostics.Debug.WriteLine($"[GitService] Erro ao ler HEAD: {ex.Message}");
+				return null;
+			}
 		});
 	}
 }

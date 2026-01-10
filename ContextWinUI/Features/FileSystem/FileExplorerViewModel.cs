@@ -178,6 +178,29 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 
+	public async Task RefreshTreeAsync()
+	{
+		if (string.IsNullOrEmpty(CurrentPath) || SessionManager == null) return;
+
+		try
+		{
+			IsLoading = true;
+			OnStatusChanged("Recarregando estrutura de arquivos...");
+
+			// Solicita ao SessionManager que reabra o caminho atual.
+			// Isso disparará o evento ProjectLoaded, que por sua vez chama _dataService.Initialize
+			// e reconstrói a árvore com os novos arquivos encontrados no disco.
+			await SessionManager.OpenProjectAsync(CurrentPath);
+		}
+		catch (Exception ex)
+		{
+			OnStatusChanged($"Erro ao atualizar árvore: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
 	public void Dispose()
 	{
 		SessionManager.ProjectLoaded -= OnProjectLoaded;
