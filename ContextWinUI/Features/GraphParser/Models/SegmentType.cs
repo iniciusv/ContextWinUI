@@ -17,7 +17,8 @@ public enum SegmentType
 	Enum,
 	Constructor,
 	Comment,
-	Interface
+	Interface,
+	Struct
 }
 
 // Enums de apoio (caso não tenha definido em outro lugar)

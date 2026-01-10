@@ -20,6 +20,8 @@ public partial class CodeBlockItem : ObservableObject
 	public SymbolType SymbolType { get; set; }
 	public SegmentType SegmentType { get; set; }
 
+	public int SignatureHash { get; set; }
+
 	// --- Posicionamento e Arquivo ---
 	public int AbsoluteStartPosition { get; set; }
 	public int StartLine { get; set; }
@@ -27,6 +29,7 @@ public partial class CodeBlockItem : ObservableObject
 	public string FileExtension { get; set; } = ".cs";
 	public DateTime Timestamp { get; set; } = DateTime.Now;
 	public int CurrentVersionIndex { get; set; } = -1;
+	public string Signature { get; set; } = string.Empty;
 
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(HasUnsavedChanges))]

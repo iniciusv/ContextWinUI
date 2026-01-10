@@ -15,21 +15,18 @@ public class SymbolNode
 
 	public string Name { get; set; } = string.Empty;
 
-	// OTIMIZAÇÃO #1: Armazena apenas o ID do arquivo. 
-	// A string real fica armazenada uma única vez no DependencyGraph.
 	public int FileId { get; set; }
+	public int SignatureHash { get; set; }
 
 	public SymbolType Type { get; set; }
 	public int StartPosition { get; set; }
 	public int Length { get; set; }
 
-	// HashSet agora guarda structs leves
 	public HashSet<SymbolLink> OutgoingLinks { get; set; } = new();
 
 	public SymbolNode? Parent { get; set; }
 	public List<SymbolNode> Children { get; set; } = new();
 
-	// Construtor auxiliar para facilitar criação
 	public SymbolNode(int id, int fileId)
 	{
 		Id = id;

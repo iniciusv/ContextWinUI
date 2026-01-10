@@ -7,6 +7,7 @@ using ContextWinUI.Features.FileSystem;
 using ContextWinUI.Features.GraphAnalysis;
 using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.IAParser;
+using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Services;
@@ -46,6 +47,7 @@ public partial class App : Application
 		services.AddSingleton<ITagManagementUiService, TagManagementUiService>();
 
 		services.AddSingleton<ICodeBlockParserService, CodeBlockParserService>();
+		services.AddSingleton<IBlockIdentityService, BlockIdentityService>();
 
 		// 2. ESTADO CRÍTICO
 		services.AddSingleton<IFileSelectionService, FileSelectionService>();

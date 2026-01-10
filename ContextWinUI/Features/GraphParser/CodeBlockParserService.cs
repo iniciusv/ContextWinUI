@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Services;
@@ -99,33 +100,76 @@ public class CodeBlockParserService : ICodeBlockParserService
 
 	private CodeBlockItem CreateSegment(SyntaxNode node, string content, int depth, bool isGap, int absoluteStart, string filePath)
 	{
-		// Identifica o tipo baseada no nó ou se é um GAP
 		var segmentType = IdentifySegmentType(node, isGap, content);
-
 		string name = GetBlockName(node, isGap, content);
+
+		// --- NOVA LÓGICA DE ASSINATURA ---
+		string signature = GenerateLightweightSignature(node, name, segmentType);
+		// ---------------------------------
 
 		var item = new CodeBlockItem
 		{
 			Name = name,
-			// Importante: Inicializa versões para o Diff funcionar
-			// O InitializeVersions já é chamado dentro da criação do objeto ou manualmente aqui
 			DepthLevel = depth,
 			SegmentType = segmentType,
 			SymbolType = MapToSymbolType(segmentType, node),
-
 			TypeDescription = segmentType.ToString(),
-
 			FileExtension = Path.GetExtension(filePath) ?? ".cs",
-			AbsoluteStartPosition = absoluteStart
+			AbsoluteStartPosition = absoluteStart,
+			Signature = signature // <--- Preenchendo a assinatura aqui
 		};
 
-		// Define o conteúdo inicial e cria a versão original
 		item.InitializeVersions(content);
-
-		// Corrige o Content atual (InitializeVersions define apenas o histórico)
 		item.Content = content;
-
 		return item;
+	}
+
+	private string GenerateLightweightSignature(SyntaxNode node, string name, SegmentType type)
+	{
+		// Se for GAP ou Trivia, não tem assinatura relevante
+		if (type == SegmentType.Gap || type == SegmentType.Trivia || type == SegmentType.Using)
+			return string.Empty;
+
+		// Otimização: StringBuilder para evitar muitas alocações de string
+		var sb = new StringBuilder();
+		sb.Append(name);
+
+		if (node is BaseMethodDeclarationSyntax methodBase) // Cobre: Method e Constructor
+		{
+			sb.Append('(');
+			var parameters = methodBase.ParameterList.Parameters;
+
+			for (int i = 0; i < parameters.Count; i++)
+			{
+				var param = parameters[i];
+				// Pega o texto do tipo (ex: "int", "List<string>", "MyClass")
+				// ToString() no nó de tipo é muito rápido pois é puramente sintático.
+				sb.Append(param.Type?.ToString() ?? "dynamic");
+
+				if (i < parameters.Count - 1)
+					sb.Append(", ");
+			}
+			sb.Append(')');
+		}
+		else if (node is PropertyDeclarationSyntax prop)
+		{
+			// Para propriedades, adicionamos o tipo para diferenciar (ex: "Id : int")
+			sb.Append(" : ");
+			sb.Append(prop.Type.ToString());
+		}
+		else if (node is IndexerDeclarationSyntax indexer)
+		{
+			sb.Append('[');
+			var parameters = indexer.ParameterList.Parameters;
+			for (int i = 0; i < parameters.Count; i++)
+			{
+				sb.Append(parameters[i].Type?.ToString());
+				if (i < parameters.Count - 1) sb.Append(", ");
+			}
+			sb.Append(']');
+		}
+
+		return sb.ToString();
 	}
 
 	private string GetBlockName(SyntaxNode node, bool isGap, string content)
@@ -232,5 +276,19 @@ public class CodeBlockParserService : ICodeBlockParserService
 			SegmentType.Using => SymbolType.Keyword,
 			_ => SymbolType.Statement
 		};
+	}
+
+	private string GenerateSignature(SyntaxNode node)
+	{
+		if (node is MethodDeclarationSyntax method)
+		{
+			// Exemplo: "MeuMetodo(int, string)"
+			var paramsList = method.ParameterList.Parameters
+				.Select(p => p.Type?.ToString() ?? "var") // Pega o tipo de cada parâmetro
+				.Aggregate((current, next) => $"{current}, {next}");
+
+			return $"{method.Identifier.Text}({paramsList})";
+		}
+		return "";
 	}
 }

@@ -1,37 +1,38 @@
-// ARQUIVO: AiCodeMerger.cs
-namespace ContextWinUI.Features.GraphParser.IAParser;
-
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
-using ContextWinUI.Features.GraphParser; // Para ICodeBlockParserService
+using ContextWinUI.Core.Models; // Para SymbolType
+using ContextWinUI.Features.CodeAnalyses; // Para DependencyGraph (se necessário)
+using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Models;
+using ContextWinUI.Features.GraphParser.Services; // Namespace do novo serviço
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+
+namespace ContextWinUI.Features.GraphParser.IAParser;
 
 public class AiCodeMerger : IAiCodeMerger
 {
 	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly ICodeBlockParserService _parserService;
+	private readonly IBlockIdentityService _identityService; // <--- A Chave da Solução
 
 	public AiCodeMerger(
 		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
-		ICodeBlockParserService parserService)
+		ICodeBlockParserService parserService,
+		IBlockIdentityService identityService) // <--- Injeção via Construtor
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
+		_identityService = identityService;
 	}
-
-	// ARQUIVO: AiCodeMerger.cs
 
 	public async Task<AiMergeResult> MergeAiSnippetAsync(string snippetCode)
 	{
@@ -45,11 +46,9 @@ public class AiCodeMerger : IAiCodeMerger
 
 		try
 		{
-			// 1. Identifica o arquivo de destino
+			// 1. Identifica a qual arquivo este snippet pertence
 			var targetFilePath = await IdentifyTargetFileAsync(snippetCode);
 
-			// Se não achou por identificação automática, tenta usar o que está aberto na UI (se sua arquitetura permitisse passar esse contexto)
-			// Por enquanto, mantemos a lógica original de erro se não achar
 			if (string.IsNullOrEmpty(targetFilePath) || !File.Exists(targetFilePath))
 			{
 				result.Message = "Não foi possível identificar o arquivo de origem correspondente no projeto.";
@@ -65,14 +64,13 @@ public class AiCodeMerger : IAiCodeMerger
 				return result;
 			}
 
-			// 2. Parse do arquivo original (Esse funciona bem pois é um arquivo válido)
+			// 2. Parse do Arquivo Original (do Disco)
 			var originalBlocks = await _parserService.ParseFileAsync(targetFilePath, originalContent);
 
-			// 3. Parse do Snippet (AQUI ESTÁ A CORREÇÃO)
-			// Usamos um método especial que embrulha o código se necessário
+			// 3. Parse do Snippet da IA (com fallback para embrulhar métodos soltos)
 			var snippetBlocks = await ParseSnippetWithFallbackAsync(targetFilePath, snippetCode);
 
-			// 4. Executa o Merge
+			// 4. Executa o Merge usando o IdentityService
 			PerformMerge(originalBlocks, snippetBlocks, result);
 
 			result.MergedBlocks = originalBlocks;
@@ -88,14 +86,12 @@ public class AiCodeMerger : IAiCodeMerger
 		return result;
 	}
 
-	// NOVO MÉTODO AUXILIAR
 	private async Task<List<CodeBlockItem>> ParseSnippetWithFallbackAsync(string filePath, string snippetCode)
 	{
-		// Tentativa 1: Parse direto (funciona se for uma classe completa)
+		// Tentativa 1: Parse direto (ideal se a IA mandou a classe completa)
 		var blocks = await _parserService.ParseFileAsync(filePath, snippetCode);
 
-		// Verifica se achou algo útil (Métodos, Propriedades, etc)
-		// Se só achou Trivia/Using, provavelmente o parse falhou em reconhecer a estrutura
+		// Verifica se o resultado tem "sustância" (Métodos, Propriedades ou Classe)
 		bool hasMeaningfulBlocks = blocks.Any(b => b.IsGranular || b.SegmentType == SegmentType.Class);
 
 		if (hasMeaningfulBlocks)
@@ -103,17 +99,14 @@ public class AiCodeMerger : IAiCodeMerger
 			return blocks;
 		}
 
-		// Tentativa 2: Embrulhar em uma classe fictícia para forçar o Roslyn a reconhecer métodos
+		// Tentativa 2: A IA mandou apenas um método solto "public void Foo()..."
+		// O Roslyn pode se perder com modificadores de acesso na raiz. Embrulhamos numa classe temporária.
 		var wrapperCode = $"public class AiSnippetWrapper_Temp {{ \n{snippetCode}\n }}";
 		var wrappedBlocks = await _parserService.ParseFileAsync(filePath, wrapperCode);
 
-		// Agora precisamos extrair o que está DENTRO do Wrapper e descartar o Wrapper em si
+		// Extraímos o conteúdo de dentro do Wrapper
 		var extractedBlocks = wrappedBlocks
-			.Where(b => b.Name != "AiSnippetWrapper_Temp" && b.Name != "Corpo de AiSnippetWrapper_Temp") // Filtra a classe wrapper
-			.Select(b => {
-				// Ajuste opcional de profundidade se necessário, mas para o merge o que importa é Nome e Tipo
-				return b;
-			})
+			.Where(b => b.Name != "AiSnippetWrapper_Temp" && b.Name != "Corpo de AiSnippetWrapper_Temp")
 			.ToList();
 
 		return extractedBlocks;
@@ -121,16 +114,16 @@ public class AiCodeMerger : IAiCodeMerger
 
 	private async Task<string?> IdentifyTargetFileAsync(string snippet)
 	{
-		// 1. Tentativa Direta (caso o usuário tenha colado uma classe inteira)
+		// Cenário A: O Snippet é uma Classe completa
 		var tree = CSharpSyntaxTree.ParseText(snippet);
 		var root = await tree.GetRootAsync();
 
-		// Verifica se é uma classe
 		var classNode = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
 		if (classNode != null)
 		{
 			var className = classNode.Identifier.Text;
 			var graph = _indexService.GetCurrentGraph();
+			// Busca no grafo global por essa classe
 			var symbolNode = graph.Nodes.Values
 				.FirstOrDefault(n => n.Name == className &&
 								   (n.Type == SymbolType.Class || n.Type == SymbolType.Interface));
@@ -141,32 +134,30 @@ public class AiCodeMerger : IAiCodeMerger
 			}
 		}
 
-		// 2. TÉCNICA DO WRAPPER: Se não achou classe, pode ser um método solto.
-		// O Roslyn tem dificuldade de identificar 'MethodDeclarationSyntax' solto na raiz 
-		// se tiver modificadores (private/public). Vamos embrulhar numa classe falsa.
-
+		// Cenário B: O Snippet são métodos soltos (Smart Paste comum)
 		var textToParse = snippet;
 		if (classNode == null)
 		{
-			// Embrulha o código para garantir que o parse identifique os métodos corretamente
+			// Embrulha para garantir que o Roslyn veja os métodos
 			textToParse = $"class DummyWrapper {{ {snippet} }}";
 			tree = CSharpSyntaxTree.ParseText(textToParse);
 			root = await tree.GetRootAsync();
 		}
 
-		// Agora buscamos os métodos (seja no root original ou dentro do Wrapper)
 		var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
 		var fileVotes = new Dictionary<int, int>();
 		var graphInstance = _indexService.GetCurrentGraph();
 
+		// Faz uma "votação": para cada método no snippet, quem é o dono dele no projeto?
 		foreach (var method in methods)
 		{
 			var methodName = method.Identifier.Text;
 
-			// Busca quem tem esse método no projeto
 			var candidates = graphInstance.Nodes.Values
 				.Where(n => n.Name == methodName && n.Type == SymbolType.Method);
 
+			// Aprimoramento: Aqui poderíamos usar assinatura também se o grafo suportasse,
+			// mas por nome já é suficiente para identificar o ARQUIVO na maioria dos casos.
 			foreach (var candidate in candidates)
 			{
 				if (!fileVotes.ContainsKey(candidate.FileId))
@@ -177,13 +168,11 @@ public class AiCodeMerger : IAiCodeMerger
 
 		if (fileVotes.Any())
 		{
+			// O arquivo com mais "hits" ganha
 			var winnerId = fileVotes.MaxBy(kv => kv.Value).Key;
 			return graphInstance.GetFilePath(winnerId);
 		}
 
-		// Fallback: Se o método for NOVO (não existe no grafo), a votação retornará 0.
-		// Nesse caso, o ideal seria o ViewModel passar o arquivo atualmente aberto 
-		// como sugestão padrão, mas aqui no serviço retornamos null.
 		return null;
 	}
 
@@ -194,19 +183,16 @@ public class AiCodeMerger : IAiCodeMerger
 
 		foreach (var snippetBlock in snippetBlocks)
 		{
-			// Ignoramos usings, namespace e estrutura de classe wrapper na iteração de merge
-			// Focamos em membros granulares (Métodos, Propriedades, Campos)
 			if (!snippetBlock.IsGranular) continue;
 
-			// Tenta encontrar correspondência exata na lista original
-			var originalBlock = originalBlocks.FirstOrDefault(b =>
-				b.Name == snippetBlock.Name &&
-				b.SegmentType == snippetBlock.SegmentType);
+			// --- USO CENTRALIZADO DA LÓGICA DE IDENTIDADE ---
+			// Aqui usamos o serviço que sabe ignorar namespaces e checar assinaturas corretamente
+			var originalBlock = originalBlocks.FirstOrDefault(b => _identityService.AreSameEntity(b, snippetBlock));
+			// ------------------------------------------------
 
 			if (originalBlock != null)
 			{
-				// CASO 1: Bloco Existente -> Cria Nova Versão
-				// Só cria versão se o conteúdo for diferente (normalizando espaços básicos)
+				// Normaliza (Trim) para evitar falsos positivos de mudanças apenas de espaço
 				if (originalBlock.Content.Trim() != snippetBlock.Content.Trim())
 				{
 					originalBlock.CreateNewVersion(snippetBlock.Content, versionDescription, timestamp);
@@ -215,7 +201,7 @@ public class AiCodeMerger : IAiCodeMerger
 			}
 			else
 			{
-				// CASO 2: Bloco Novo -> Inserir na Lista
+				// Se o IdentityService disse que não existe, é realmente novo (ou sobrecarga nova)
 				InsertNewBlockIdeally(originalBlocks, snippetBlock, result);
 				result.AddedCount++;
 			}
@@ -224,28 +210,20 @@ public class AiCodeMerger : IAiCodeMerger
 
 	private void InsertNewBlockIdeally(List<CodeBlockItem> originalBlocks, CodeBlockItem newBlock, AiMergeResult result)
 	{
-		// Prepara o bloco novo para ser um "cidadão de primeira classe" na lista
 		newBlock.Id = Guid.NewGuid().ToString();
-		// A versão inicial dele é vazia, a versão atual é o conteúdo da IA
 		newBlock.InitializeVersions(string.Empty);
 		newBlock.CreateNewVersion(newBlock.Content, "Novo Item (IA)", DateTime.Now);
 		newBlock.TypeDescription += " (Novo)";
 
-		// Lógica de inserção:
-		// Precisamos achar o fim da classe para não inserir depois do "}" final ou fora do namespace.
-		// Procuramos o último bloco que contém "}" e que seja do tipo Trivia ou CloseBrace.
-
+		// Tenta encontrar o melhor lugar para inserir (antes do fechamento da classe)
 		var closingBlockIndex = -1;
 
-		// Procura de trás para frente o fechamento da classe
 		for (int i = originalBlocks.Count - 1; i >= 0; i--)
 		{
 			var block = originalBlocks[i];
+			// Procura pelo fechamento "}"
 			if (block.Content.Contains("}"))
 			{
-				// Assumimos que o último } do arquivo é namespace, o penúltimo é classe
-				// Mas no parser linear, isso pode variar. 
-				// Vamos tentar inserir logo antes do último bloco de fechamento que encontrarmos
 				closingBlockIndex = i;
 				break;
 			}
@@ -253,7 +231,7 @@ public class AiCodeMerger : IAiCodeMerger
 
 		if (closingBlockIndex >= 0)
 		{
-			// Ajusta identação do novo bloco baseado no bloco anterior ou profundidade esperada
+			// Herda identação do bloco anterior ao fechamento para ficar bonito
 			if (closingBlockIndex > 0)
 			{
 				newBlock.DepthLevel = originalBlocks[closingBlockIndex - 1].DepthLevel;
@@ -261,10 +239,10 @@ public class AiCodeMerger : IAiCodeMerger
 
 			originalBlocks.Insert(closingBlockIndex, newBlock);
 
-			// Adiciona uma quebra de linha (Gap) antes, se necessário, para não ficar colado
+			// Adiciona um espaçamento (Gap) visual
 			var gapBlock = new CodeBlockItem
 			{
-				Content = "\n\t", // Identação básica
+				Content = "\n\t",
 				SegmentType = SegmentType.Gap,
 				DepthLevel = newBlock.DepthLevel,
 				Name = "Gap (Auto)"
@@ -274,7 +252,6 @@ public class AiCodeMerger : IAiCodeMerger
 		}
 		else
 		{
-			// Fallback: Se não achou estrutura clara, joga no final
 			originalBlocks.Add(newBlock);
 		}
 	}
