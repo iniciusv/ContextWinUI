@@ -2,11 +2,6 @@ using System;
 
 namespace ContextWinUI.Core.Algorithms;
 
-public interface ITextSimilarityEngine
-{
-	double CalculateSimilarity(string source, string target);
-}
-
 public class LevenshteinEngine : ITextSimilarityEngine
 {
 	public double CalculateSimilarity(string source, string target)
