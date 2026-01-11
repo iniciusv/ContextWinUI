@@ -1,21 +1,10 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Generic;
-
-
-namespace ContextWinUI.Features.CodeAnalyses;
-
 using ContextWinUI.Core.Models;
 using System.IO;
-
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using ContextWinUI.Core.Models; // Onde estão SymbolNode e SymbolLink
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+namespace ContextWinUI.Features.CodeAnalyses;
 
 public class GraphBuilderWalker : CSharpSyntaxWalker
 {

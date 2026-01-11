@@ -56,7 +56,7 @@
 
 //	// Métodos e Classes também são capturados para manter a hierarquia visual
 //	public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
-//	{
+//	HighlightEditorAsync
 //		CreateNode(node.Identifier.Text, SymbolType.Method, node.Span);
 //		base.VisitMethodDeclaration(node);
 //	}

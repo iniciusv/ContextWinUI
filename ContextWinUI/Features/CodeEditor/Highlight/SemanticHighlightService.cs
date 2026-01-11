@@ -1,12 +1,9 @@
 using ColorCode.Styling;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeAnalyses;
-using System;
+using Microsoft.UI;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.CodeEditor.Highlight;
 
@@ -14,6 +11,13 @@ public class SemanticHighlightService
 {
 	private readonly SemanticIndexService _indexService;
 	private readonly ThemeService _themeService;
+
+	// Lista de palavras que parecem métodos (têm parenteses depois) mas não devem ser pintadas
+	private static readonly HashSet<string> _controlKeywords = new()
+	{
+		"if", "while", "for", "foreach", "switch", "catch", "using", "lock",
+		"fixed", "checked", "unchecked", "sizeof", "typeof", "default", "nameof"
+	};
 
 	public SemanticHighlightService(SemanticIndexService indexService, ThemeService themeService)
 	{
@@ -25,22 +29,24 @@ public class SemanticHighlightService
 	{
 		var highlights = new List<HighlightSpan>();
 
-		// Regex para identificar palavras
-		var matches = Regex.Matches(text, @"\b[a-zA-Z_][a-zA-Z0-9_]*\b");
+		// ---------------------------------------------------------
+		// 1. ANÁLISE SEMÂNTICA (O que já existia: consulta o Grafo)
+		// ---------------------------------------------------------
+		// Nota: Otimizei o Regex para pegar identificadores C# válidos
+		var wordMatches = Regex.Matches(text, @"\b[a-zA-Z_][a-zA-Z0-9_]*\b");
 
-		foreach (Match match in matches)
+		// HashSet para controlar posições já pintadas pela semântica, evitando sobreposição
+		var handledPositions = new HashSet<int>();
+
+		foreach (Match match in wordMatches)
 		{
 			string word = match.Value;
-
-			// 1. Pergunta ao IndexService "O que é isso?"
 			var type = _indexService.GetSymbolType(word);
 
 			if (type.HasValue)
 			{
-				// 2. Pergunta ao ThemeService "Qual a cor disso?"
 				var color = _themeService.GetColorForSymbol(type.Value, themeStyles);
-
-				if (color != Microsoft.UI.Colors.Transparent)
+				if (color != Colors.Transparent)
 				{
 					highlights.Add(new HighlightSpan
 					{
@@ -49,8 +55,43 @@ public class SemanticHighlightService
 						Color = color,
 						Type = MapSymbolToSpanType(type.Value)
 					});
+
+					// Marca estes índices como tratados
+					for (int i = match.Index; i < match.Index + match.Length; i++)
+						handledPositions.Add(i);
 				}
 			}
+		}
+
+
+		var methodMatches = Regex.Matches(text, @"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(");
+
+		var methodColor = _themeService.GetColorForSymbol(SymbolType.Method, themeStyles);
+
+		foreach (Match match in methodMatches)
+		{
+			// O Grupo 1 é o nome do método (sem o parêntese)
+			var nameGroup = match.Groups[1];
+
+			// Se já foi pintado pelo índice semântico (ex: é uma Classe ou Interface conhecida), ignoramos
+			if (handledPositions.Contains(nameGroup.Index)) continue;
+
+			string word = nameGroup.Value;
+
+			// Se for "if", "while", etc, ignoramos
+			if (_controlKeywords.Contains(word)) continue;
+
+			// Se for "new Algo(", provavelmente é um construtor. 
+			// Se o índice semântico falhou em dizer que é uma classe, 
+			// pintar de amarelo (Método) é um fallback aceitável visualmente.
+
+			highlights.Add(new HighlightSpan
+			{
+				Start = baseOffset + nameGroup.Index,
+				Length = nameGroup.Length,
+				Color = methodColor,
+				Type = SpanType.Method
+			});
 		}
 
 		return highlights;
@@ -63,6 +104,8 @@ public class SemanticHighlightService
 			SymbolType.Class => SpanType.Class,
 			SymbolType.Interface => SpanType.Interface,
 			SymbolType.Method => SpanType.Method,
+			SymbolType.Struct => SpanType.Class, // Structs geralmente usam cor de classe
+			SymbolType.Enum => SpanType.Class,   // Enums geralmente usam cor de classe/enum
 			_ => SpanType.PlainText
 		};
 	}

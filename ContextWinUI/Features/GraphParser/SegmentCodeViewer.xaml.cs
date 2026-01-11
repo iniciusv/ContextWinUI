@@ -1,4 +1,5 @@
 // ARQUIVO: SegmentCodeViewer.xaml.cs
+using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Shared;
 using ContextWinUI.Features.CodeAnalyses;
 using ContextWinUI.Features.CodeEditor.Highlight;
@@ -39,9 +40,7 @@ public sealed partial class SegmentCodeViewer : UserControl
 	public event EventHandler<int>? CaretPositionChanged;
 	public event EventHandler? ContentModified;
 
-	public static readonly DependencyProperty TextProperty =
-		DependencyProperty.Register(nameof(Text), typeof(string), typeof(SegmentCodeViewer),
-			new PropertyMetadata(string.Empty, OnTextChanged));
+	public static readonly DependencyProperty TextProperty = DependencyProperty.Register(nameof(Text), typeof(string), typeof(SegmentCodeViewer),new PropertyMetadata(string.Empty, OnTextChanged));
 
 	public static readonly DependencyProperty FileExtensionProperty =
 		DependencyProperty.Register(nameof(FileExtension), typeof(string), typeof(SegmentCodeViewer),
@@ -57,6 +56,27 @@ public sealed partial class SegmentCodeViewer : UserControl
 	{
 		get => (string)GetValue(FileExtensionProperty);
 		set => SetValue(FileExtensionProperty, value);
+	}
+
+	private SemanticHighlightService? GetSemanticService()
+	{
+		// 1. Se já existe, retorna rápido
+		if (_semanticService != null) return _semanticService;
+
+		// 2. Se não existe, tenta criar acessando o App.Current
+		if (Application.Current is ContextWinUI.App app)
+		{
+			// Pega a interface do container
+			var indexInterface = app.Services.GetService(typeof(ISemanticIndexService));
+
+			// Faz o cast seguro para a classe concreta que o SemanticHighlightService espera
+			if (indexInterface is SemanticIndexService indexConcrete)
+			{
+				_semanticService = new SemanticHighlightService(indexConcrete, ThemeService.Instance);
+			}
+		}
+
+		return _semanticService;
 	}
 
 	private static void OnIsReadOnlyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -87,23 +107,8 @@ public sealed partial class SegmentCodeViewer : UserControl
 
 	private void OnLoaded(object sender, RoutedEventArgs e)
 	{
-		InitializeSemanticService();
 		ApplyBaseTheme();
 		TriggerHighlightUpdate();
-	}
-
-	private void InitializeSemanticService()
-	{
-		if (_semanticService != null) return;
-
-		if (ContextWinUI.App.Current is ContextWinUI.App app)
-		{
-			var indexService = app.Services.GetService(typeof(SemanticIndexService)) as SemanticIndexService;
-			if (indexService != null)
-			{
-				_semanticService = new SemanticHighlightService(indexService, ThemeService.Instance);
-			}
-		}
 	}
 
 	private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -145,22 +150,25 @@ public sealed partial class SegmentCodeViewer : UserControl
 		_editCts = new CancellationTokenSource();
 		var token = _editCts.Token;
 
+		// Pega o texto atual
 		CodeEditor.Document.GetText(TextGetOptions.None, out string rawText);
 		rawText = CleanRichText(rawText);
 		string ext = FileExtension?.ToLower() ?? ".txt";
 		bool isDark = ThemeHelper.IsDarkTheme();
 		var themeStyles = ThemeHelper.GetCurrentThemeStyle();
 
+		var semanticServiceInstance = GetSemanticService();
+		// --------------------
+
 		_ = Task.Delay(250, token).ContinueWith(async _ =>
 		{
 			if (token.IsCancellationRequested) return;
 
-			// Chamando através da interface
 			await _orchestrator.HighlightEditorAsync(
 				CodeEditor,
 				rawText,
 				ext,
-				_semanticService,
+				semanticServiceInstance, // Passamos a instância resolvida
 				isDark,
 				themeStyles,
 				token);

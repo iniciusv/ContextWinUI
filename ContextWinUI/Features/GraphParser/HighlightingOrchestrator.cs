@@ -34,21 +34,12 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 	/// </summary>
 	// HighlightingOrchestrator.cs
 
-	public async Task HighlightEditorAsync(
-		RichEditBox editor,
-		string text,
-		string extension,
-		SemanticHighlightService? semanticService,
-		bool isDark,                 // Recebe pronto
-		StyleDictionary themeStyles, // Recebe pronto
-		CancellationToken token)
+	public async Task HighlightEditorAsync(RichEditBox editor,string text,string extension,SemanticHighlightService? semanticService,bool isDark,StyleDictionary themeStyles,CancellationToken token)
 	{
 		if (editor == null || string.IsNullOrEmpty(text)) return;
 
 		try
 		{
-			// Agora o processamento pesado continua sendo em background,
-			// mas sem tocar em propriedades de UI proibidas.
 			List<HighlightSpan> spans = await Task.Run(async () =>
 			{
 				return await CalculateSpansInternal(text, extension, isDark, semanticService, themeStyles);
@@ -68,12 +59,7 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 		}
 	}
 
-	private async Task<List<HighlightSpan>> CalculateSpansInternal(
-		string text,
-		string extension,
-		bool isDark,
-		SemanticHighlightService? semanticService,
-		StyleDictionary themeStyles)
+	private async Task<List<HighlightSpan>> CalculateSpansInternal(string text,string extension,bool isDark,SemanticHighlightService? semanticService,StyleDictionary themeStyles)
 	{
 		List<HighlightSpan> finalSpans;
 

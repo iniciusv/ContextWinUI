@@ -68,9 +68,9 @@ public partial class MainViewModel : ObservableObject
 				FileContentViewModel fileContent,
 				GraphParserViewModel graphParser,
 				IAiCodeMerger aiMergerService,
-			IProjectSessionManager sessionManager,
+				IProjectSessionManager sessionManager,
 				ISemanticIndexService semanticIndexService,
-			IFileSelectionService fileSelectionService,
+				IFileSelectionService fileSelectionService,
 				SemanticGraphViewModel semanticGraph,
 				IBlockEditorService blockEditorService,
 				IGitService gitService)

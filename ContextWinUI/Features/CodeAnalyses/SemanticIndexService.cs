@@ -2,6 +2,7 @@ using ColorCode.Styling;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.CodeEditor;
+using ContextWinUI.Features.CodeEditor.Highlight;
 using ContextWinUI.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
