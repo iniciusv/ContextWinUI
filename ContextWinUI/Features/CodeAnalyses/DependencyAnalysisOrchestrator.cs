@@ -21,6 +21,7 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IFileSystemService _fileSystemService;
 
+
 	public DependencyAnalysisOrchestrator(
 		ISemanticIndexService indexService,
 		DependencyTrackerService trackerService,
@@ -36,6 +37,9 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	/// <summary>
 	/// Constrói o texto final para o LLM usando Slicing baseado em Grafo.
 	/// </summary>
+	// ARQUIVO: DependencyAnalysisOrchestrator.cs
+
+
 	public async Task<string> BuildContextStringAsync(IEnumerable<FileSystemItem> selectedItems, IProjectSessionManager sessionSettings)
 	{
 		var graph = _indexService.GetCurrentGraph();
@@ -49,21 +53,39 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 
 		var itemsByFile = selectedItems
 			.GroupBy(i => GetPhysicalPath(i.FullPath))
-			.Where(g => !string.IsNullOrEmpty(g.Key) && File.Exists(g.Key));
+			.Where(g => !string.IsNullOrEmpty(g.Key));
 
 		foreach (var group in itemsByFile)
 		{
 			string filePath = group.Key;
-			// IO: Lê o arquivo físico uma única vez
-			string fileContent = await _fileSystemService.ReadFileContentAsync(filePath);
+			string fileContent = string.Empty;
 
-			sb.AppendLine($"// ARQUIVO: {Path.GetFileName(filePath)}");
+			// --- CORREÇÃO AQUI ---
+			// Não usamos _cachedCompilation diretamente. Pedimos ao serviço.
+			var memoryContent = await _indexService.GetSourceContentAsync(filePath);
+
+			if (memoryContent != null)
+			{
+				fileContent = memoryContent;
+			}
+			else
+			{
+				// Fallback para disco se não achar na memória
+				if (File.Exists(filePath))
+				{
+					fileContent = await _fileSystemService.ReadFileContentAsync(filePath);
+				}
+				else
+				{
+					continue;
+				}
+			}
+			// ---------------------
 
 			bool isFullFileSelected = group.Any(i => i.Type == FileSystemItemType.File && i.IsChecked);
 
 			if (isFullFileSelected)
 			{
-				// Estratégia A: Arquivo Completo
 				string processedContent = CodeCleanupHelper.ProcessCode(
 					fileContent,
 					Path.GetExtension(filePath),
@@ -76,8 +98,6 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 			}
 			else
 			{
-				// Estratégia B: Extração Parcial (Slicing)
-				// CORREÇÃO: Recuperar IDs inteiros da MethodSignature
 				var explicitNodeIds = new HashSet<int>();
 				foreach (var i in group)
 				{
@@ -89,9 +109,8 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 
 				if (explicitNodeIds.Count == 0) continue;
 
-				sb.AppendLine("// (Conteúdo Parcial - Apenas métodos relevantes)");
+				sb.AppendLine($"// ARQUIVO: {Path.GetFileName(filePath)} (Trechos selecionados)");
 
-				// Busca nós no grafo e ordena por posição
 				var nodesToExport = explicitNodeIds
 					.Select(id => graph.Nodes.TryGetValue(id, out var n) ? n : null)
 					.Where(n => n != null)
@@ -102,7 +121,6 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				{
 					if (node == null) continue;
 
-					// Verifica limites para evitar crash de substring
 					if (node.StartPosition >= 0 && node.StartPosition + node.Length <= fileContent.Length)
 					{
 						string extract = fileContent.Substring(node.StartPosition, node.Length);

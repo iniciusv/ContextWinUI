@@ -77,6 +77,24 @@ public class SemanticIndexService : ISemanticIndexService
 
 	public DependencyGraph GetCurrentGraph() => _cachedGraph;
 
+	public async Task<string?> GetSourceContentAsync(string filePath)
+	{
+		if (_cachedCompilation == null) return null;
+
+		// Busca a árvore de sintaxe correspondente ao caminho do arquivo
+		var tree = _cachedCompilation.SyntaxTrees.FirstOrDefault(t =>
+			string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+		if (tree != null)
+		{
+			// Retorna o texto que está na memória da compilação
+			var sourceText = await tree.GetTextAsync();
+			return sourceText.ToString();
+		}
+
+		return null;
+	}
+
 	public SymbolNode? InferSymbolFromGraph(string word, string filePath, int absolutePosition)
 	{
 		if (_cachedGraph == null || string.IsNullOrWhiteSpace(word))

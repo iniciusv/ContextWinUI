@@ -20,4 +20,5 @@ public interface ISemanticIndexService
 	Task UpdateSourceFileAsync(string filePath, string newContent);
 
 	Task ReloadFilesAsync(IEnumerable<string> filePaths);
+	Task<string?> GetSourceContentAsync(string filePath);
 }
