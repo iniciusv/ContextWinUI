@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
@@ -381,5 +382,32 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 			}
 		});
+	}
+	public async Task SaveToDiskAsync()
+	{
+		try
+		{
+			IsLoading = true;
+
+			var sb = new StringBuilder();
+			foreach (var row in Rows)
+			{
+				// Apenas pega o conteúdo do bloco atual
+				sb.Append(row.Current.Content);
+			}
+
+			// Usa o serviço injetado, não "ViewModel._fileSystemService"
+			await _fileSystemService.SaveFileContentAsync(FilePath, sb.ToString());
+
+			TriggerGlobalSave();
+		}
+		catch (Exception ex)
+		{
+			System.Diagnostics.Debug.WriteLine($"Erro ao salvar em disco: {ex.Message}");
+		}
+		finally
+		{
+			IsLoading = false;
+		}
 	}
 }

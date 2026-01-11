@@ -22,7 +22,19 @@
 			<ColumnDefinition Width="Auto"/>
 		</Grid.ColumnDefinitions>
 
-		<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+		<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+
+			<Button Click="OnSaveToFileClick"
+                    IsEnabled="{x:Bind CanSave, Mode=OneWay}"
+                    ToolTipService.ToolTip="Salvar Arquivo no Disco (Ctrl+S)"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="6">
+				<FontIcon Glyph="&#xE74E;" Foreground="#D13438" FontSize="14"/>
+			</Button>
+
+			<AppBarSeparator/>
+
 			<Button Style="{StaticResource DateTimePickerFlyoutButtonStyle}" 
                     Click="OnRestoreOriginalClick"
                     ToolTipService.ToolTip="Restore All to Original">
@@ -59,7 +71,6 @@
 			<StackPanel Orientation="Horizontal" Spacing="8" 
                         Visibility="{x:Bind IsComparisonMode, Mode=OneWay, Converter={StaticResource VisibleIfTrue}}"
                         VerticalAlignment="Center">
-
 				<TextBlock Text="Ref:" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
 				<ComboBox ItemsSource="{x:Bind GlobalVersions, Mode=OneWay}"
                           SelectedIndex="{x:Bind LeftIndex, Mode=TwoWay}"
@@ -97,17 +108,19 @@
 
 			<SplitButton IsEnabled="{x:Bind CanSave, Mode=OneWay}"
                          Click="OnSplitButtonCommit"
-                         ToolTipService.ToolTip="Save Changes">
+                         ToolTipService.ToolTip="Save Version to Memory">
 				<StackPanel Orientation="Horizontal" Spacing="6">
 					<FontIcon Glyph="&#xE74E;"/>
-					<TextBlock Text="Save"/>
+					<TextBlock Text="Ver."/>
 				</StackPanel>
 				<SplitButton.Flyout>
 					<MenuFlyout>
 						<MenuFlyoutItem Text="Create New Global Version" 
                                         Icon="Add"
                                         Click="OnMenuItemCommit"/>
+
 						<MenuFlyoutSeparator/>
+
 						<MenuFlyoutItem Text="Overwrite Current Version" 
                                         Icon="Save"
                                         Click="OnOverwriteClick">

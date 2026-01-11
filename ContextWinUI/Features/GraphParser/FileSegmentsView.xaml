@@ -202,8 +202,8 @@
                                   RightIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=OneWay}"
                                   SaveNewVersionRequested="OnFooterSaveNewVersion"
                                   SaveOverwriteRequested="OnFooterSaveOverwrite"
-                                  RestoreOriginalRequested="OnFooterRestoreOriginal"/>
-
+                                  RestoreOriginalRequested="OnFooterRestoreOriginal"
+                                  SaveToFileRequested="OnFooterSaveToFile"/>
 		<Grid Grid.RowSpan="3" 
               Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Opacity="0.8"
               Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">

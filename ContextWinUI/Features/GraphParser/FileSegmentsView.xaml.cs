@@ -119,6 +119,15 @@ namespace ContextWinUI.Features.GraphParser
 			ViewModel?.RestoreToGlobalIndex(0);
 		}
 
+		private async void OnFooterSaveToFile(object sender, EventArgs e)
+		{
+			if (ViewModel != null)
+			{
+				await ViewModel.SaveToDiskAsync();
+			}
+		}
+
 		#endregion
+
 	}
 }

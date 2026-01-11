@@ -1,3 +1,4 @@
+using ContextWinUI.Core.Algorithms;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models; // Para SymbolType
 using ContextWinUI.Features.CodeAnalyses; // Para DependencyGraph (se necessário)
@@ -20,70 +21,154 @@ public class AiCodeMerger : IAiCodeMerger
 	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly ICodeBlockParserService _parserService;
-	private readonly IBlockIdentityService _identityService; // <--- A Chave da Solução
+	private readonly IBlockIdentityService _identityService;
+	private readonly ITextSimilarityEngine _similarityEngine;
 
 	public AiCodeMerger(
-		ISemanticIndexService indexService,
-		IFileSystemService fileSystemService,
-		ICodeBlockParserService parserService,
-		IBlockIdentityService identityService) // <--- Injeção via Construtor
+			ISemanticIndexService indexService,
+			IFileSystemService fileSystemService,
+			ICodeBlockParserService parserService,
+			IBlockIdentityService identityService,
+			ITextSimilarityEngine similarityEngine) // Injeção via construtor
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
 		_identityService = identityService;
+		_similarityEngine = similarityEngine;
 	}
 
 	public async Task<AiMergeResult> MergeAiSnippetAsync(string snippetCode)
 	{
-		var result = new AiMergeResult();
 
-		if (string.IsNullOrWhiteSpace(snippetCode))
-		{
-			result.Message = "O código fornecido está vazio.";
-			return result;
-		}
+		var result = new AiMergeResult();
+		if (string.IsNullOrWhiteSpace(snippetCode)) return result;
 
 		try
 		{
-			// 1. Identifica a qual arquivo este snippet pertence
 			var targetFilePath = await IdentifyTargetFileAsync(snippetCode);
-
-			if (string.IsNullOrEmpty(targetFilePath) || !File.Exists(targetFilePath))
+			if (string.IsNullOrEmpty(targetFilePath))
 			{
-				result.Message = "Não foi possível identificar o arquivo de origem correspondente no projeto.";
+				result.Message = "Arquivo alvo não identificado.";
 				return result;
 			}
 
 			result.FilePath = targetFilePath;
 			var originalContent = await _fileSystemService.ReadFileContentAsync(targetFilePath);
-
-			if (string.IsNullOrEmpty(originalContent))
-			{
-				result.Message = "O arquivo identificado está vazio ou não pôde ser lido.";
-				return result;
-			}
-
-			// 2. Parse do Arquivo Original (do Disco)
 			var originalBlocks = await _parserService.ParseFileAsync(targetFilePath, originalContent);
-
-			// 3. Parse do Snippet da IA (com fallback para embrulhar métodos soltos)
 			var snippetBlocks = await ParseSnippetWithFallbackAsync(targetFilePath, snippetCode);
 
-			// 4. Executa o Merge usando o IdentityService
+			// Chamada atualizada
 			PerformMerge(originalBlocks, snippetBlocks, result);
 
 			result.MergedBlocks = originalBlocks;
 			result.Success = true;
-			result.Message = $"Processamento concluído: {result.ModifiedCount} modificados, {result.AddedCount} novos itens.";
+			result.Message = $"Merge: {result.ModifiedCount} modif., {result.AddedCount} adições.";
 		}
 		catch (Exception ex)
 		{
 			result.Success = false;
-			result.Message = $"Erro crítico ao processar snippet: {ex.Message}";
+			result.Message = ex.Message;
+		}
+		return result;
+	}
+
+	private void PerformMerge(List<CodeBlockItem> originalBlocks, List<CodeBlockItem> snippetBlocks, AiMergeResult result)
+	{
+		var timestamp = DateTime.Now;
+		string versionDescription = "Sugestão IA";
+
+		foreach (var snippetBlock in snippetBlocks)
+		{
+			// 1. REGRA: Descartar 'Using' novos (solicitado explicitamente)
+			if (snippetBlock.SegmentType == SegmentType.Using)
+			{
+				continue;
+			}
+
+			// 2. REGRA: Verificação Fuzzy de Estrutura (Classe/Namespace/Interface)
+			// Se for um bloco estrutural, verificamos com Levenshtein se ele já existe
+			if (IsStructuralBlock(snippetBlock))
+			{
+				if (IsStructuralDuplicate(snippetBlock, originalBlocks))
+				{
+					continue; // Pula a inserção/merge deste bloco estrutural
+				}
+			}
+
+			if (!snippetBlock.IsGranular) continue;
+
+			// 3. Tentativa de Match Exato (para métodos e propriedades)
+			var originalBlock = originalBlocks.FirstOrDefault(b => _identityService.AreSameEntity(b, snippetBlock));
+
+			if (originalBlock != null)
+			{
+				// Verifica se houve mudança real no conteúdo
+				if (originalBlock.Content.Trim() != snippetBlock.Content.Trim())
+				{
+					originalBlock.CreateNewVersion(snippetBlock.Content, versionDescription, timestamp);
+					result.ModifiedCount++;
+				}
+			}
+			else
+			{
+				// Se chegou aqui, é um método/propriedade novo OU uma estrutura que passou no teste de duplicata
+				InsertNewBlockIdeally(originalBlocks, snippetBlock, result);
+				result.AddedCount++;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Verifica se o bloco é do tipo container/estrutura que costuma causar duplicação.
+	/// </summary>
+	private bool IsStructuralBlock(CodeBlockItem block)
+	{
+		return block.SegmentType == SegmentType.Class ||
+			   block.SegmentType == SegmentType.Interface ||
+			   block.SegmentType == SegmentType.Struct ||
+			   block.SegmentType == SegmentType.Namespace ||
+			   block.SegmentType == SegmentType.Enum;
+	}
+
+	/// <summary>
+	/// Usa Levenshtein para verificar se um bloco estrutural (ex: "public class Foo") 
+	/// já existe no destino, ignorando pequenas diferenças de formatação.
+	/// </summary>
+	private bool IsStructuralDuplicate(CodeBlockItem snippetBlock, List<CodeBlockItem> originalBlocks)
+	{
+		// 1. Filtra apenas blocos do mesmo tipo no destino para comparação
+		var candidates = originalBlocks.Where(b => b.SegmentType == snippetBlock.SegmentType);
+
+		string snippetContent = NormalizeForComparison(snippetBlock.Content);
+
+		foreach (var candidate in candidates)
+		{
+			// Se o nome for idêntico, já consideramos duplicata (atalho rápido)
+			if (string.Equals(candidate.Name, snippetBlock.Name, StringComparison.OrdinalIgnoreCase))
+				return true;
+
+			// Comparação Fuzzy usando Levenshtein
+			string candidateContent = NormalizeForComparison(candidate.Content);
+
+			// Calcula similaridade (0.0 a 1.0)
+			double similarity = _similarityEngine.CalculateSimilarity(snippetContent, candidateContent);
+
+			// Se for mais de 85% similar, consideramos que é a mesma estrutura
+			if (similarity > 0.85)
+			{
+				return true;
+			}
 		}
 
-		return result;
+		return false;
+	}
+
+	private string NormalizeForComparison(string code)
+	{
+		if (string.IsNullOrEmpty(code)) return string.Empty;
+		// Remove espaços extras, quebras de linha e chaves para focar na declaração
+		return code.Replace(" ", "").Replace("\r", "").Replace("\n", "").Replace("{", "").Trim();
 	}
 
 	private async Task<List<CodeBlockItem>> ParseSnippetWithFallbackAsync(string filePath, string snippetCode)
@@ -176,37 +261,6 @@ public class AiCodeMerger : IAiCodeMerger
 		return null;
 	}
 
-	private void PerformMerge(List<CodeBlockItem> originalBlocks, List<CodeBlockItem> snippetBlocks, AiMergeResult result)
-	{
-		var timestamp = DateTime.Now;
-		string versionDescription = "Sugestão IA";
-
-		foreach (var snippetBlock in snippetBlocks)
-		{
-			if (!snippetBlock.IsGranular) continue;
-
-			// --- USO CENTRALIZADO DA LÓGICA DE IDENTIDADE ---
-			// Aqui usamos o serviço que sabe ignorar namespaces e checar assinaturas corretamente
-			var originalBlock = originalBlocks.FirstOrDefault(b => _identityService.AreSameEntity(b, snippetBlock));
-			// ------------------------------------------------
-
-			if (originalBlock != null)
-			{
-				// Normaliza (Trim) para evitar falsos positivos de mudanças apenas de espaço
-				if (originalBlock.Content.Trim() != snippetBlock.Content.Trim())
-				{
-					originalBlock.CreateNewVersion(snippetBlock.Content, versionDescription, timestamp);
-					result.ModifiedCount++;
-				}
-			}
-			else
-			{
-				// Se o IdentityService disse que não existe, é realmente novo (ou sobrecarga nova)
-				InsertNewBlockIdeally(originalBlocks, snippetBlock, result);
-				result.AddedCount++;
-			}
-		}
-	}
 
 	private void InsertNewBlockIdeally(List<CodeBlockItem> originalBlocks, CodeBlockItem newBlock, AiMergeResult result)
 	{

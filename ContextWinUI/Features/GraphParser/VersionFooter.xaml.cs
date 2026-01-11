@@ -14,6 +14,7 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 		public event EventHandler? SaveOverwriteRequested;
 		public event EventHandler? RestoreOriginalRequested;
 		public event PropertyChangedEventHandler? PropertyChanged;
+		public event EventHandler? SaveToFileRequested;
 
 		public VersionFooter()
 		{
@@ -141,31 +142,17 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			if (CanNavigateNext) SelectedGlobalIndex++;
 		}
 
-		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e)
-		{
-			RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
-		}
+		private void OnRestoreOriginalClick(object sender, RoutedEventArgs e) => RestoreOriginalRequested?.Invoke(this, EventArgs.Empty);
 
-		private void OnSplitButtonCommit(SplitButton sender, SplitButtonClickEventArgs args)
-		{
-			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
-		}
+		private void OnSplitButtonCommit(SplitButton sender, SplitButtonClickEventArgs args) => SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
 
-		private void OnMenuItemCommit(object sender, RoutedEventArgs e)
-		{
-			SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
-		}
+		private void OnMenuItemCommit(object sender, RoutedEventArgs e) => SaveNewVersionRequested?.Invoke(this, EventArgs.Empty);
 
-		private void OnOverwriteClick(object sender, RoutedEventArgs e)
-		{
-			SaveOverwriteRequested?.Invoke(this, EventArgs.Empty);
-		}
+		private void OnOverwriteClick(object sender, RoutedEventArgs e) => SaveOverwriteRequested?.Invoke(this, EventArgs.Empty);
 
-		private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-		{
-			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-		}
+		private void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
+		private void OnSaveToFileClick(object sender, RoutedEventArgs e) => SaveToFileRequested?.Invoke(this, EventArgs.Empty);
 		#endregion
 	}
 }

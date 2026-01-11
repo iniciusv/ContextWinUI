@@ -115,4 +115,5 @@ public interface IFileSegmentsContract
 	/// <summary>Aplica um merge externo de blocos</summary>
 	/// <param name="mergedBlocks">Lista de blocos resultante do merge</param>
 	void ApplyExternalMerge(List<CodeBlockItem> mergedBlocks);
+	Task SaveToDiskAsync();
 }
