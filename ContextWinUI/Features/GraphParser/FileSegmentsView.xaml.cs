@@ -1,10 +1,11 @@
 using ContextWinUI.Features.GraphParser.ViewModels;
+using ContextWinUI.Features.GraphParser.Views.Components;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Windows.ApplicationModel.DataTransfer;
 using System;
 using System.Linq;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace ContextWinUI.Features.GraphParser
 {
@@ -96,8 +97,21 @@ namespace ContextWinUI.Features.GraphParser
 
 		private void OnEditorCaretPositionChanged(object sender, int cursorPosition)
 		{
-			// Tenta resolver o símbolo onde o cursor está
-			ViewModel?.ResolveSymbolHeuristic(cursorPosition);
+			// 1. Recupera o controle que disparou o evento
+			if (sender is SegmentCodeViewer editor &&
+				editor.DataContext is SegmentRowViewModel row &&
+				ViewModel != null)
+			{
+				// 2. FORÇA a atualização do SelectedBlock para o bloco onde o cursor está
+				// Isso garante que o ViewModel saiba qual é o "Current Block" correto
+				if (ViewModel.SelectedBlock != row.Current)
+				{
+					ViewModel.SelectedBlock = row.Current;
+				}
+
+				// 3. Agora chama a heurística, que usará o SelectedBlock.Content correto
+				ViewModel.ResolveSymbolHeuristic(cursorPosition);
+			}
 		}
 
 		#endregion

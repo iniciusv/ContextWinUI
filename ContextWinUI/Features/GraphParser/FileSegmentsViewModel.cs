@@ -328,15 +328,18 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		if (SelectedBlock == null) return;
 
-		// O ViewModel DELEGA a lógica "suja" para o serviço
+		string text = SelectedBlock.Content;
+
+		if (cursorIndexInBlock > text.Length)
+			cursorIndexInBlock = text.Length;
+
 		var result = _symbolService.ResolveSymbolAtPosition(
-			SelectedBlock.Content,
+			text,
 			cursorIndexInBlock,
-			SelectedBlock.AbsoluteStartPosition, // Posição absoluta no arquivo original
+			SelectedBlock.AbsoluteStartPosition,
 			FilePath
 		);
 
-		// Atualiza a propriedade que a UI está observando
 		CurrentSymbolInfo = result ?? string.Empty;
 	}
 
