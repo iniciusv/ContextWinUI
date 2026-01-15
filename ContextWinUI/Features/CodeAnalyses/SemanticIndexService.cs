@@ -43,27 +43,31 @@ public class SemanticIndexService : ISemanticIndexService
 
 		var syntaxTrees = new ConcurrentBag<SyntaxTree>();
 
-		// Usar as opções salvas no campo da classe
 		await Parallel.ForEachAsync(filePaths, async (path, ct) =>
 		{
 			var text = await File.ReadAllTextAsync(path, ct);
+			// Dica: Configure ParseOptions fora do loop se possível, ou garanta que é thread-safe (geralmente é)
 			var tree = CSharpSyntaxTree.ParseText(text, _parseOptions, path: path, cancellationToken: ct);
 			syntaxTrees.Add(tree);
 		});
 
-		// Criar e armazenar a compilação no campo privado
-		_cachedCompilation = CSharpCompilation.Create("ContextAnalysis_Session")
+		// 1. Cria a compilação e armazena em uma variável LOCAL primeiro
+		var compilation = CSharpCompilation.Create("ContextAnalysis_Session")
 			.AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
 			.AddSyntaxTrees(syntaxTrees);
+
+		// 2. Atualiza o cache global (opcionalmente aqui ou depois, mas o importante é o que usamos abaixo)
+		_cachedCompilation = compilation;
 
 		var graph = new DependencyGraph();
 
 		await Task.Run(() =>
 		{
-			// Nota: Para acesso concorrente seguro, é melhor iterar a lista fixa da compilação
-			Parallel.ForEach(_cachedCompilation.SyntaxTrees, tree =>
+
+			Parallel.ForEach(compilation.SyntaxTrees, tree =>
 			{
-				var model = _cachedCompilation.GetSemanticModel(tree);
+				// Usa a variável local 'compilation'
+				var model = compilation.GetSemanticModel(tree);
 				var walker = new GraphBuilderWalker(graph, model, tree.FilePath);
 				var root = tree.GetRoot();
 				walker.Visit(root);
@@ -72,6 +76,7 @@ public class SemanticIndexService : ISemanticIndexService
 
 		_cachedGraph = graph;
 		_cachedRootPath = rootPath;
+
 		return graph;
 	}
 
