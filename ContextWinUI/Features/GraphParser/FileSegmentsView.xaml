@@ -29,7 +29,6 @@
 			<AppBarButton Icon="Save" 
                           Label="Save Global Version" 
                           Command="{x:Bind ViewModel.CommitAllPendingChangesCommand}" />
-
 			<AppBarButton Icon="Undo" 
                           Label="Restore Original" 
                           Command="{x:Bind ViewModel.RevertBlockToOriginalCommand}" 
@@ -82,7 +81,6 @@
                               BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                               BorderThickness="0,0,1,0"
                               Visibility="{x:Bind HasReference, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-
 							<components:SegmentCodeViewer 
                                     Text="{x:Bind Reference.Content, Mode=OneWay}" 
                                     FileExtension="{x:Bind Reference.FileExtension, Mode=OneWay}"
@@ -104,17 +102,13 @@
 									<MenuFlyoutItem Text="Insert Block Below" Icon="Add"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.AddSiblingBlockCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
-
 									<MenuFlyoutItem Text="Delete Block" Icon="Delete" Foreground="Red"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.DeleteBlockCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
-
 									<MenuFlyoutSeparator/>
-
 									<MenuFlyoutItem Text="Revert to Original" Icon="Undo"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.RevertBlockToOriginalCommand}"
                                                     CommandParameter="{x:Bind Current}"/>
-
 									<MenuFlyoutItem Text="Unlink (Treat as New)"
                                                     Command="{Binding ElementName=RootControl, Path=ViewModel.PromoteEditToNewBlockCommand}"
                                                     CommandParameter="{x:Bind Current}">
@@ -136,7 +130,6 @@
                                        Margin="-8,0,0,0"/>
 
 							<StackPanel Orientation="Vertical" Spacing="4" VerticalAlignment="Center" Opacity="0.9">
-
 								<FontIcon Glyph="&#xE81C;" FontSize="10" Foreground="Orange"
                                           HorizontalAlignment="Left"
                                           Visibility="{x:Bind Current.HasUnsavedChanges, Converter={StaticResource BoolToVis}}"/>
@@ -175,6 +168,7 @@
 							<components:SegmentCodeViewer 
                                     x:Name="CodeEditor"
                                     Text="{x:Bind Current.Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                    OriginalText="{x:Bind OriginalContent, Mode=OneWay}"
                                     FileExtension="{x:Bind Current.FileExtension, Mode=OneWay}"
                                     SaveRequested="OnSegmentSaveRequested"
                                     ContentModified="OnSegmentContentModified"
@@ -204,6 +198,7 @@
                                   SaveOverwriteRequested="OnFooterSaveOverwrite"
                                   RestoreOriginalRequested="OnFooterRestoreOriginal"
                                   SaveToFileRequested="OnFooterSaveToFile"/>
+
 		<Grid Grid.RowSpan="3" 
               Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Opacity="0.8"
               Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">

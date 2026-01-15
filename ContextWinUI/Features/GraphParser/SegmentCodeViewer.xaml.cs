@@ -46,6 +46,17 @@ public sealed partial class SegmentCodeViewer : UserControl
 		DependencyProperty.Register(nameof(FileExtension), typeof(string), typeof(SegmentCodeViewer),
 			new PropertyMetadata(".txt"));
 
+	public static readonly DependencyProperty OriginalTextProperty =
+		DependencyProperty.Register(nameof(OriginalText), typeof(string), typeof(SegmentCodeViewer),
+			new PropertyMetadata(null, OnOriginalTextChanged));
+
+
+	public string? OriginalText
+	{
+		get => (string?)GetValue(OriginalTextProperty);
+		set => SetValue(OriginalTextProperty, value);
+	}
+
 	public string Text
 	{
 		get => (string)GetValue(TextProperty);
@@ -56,6 +67,11 @@ public sealed partial class SegmentCodeViewer : UserControl
 	{
 		get => (string)GetValue(FileExtensionProperty);
 		set => SetValue(FileExtensionProperty, value);
+	}
+
+	private static void OnOriginalTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	{
+		((SegmentCodeViewer)d).TriggerHighlightUpdate();
 	}
 
 	private SemanticHighlightService? GetSemanticService()
@@ -150,29 +166,59 @@ public sealed partial class SegmentCodeViewer : UserControl
 		_editCts = new CancellationTokenSource();
 		var token = _editCts.Token;
 
-		// Pega o texto atual
-		CodeEditor.Document.GetText(TextGetOptions.None, out string rawText);
-		rawText = CleanRichText(rawText);
+		// Capturar dados necessários antes de entrar na async para evitar problemas de thread
 		string ext = FileExtension?.ToLower() ?? ".txt";
-		bool isDark = ThemeHelper.IsDarkTheme();
+		bool isDark = ThemeHelper.IsDarkTheme(); // Certifique-se que seu ThemeHelper é thread-safe ou chame na UI
 		var themeStyles = ThemeHelper.GetCurrentThemeStyle();
-
 		var semanticServiceInstance = GetSemanticService();
-		// --------------------
 
-		_ = Task.Delay(250, token).ContinueWith(async _ =>
+		// Captura o texto original da Dependency Property
+		string? originalContent = OriginalText;
+
+		// Precisamos pegar o texto atual. 
+		// OBS: O CodeEditor só pode ser acessado na UI Thread. 
+		// Como TriggerHighlightUpdate geralmente é chamado da UI, isso deve funcionar.
+		// Se houver dúvida, coloque tudo dentro do Dispatcher.
+		string rawText = string.Empty;
+		try
 		{
-			if (token.IsCancellationRequested) return;
+			CodeEditor.Document.GetText(TextGetOptions.None, out rawText);
+			rawText = CleanRichText(rawText);
+		}
+		catch
+		{
+			// Se falhar ao pegar texto (ex: chamado de thread errada), aborta
+			return;
+		}
 
-			await _orchestrator.HighlightEditorAsync(
-				CodeEditor,
-				rawText,
-				ext,
-				semanticServiceInstance, // Passamos a instância resolvida
-				isDark,
-				themeStyles,
-				token);
-		}, TaskScheduler.Default);
+		// Delay para debounce (espera o usuário parar de digitar)
+		Task.Delay(250, token).ContinueWith(async t =>
+		{
+			if (t.IsCanceled) return;
+
+			// VOLTAR PARA A UI THREAD PARA APLICAR O HIGHLIGHT
+			this.DispatcherQueue.TryEnqueue(async () =>
+			{
+				if (token.IsCancellationRequested) return;
+
+				try
+				{
+					await _orchestrator.HighlightEditorAsync(
+						CodeEditor,
+						rawText, // Passamos o texto que capturamos
+						ext,
+						semanticServiceInstance,
+						isDark,
+						themeStyles,
+						token,
+						originalContent); // Passamos o original
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine($"Erro no Highlight: {ex.Message}");
+				}
+			});
+		});
 	}
 
 	private void UpdateEditorContentSafely(string newText)

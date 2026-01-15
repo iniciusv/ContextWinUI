@@ -13,6 +13,7 @@ public partial class SegmentRowViewModel : ObservableObject
 {
 	// Lado Direito (Editável) - Sempre existe
 	public CodeBlockItem Current { get; }
+	public string? OriginalContent => Current.Versions.FirstOrDefault(v => v.IsOriginal)?.Content;
 
 	// Lado Esquerdo (Referência) - Pode ser null (ex: bloco novo)
 	[ObservableProperty]

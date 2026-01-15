@@ -16,5 +16,6 @@ public interface IHighlightingOrchestrator
 		SemanticHighlightService? semanticService,
 		bool isDarkTheme,
 		StyleDictionary themeStyles,
-		CancellationToken token);
+		CancellationToken token,
+		string? originalContent = null); // <--- Novo parâmetro
 }
