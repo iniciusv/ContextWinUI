@@ -46,19 +46,18 @@ public sealed partial class GraphParserView : UserControl
 	{
 		if (args.SelectedItem is SearchSuggestion suggestion)
 		{
-			ViewModel.OpenFileCommand.Execute(suggestion.FilePath);
+			ViewModel.OpenAsPermanentCommand.Execute(suggestion.FilePath);
 			sender.Text = string.Empty;
 		}
 		else if (args.SelectedItem is string filePath)
 		{
-			ViewModel.OpenFileCommand.Execute(filePath);
+			ViewModel.OpenAsPermanentCommand.Execute(filePath);
 			sender.Text = string.Empty;
 		}
 	}
 
 	private void TabView_TabCloseRequested(TabView sender, TabViewTabCloseRequestedEventArgs args)
 	{
-		// Como agora a coleção Tabs é de 'object', passamos o item direto
 		if (args.Item != null)
 		{
 			ViewModel.CloseTabCommand.Execute(args.Item);

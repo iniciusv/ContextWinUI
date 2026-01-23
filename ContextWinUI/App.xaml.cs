@@ -64,6 +64,8 @@ public partial class App : Application
 		services.AddTransient<IVersionDiffManager, VersionDiffManager>();
 		services.AddSingleton<IBlockEditorService, BlockEditorService>();
 		services.AddTransient<IBlockLoaderService, BlockLoaderService>();
+		services.AddSingleton<IFileSegmentsViewModelFactory, FileSegmentsViewModelFactory>();
+		services.AddSingleton<IPreviewManager, PreviewManager>();
 
 		// 4. FILE EXPLORER (Refatorado)
 		services.AddSingleton<IFileExplorerDataService, FileExplorerDataService>();

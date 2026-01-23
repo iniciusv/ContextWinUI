@@ -12,7 +12,7 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 /// Gerencia abas de arquivos, busca, histórico global e integração com IA.
 /// 
 /// RESPONSABILIDADES:
-/// 1. Gerenciamento de abas (arquivos e previews de IA)
+/// 1. Gerenciamento de abas (arquivos, previews temporários e previews de IA)
 /// 2. Busca semântica no projeto (grafo de símbolos)
 /// 3. Versionamento global compartilhado entre abas
 /// 4. Integração com IA (smart paste, merge de código)
@@ -73,16 +73,19 @@ public interface IGraphParserContract
 	/// </remarks>
 	void UpdateSearch(string query);
 
-	/// <summary>Abre arquivo em nova aba de edição</summary>
-	/// <param name="parameter">Caminho do arquivo (string) ou SearchSuggestion</param>
-	/// <remarks>
-	/// Comportamento:
-	/// 1. Converte parâmetro para caminho absoluto
-	/// 2. Verifica se aba já existe (evita duplicatas)
-	/// 3. Cria nova aba com FileSegmentsViewModel
-	/// 4. Configura eventos de sincronização com histórico global
-	/// </remarks>
-	void OpenFile(object parameter);
+
+
+	/// <summary>
+	/// Abre o arquivo de forma PERMANENTE (Fixa).
+	/// Usado por: Clique Duplo, Resultado de Busca, Navegação de Símbolo.
+	/// </summary>
+	void OpenAsPermanent(object parameter);
+
+	/// <summary>
+	/// Abre o arquivo como PREVIEW (Temporário).
+	/// Usado por: Seleção simples na árvore (Single Click).
+	/// </summary>
+	void OpenAsPreview(string filePath);
 
 	/// <summary>Fecha aba especificada</summary>
 	/// <param name="tab">Aba a ser fechada (objeto da coleção Tabs)</param>

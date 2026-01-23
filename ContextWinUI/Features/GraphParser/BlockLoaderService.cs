@@ -42,13 +42,8 @@ public class BlockLoaderService : IBlockLoaderService
 		return parsedItems;
 	}
 
-	/// <summary>
-	/// Recupera a indentação original da primeira linha do bloco olhando para o arquivo original.
-	/// Ajusta o Conteúdo e o AbsoluteStartPosition.
-	/// </summary>
 	private void RecoverBlockIndentation(CodeBlockItem block, string fullFileContent)
 	{
-		// Validações de segurança
 		if (string.IsNullOrEmpty(block.Content) ||
 			char.IsWhiteSpace(block.Content[0]) ||
 			block.AbsoluteStartPosition <= 0 ||
@@ -60,42 +55,27 @@ public class BlockLoaderService : IBlockLoaderService
 		int currentPos = block.AbsoluteStartPosition - 1;
 		int whitespaceCount = 0;
 
-		// "Walk backwards": Varre para trás a partir do início do bloco até achar o começo da linha
 		while (currentPos >= 0)
 		{
 			char c = fullFileContent[currentPos];
-
-			// Se achou quebra de linha, paramos (chegamos no início da linha)
 			if (c == '\n' || c == '\r') break;
-
-			// Se achou algo que não é espaço (ex: código na mesma linha), 
-			// aborta a correção pois não é apenas indentação.
 			if (!char.IsWhiteSpace(c))
 			{
 				return;
 			}
-
 			whitespaceCount++;
 			currentPos--;
 		}
 
-		// Se detectou indentação perdida, aplica a correção
 		if (whitespaceCount > 0)
 		{
-			// A. Reconstrói a string de indentação baseada no original
 			string indentation = fullFileContent.Substring(block.AbsoluteStartPosition - whitespaceCount, whitespaceCount);
-
-			// B. Anexa a indentação ao conteúdo
 			string newContent = indentation + block.Content;
-			block.Content = newContent;
 
-			// C. CRÍTICO: Recua o AbsoluteStartPosition.
-			// Se adicionamos 'N' espaços no início, o ponto de partida visual do bloco
-			// deve recuar 'N' caracteres para alinhar com o índice absoluto do arquivo.
-			block.AbsoluteStartPosition -= whitespaceCount;
-
-			// D. Atualiza o sistema de versionamento do bloco
 			UpdateBlockVersions(block, newContent);
+
+			block.Content = newContent;
+			block.AbsoluteStartPosition -= whitespaceCount;
 		}
 	}
 

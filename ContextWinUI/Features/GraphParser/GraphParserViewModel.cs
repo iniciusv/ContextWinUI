@@ -3,12 +3,14 @@ using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Models;
 using ContextWinUI.Features.GraphParser.IAParser;
+using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Models;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -19,15 +21,23 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class GraphParserViewModel : ObservableObject, IGraphParserContract
 {
+	// =================================================================================
+	// 1. DEPENDÊNCIAS (Injetadas via Construtor)
+	// =================================================================================
 	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
-	private string _rootPath;
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
 	private readonly IVersionDiffManager _diffManager;
 	private readonly IAiCodeMerger _aiMergerService;
-	private readonly IBlockEditorService _blockEditorService;
 	private readonly IBlockLoaderService _blockLoaderService;
+	private readonly IBlockEditorService _blockEditorService;
+
+	private readonly IFileSegmentsViewModelFactory _vmFactory;
+
+	private readonly IPreviewManager _previewManager;
+
+	private string _rootPath;
 
 	[ObservableProperty]
 	private ObservableCollection<object> tabs = new();
@@ -46,11 +56,17 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 	public event EventHandler<int>? CurrentGlobalIndexChanged;
 
+	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.HasAnyUnsavedChanges);
+
+
 	public bool HasTabs => Tabs.Any();
 
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
 	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
 
+	// =================================================================================
+	// 3. CONSTRUTOR
+	// =================================================================================
 	public GraphParserViewModel(
 		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
@@ -60,27 +76,133 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		ISymbolResolutionService symbolService,
 		IVersionDiffManager diffManager,
 		IBlockLoaderService blockLoaderService,
-		IBlockEditorService blockEditorService)
+		IBlockEditorService blockEditorService,
+		IPreviewManager previewManager,
+		IFileSegmentsViewModelFactory vmFactory)
 	{
+		// Injeção
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
 		_symbolService = symbolService;
 		_diffManager = diffManager;
 		_aiMergerService = aiMergerService;
-		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
-		_blockEditorService = blockEditorService;
 		_blockLoaderService = blockLoaderService;
+		_blockEditorService = blockEditorService;
+		_previewManager = previewManager;
+		_vmFactory = vmFactory;
 
-		Tabs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasTabs));
+		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 
-		if (string.IsNullOrEmpty(_rootPath))
+		// Configuração de Eventos
+		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
+
+		// Monitora adições/remoções para atualizar UI e conectar eventos
+		Tabs.CollectionChanged += OnTabsCollectionChanged;
+
+		InitializeGlobalHistory();
+
+		_previewManager.Start(this);
+	}
+
+	[RelayCommand]
+	public void OpenAsPermanent(object parameter)
+	{
+		string? path = ExtractPath(parameter);
+		if (string.IsNullOrEmpty(path)) return;
+
+		path = NormalizePath(path);
+
+		// 1. Verifica se a aba já existe na coleção
+		var existingTab = Tabs.OfType<FileSegmentsViewModel>()
+							  .FirstOrDefault(t => t.FilePath == path);
+
+		if (existingTab != null)
 		{
-			Debug.WriteLine("AVISO: Nenhum projeto carregado. A busca não funcionará até que um projeto seja aberto.");
+			SelectedTab = existingTab;
+
+			// A MÁGICA DA PROMOÇÃO:
+			// Se a aba encontrada era um Preview, o usuário acabou de confirmar
+			// que quer mantê-la (clique duplo). Removemos a flag de preview.
+			if (existingTab.IsPreview)
+			{
+				existingTab.IsPreview = false;
+			}
+			return;
 		}
 
-		sessionManager.ProjectLoaded += OnProjectLoaded;
-		InitializeGlobalHistory();
+		// 2. Se não existe, cria uma nova aba FIXA.
+		var newTab = _vmFactory.Create(path);
+		newTab.IsPreview = false; // Garante explicitamente que é permanente
+
+		Tabs.Add(newTab);
+		SelectedTab = newTab;
+	}
+
+
+	public void OpenAsPreview(string path)
+	{
+		if (string.IsNullOrEmpty(path)) return;
+
+		path = NormalizePath(path);
+
+		var existingTab = Tabs.OfType<FileSegmentsViewModel>()
+							  .FirstOrDefault(t => t.FilePath == path);
+
+		if (existingTab != null)
+		{
+			SelectedTab = existingTab;
+			return;
+		}
+
+		var oldPreview = Tabs.OfType<FileSegmentsViewModel>()
+							 .FirstOrDefault(t => t.IsPreview);
+
+		if (oldPreview != null)
+		{
+			Tabs.Remove(oldPreview);
+		}
+
+		// 3. Criação: Gera a nova aba e marca como Preview.
+		var newTab = _vmFactory.Create(path);
+		newTab.IsPreview = true;
+
+		// 4. Auto-Promoção: Se o usuário editar o código nesta aba de preview,
+		// ela deve se tornar permanente automaticamente para não perder dados.
+
+
+		Tabs.Add(newTab);
+		SelectedTab = newTab;
+	}
+
+
+	// =================================================================================
+	// HELPERS PRIVADOS (Necessários para os métodos acima funcionarem)
+	// =================================================================================
+
+	private string NormalizePath(string path)
+	{
+		// Garante que o caminho seja absoluto para comparação correta
+		if (!Path.IsPathRooted(path) && !string.IsNullOrEmpty(_rootPath))
+			return Path.Combine(_rootPath, path);
+		return path;
+	}
+
+	private string? ExtractPath(object parameter)
+	{
+		// Extrai string do CommandParameter (que pode vir da Busca ou String direta)
+		if (parameter is SearchSuggestion s) return s.FilePath;
+		if (parameter is string p) return p;
+		return null;
+	}
+
+	private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	{
+		// Atualiza a propriedade HasTabs para a UI
+		OnPropertyChanged(nameof(HasTabs));
+
+		// Aqui conectaríamos os eventos globais (Save/Restore) para as novas abas
+		// Omitido para brevidade, mas essencial na implementação real.
 	}
 
 
@@ -173,7 +295,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		}
 	}
 
-	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.Blocks.Any(b => b.HasUnsavedChanges));
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{

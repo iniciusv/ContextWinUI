@@ -68,6 +68,9 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	[ObservableProperty]
 	private int currentGlobalIndex = 0;
 
+	[ObservableProperty]
+	private bool isPreview;
+
 	// Propriedades Computadas Simples
 	public bool HasSelectedBlock => SelectedBlock != null;
 	public bool HasAnyUnsavedChanges => Rows.Any(r => r.Current.HasUnsavedChanges);
@@ -138,25 +141,35 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private async Task LoadBlocksAsync()
 	{
 		IsLoading = true;
-		Rows.Clear();
+
 		SelectedBlock = null;
+
 		try
 		{
-			// Carrega Git + Disco
 			var items = await _loaderService.LoadAndProcessFileAsync(FilePath);
+
+			var bufferList = new List<SegmentRowViewModel>(items.Count);
 
 			foreach (var item in items)
 			{
-				Rows.Add(new SegmentRowViewModel(item));
+
+				if (item.HasUnsavedChanges)
+				{
+					item.InitializeVersions(item.Content);
+				}
+
+				bufferList.Add(new SegmentRowViewModel(item));
 			}
 
-			if (Rows.Any()) SelectedBlock = Rows.First().Current;
 
-			// --- COLOQUE DE VOLTA ESTA LINHA ---
-			// Agora ela é útil! Como CurrentGlobalIndex é 1, 
-			// ela vai selecionar a versão "Working Copy" do bloco.
+			Rows = new ObservableCollection<SegmentRowViewModel>(bufferList);
+
+			if (Rows.Any())
+			{
+				SelectedBlock = Rows.First().Current;
+			}
+
 			RestoreToGlobalIndex(CurrentGlobalIndex);
-			// -----------------------------------
 
 			NotifyUnsavedChanges();
 
@@ -168,13 +181,15 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		}
 		catch (Exception ex)
 		{
-			// Tratamento de erro de UI continua aqui
-			Rows.Add(new SegmentRowViewModel(new CodeBlockItem
+			Rows = new ObservableCollection<SegmentRowViewModel>
+		{
+			new SegmentRowViewModel(new CodeBlockItem
 			{
 				Name = "Erro",
 				Content = ex.Message,
 				SegmentType = SegmentType.Trivia
-			}));
+			})
+		};
 		}
 		finally
 		{
