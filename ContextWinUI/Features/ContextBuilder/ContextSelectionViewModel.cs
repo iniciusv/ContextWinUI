@@ -145,7 +145,7 @@ public partial class ContextSelectionViewModel : ObservableObject
 		}
 	}
 
-	private void ProcessPaths(IEnumerable<string> paths)
+	public void ProcessPaths(IEnumerable<string> paths)
 	{
 		if (paths == null) return;
 

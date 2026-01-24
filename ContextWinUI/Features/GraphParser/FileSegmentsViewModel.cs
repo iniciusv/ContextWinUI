@@ -24,6 +24,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private readonly IAiCodeMerger _mergerService;
 	private readonly IBlockEditorService _editorService;
 	private readonly IBlockLoaderService _loaderService;
+	public event EventHandler? FileSelectionRequested;
+
 
 	public string FilePath { get; }
 	public string FileName { get; }
@@ -130,6 +132,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		_diffManager.UpdateRowsVisibility(Rows, value);
 	}
 
+
+	// Método LoadBlocksAsync completo modificado
 	private async Task LoadBlocksAsync()
 	{
 		IsLoading = true;
@@ -146,17 +150,9 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 					item.InitializeVersions(item.Content);
 				}
 
-				// --- ADIÇÃO: Listener para saber quando um checkbox muda ---
-				item.PropertyChanged += (s, e) =>
-				{
-					if (e.PropertyName == nameof(CodeBlockItem.IsSelected))
-					{
-						OnPropertyChanged(nameof(HasAnyBlockSelected));
-						// Aqui você poderia chamar um serviço para marcar o arquivo pai como selecionado
-						// ex: _selectionService.MarkFile(FilePath);
-					}
-				};
-				// -----------------------------------------------------------
+				// --- ALTERAÇÃO AQUI: Listener para sincronizar seleção ---
+				AttachBlockEvents(item);
+				// ---------------------------------------------------------
 
 				bufferList.Add(new SegmentRowViewModel(item));
 			}
@@ -180,14 +176,14 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		catch (Exception ex)
 		{
 			Rows = new ObservableCollection<SegmentRowViewModel>
+		{
+			new SegmentRowViewModel(new CodeBlockItem
 			{
-				new SegmentRowViewModel(new CodeBlockItem
-				{
-					Name = "Erro",
-					Content = ex.Message,
-					SegmentType = SegmentType.Trivia
-				})
-			};
+				Name = "Erro",
+				Content = ex.Message,
+				SegmentType = SegmentType.Trivia
+			})
+		};
 		}
 		finally
 		{
@@ -195,8 +191,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			IsEmpty = Rows.Count == 0;
 		}
 	}
-
-	// --- NOVO MÉTODO: Lógica de Exportação ---
 	public string GetExportContent()
 	{
 		// Regra 1: Se houver blocos específicos selecionados, exporta SÓ ELES.
@@ -379,10 +373,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 				foreach (var block in result.MergedBlocks)
 				{
 					// Re-attach listener
-					block.PropertyChanged += (s, e) =>
-					{
-						if (e.PropertyName == nameof(CodeBlockItem.IsSelected)) OnPropertyChanged(nameof(HasAnyBlockSelected));
-					};
+					AttachBlockEvents(block);
 					this.Rows.Add(new SegmentRowViewModel(block));
 				}
 				NotifyUnsavedChanges();
@@ -399,10 +390,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			Rows.Clear();
 			foreach (var block in mergedBlocks)
 			{
-				block.PropertyChanged += (s, e) =>
-				{
-					if (e.PropertyName == nameof(CodeBlockItem.IsSelected)) OnPropertyChanged(nameof(HasAnyBlockSelected));
-				};
+				AttachBlockEvents(block);
 				Rows.Add(new SegmentRowViewModel(block));
 			}
 			NotifyUnsavedChanges();
@@ -435,5 +423,19 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		{
 			IsLoading = false;
 		}
+	}
+	private void AttachBlockEvents(CodeBlockItem block)
+	{
+		block.PropertyChanged += (s, e) =>
+		{
+			if (e.PropertyName == nameof(CodeBlockItem.IsSelected))
+			{
+				OnPropertyChanged(nameof(HasAnyBlockSelected));
+				if (block.IsSelected)
+				{
+					FileSelectionRequested?.Invoke(this, EventArgs.Empty);
+				}
+			}
+		};
 	}
 }

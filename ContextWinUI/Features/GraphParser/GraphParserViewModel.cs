@@ -16,6 +16,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
+using ContextWinUI.Features.ContextBuilder;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
 
@@ -31,6 +32,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	private readonly IBlockEditorService _blockEditorService;
 	private readonly IFileSegmentsViewModelFactory _vmFactory;
 	private readonly IPreviewManager _previewManager;
+	private readonly ContextSelectionViewModel _contextSelection;
 
 	private string _rootPath;
 
@@ -68,7 +70,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IBlockLoaderService blockLoaderService,
 		IBlockEditorService blockEditorService,
 		IPreviewManager previewManager,
-		IFileSegmentsViewModelFactory vmFactory)
+		IFileSegmentsViewModelFactory vmFactory,
+		ContextSelectionViewModel contextSelection)
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -80,6 +83,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_blockEditorService = blockEditorService;
 		_previewManager = previewManager;
 		_vmFactory = vmFactory;
+		_contextSelection = contextSelection;
 
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
@@ -145,6 +149,11 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		var newTab = _vmFactory.Create(path);
 		newTab.IsPreview = false;
+
+		// --- ALTERAÇÃO: Assinando o evento de seleção ---
+		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(path);
+		// -----------------------------------------------
+
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
@@ -172,6 +181,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		var newTab = _vmFactory.Create(path);
 		newTab.IsPreview = true;
+		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(path);
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
@@ -452,8 +462,30 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
 		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
+
+		// --- ALTERAÇÃO: Assinando o evento de seleção ---
+		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(fullPath);
+		// -----------------------------------------------
+
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
+	}
+
+	private void RequestFileCheckInTree(string filePath)
+	{
+		// AQUI entra a lógica para comunicar com seu serviço de seleção de arquivos.
+		// Como você mencionou que tem um "sistema de seleção de múltiplos arquivos",
+		// você deve chamar o método que marca o CheckBox daquele arquivo.
+
+		// Exemplo (adapte conforme seu FileTreeViewModel ou SelectionService):
+		// _selectionService.MarkFileAsChecked(filePath);
+
+		System.Diagnostics.Debug.WriteLine($"[AutoSelect] Bloco selecionado -> Marcando arquivo: {Path.GetFileName(filePath)}");
+		
+		if (!string.IsNullOrEmpty(filePath))
+		{
+			_contextSelection.ProcessPaths(new[] { filePath });
+		}
 	}
 
 	[RelayCommand]

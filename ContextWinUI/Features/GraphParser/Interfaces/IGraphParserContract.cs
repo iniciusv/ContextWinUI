@@ -15,7 +15,7 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 /// 1. Gerenciamento de abas (arquivos, previews temporários e previews de IA)
 /// 2. Busca semântica no projeto (grafo de símbolos)
 /// 3. Versionamento global compartilhado entre abas
-/// 4. Integração com IA (smart paste, merge de código)
+/// 4. Integração com IA (smart paste, merge de código, exportação de contexto)
 /// 5. Navegação e abertura de arquivos
 /// </summary>
 public interface IGraphParserContract
@@ -64,6 +64,17 @@ public interface IGraphParserContract
 	/// </remarks>
 	Task PasteAndMergeFromClipboard();
 
+	/// <summary>
+	/// Coleta o contexto de código das abas abertas e copia para a área de transferência.
+	/// </summary>
+	/// <remarks>
+	/// Lógica Inteligente:
+	/// 1. Se um arquivo tiver blocos selecionados (azuis), copia APENAS esses blocos.
+	/// 2. Se nenhum bloco estiver selecionado, copia o arquivo INTEIRO.
+	/// 3. Formata a saída com delimitadores claros para envio à IA.
+	/// </remarks>
+	void CopyContextToClipboard();
+
 	/// <summary>Busca arquivos e símbolos no projeto com base na query</summary>
 	/// <param name="query">Texto para busca</param>
 	/// <remarks>
@@ -72,8 +83,6 @@ public interface IGraphParserContract
 	/// 2. Sistema de arquivos (fallback quando grafo não disponível)
 	/// </remarks>
 	void UpdateSearch(string query);
-
-
 
 	/// <summary>
 	/// Abre o arquivo de forma PERMANENTE (Fixa).
