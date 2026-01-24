@@ -124,6 +124,7 @@ public partial class CodeBlockItem : ObservableObject
 			DepthLevel = this.DepthLevel,
 			FileExtension = this.FileExtension,
 			TypeDescription = this.TypeDescription,
+            Signature = this.Signature, // Copy signature
 		};
 
 		foreach (var v in this.Versions)
@@ -133,4 +134,6 @@ public partial class CodeBlockItem : ObservableObject
 
 		return newItem;
 	}
+
+    public string StableId => !string.IsNullOrEmpty(Signature) ? Signature : $"{Name}::{DepthLevel}";
 }

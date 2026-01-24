@@ -30,6 +30,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	private readonly IAiCodeMerger _aiMergerService;
 	private readonly IBlockLoaderService _blockLoaderService;
 	private readonly IBlockEditorService _blockEditorService;
+    private readonly IBlockSelectionManager _selectionManager; // NEW
 	private readonly IFileSegmentsViewModelFactory _vmFactory;
 	private readonly IPreviewManager _previewManager;
 	private readonly ContextSelectionViewModel _contextSelection;
@@ -69,6 +70,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IVersionDiffManager diffManager,
 		IBlockLoaderService blockLoaderService,
 		IBlockEditorService blockEditorService,
+        IBlockSelectionManager selectionManager, // NEW
 		IPreviewManager previewManager,
 		IFileSegmentsViewModelFactory vmFactory,
 		ContextSelectionViewModel contextSelection)
@@ -81,6 +83,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_aiMergerService = aiMergerService;
 		_blockLoaderService = blockLoaderService;
 		_blockEditorService = blockEditorService;
+        _selectionManager = selectionManager;
 		_previewManager = previewManager;
 		_vmFactory = vmFactory;
 		_contextSelection = contextSelection;
@@ -457,7 +460,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 					CurrentGlobalIndex,
 					_aiMergerService,
 					_blockLoaderService,
-					_blockEditorService
+					_blockEditorService,
+                    _selectionManager
 				);
 
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();

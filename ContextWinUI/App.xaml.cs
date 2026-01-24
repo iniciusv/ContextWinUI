@@ -11,6 +11,7 @@ using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Features.GraphParser.ViewModels;
+using ContextWinUI.Features.Session; // NEW
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using ContextWinUI.ViewModels.Helpers; // Para FileExplorerOperations
@@ -57,6 +58,7 @@ public partial class App : Application
 		services.AddSingleton<IAiCodeMerger, AiCodeMerger>();
 
 		// 3. LÓGICA
+		services.AddSingleton<IBlockSelectionManager, BlockSelectionService>();
 		services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe
 		services.AddTransient<DependencyTrackerService>(); // Verifique se existe
 		services.AddTransient<IDependencyAnalysisOrchestrator, DependencyAnalysisOrchestrator>(); // Verifique se existe

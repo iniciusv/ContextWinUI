@@ -1,6 +1,7 @@
 using ContextWinUI.Core.Contracts;
 using ContextWinUI.Core.Helpers; // Assumindo onde está CodeCleanupHelper
 using ContextWinUI.Core.Models;
+using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Helpers;
 using ContextWinUI.Models;
 using Microsoft.CodeAnalysis.CSharp;
@@ -20,18 +21,24 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 	private readonly DependencyTrackerService _trackerService;
 	private readonly IFileSystemItemFactory _itemFactory;
 	private readonly IFileSystemService _fileSystemService;
+    private readonly IBlockSelectionManager _blockManager; // NEW
+    private readonly ICodeBlockParserService _parserService; // NEW
 
 
 	public DependencyAnalysisOrchestrator(
 		ISemanticIndexService indexService,
 		DependencyTrackerService trackerService,
 		IFileSystemItemFactory itemFactory,
-		IFileSystemService fileSystemService)
+		IFileSystemService fileSystemService,
+        IBlockSelectionManager blockManager, // NEW
+        ICodeBlockParserService parserService) // NEW
 	{
 		_indexService = indexService;
 		_trackerService = trackerService;
 		_itemFactory = itemFactory;
 		_fileSystemService = fileSystemService;
+        _blockManager = blockManager;
+        _parserService = parserService;
 	}
 
 	/// <summary>
@@ -81,6 +88,35 @@ public class DependencyAnalysisOrchestrator : IDependencyAnalysisOrchestrator
 				}
 			}
 			// ---------------------
+
+            // NEW: Check for selected blocks
+            var selectedBlocks = _blockManager.GetSelectedBlocks(filePath).ToHashSet();
+            bool hasBlockSelection = selectedBlocks.Any();
+
+            if (hasBlockSelection)
+            {
+                // Partial copy
+                sb.AppendLine($"// ARQUIVO: {Path.GetFileName(filePath)} (Recortes Selecionados)");
+                
+                // Parse to find blocks
+                var blocks = await _parserService.ParseFileAsync(filePath, fileContent);
+                
+                // Filter
+                var blocksToExport = blocks
+                    .Where(b => selectedBlocks.Contains(b.StableId))
+                    .OrderBy(b => b.AbsoluteStartPosition) // Ensure order
+                    .ToList();
+
+                foreach (var block in blocksToExport)
+                {
+                    sb.AppendLine(block.Content);
+                    sb.AppendLine();
+                }
+                
+                sb.AppendLine($"\n{new string('-', 40)}\n");
+                continue; // Skip full file logic
+            }
+
 
 			bool isFullFileSelected = group.Any(i => i.Type == FileSystemItemType.File && i.IsChecked);
 

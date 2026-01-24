@@ -24,6 +24,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private readonly IAiCodeMerger _mergerService;
 	private readonly IBlockEditorService _editorService;
 	private readonly IBlockLoaderService _loaderService;
+    private readonly IBlockSelectionManager _selectionManager; // NEW
+
 	public event EventHandler? FileSelectionRequested;
 
 
@@ -86,7 +88,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		int initialGlobalIndex,
 		IAiCodeMerger mergerService,
 		IBlockLoaderService loaderService,
-		IBlockEditorService editorService)
+		IBlockEditorService editorService,
+        IBlockSelectionManager selectionManager) // NEW
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
@@ -99,6 +102,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		_mergerService = mergerService;
 		_editorService = editorService;
 		_loaderService = loaderService;
+        _selectionManager = selectionManager;
 
 		_ = LoadBlocksAsync();
 	}
@@ -149,6 +153,12 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 				{
 					item.InitializeVersions(item.Content);
 				}
+
+                // Initialize selection state from manager
+                if (_selectionManager.IsBlockSelected(FilePath, item.StableId))
+                {
+                    item.IsSelected = true;
+                }
 
 				// --- ALTERAÇÃO AQUI: Listener para sincronizar seleção ---
 				AttachBlockEvents(item);
@@ -430,6 +440,12 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		{
 			if (e.PropertyName == nameof(CodeBlockItem.IsSelected))
 			{
+                // SYNC WITH MANAGER
+                if (block.IsSelected)
+                    _selectionManager.SelectBlock(FilePath, block.StableId);
+                else
+                    _selectionManager.DeselectBlock(FilePath, block.StableId);
+
 				OnPropertyChanged(nameof(HasAnyBlockSelected));
 				if (block.IsSelected)
 				{

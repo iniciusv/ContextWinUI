@@ -22,6 +22,7 @@ public partial class ContextSelectionViewModel : ObservableObject
 	private readonly ISelectionIOService _ioService;
 	private readonly IDependencyAnalysisOrchestrator _orchestrator;
 	private readonly IProjectSessionManager _sessionManager;
+    private readonly IBlockSelectionManager _blockManager; // NEW
 
 	[ObservableProperty]
 	private ObservableCollection<FileSystemItem> selectedItemsList = new();
@@ -41,12 +42,14 @@ public partial class ContextSelectionViewModel : ObservableObject
 				IFileSystemItemFactory itemFactory,
 				ISelectionIOService ioService,
 				IDependencyAnalysisOrchestrator orchestrator,
-				IProjectSessionManager sessionManager)
+				IProjectSessionManager sessionManager,
+                IBlockSelectionManager blockManager) // NEW
 	{
 		_itemFactory = itemFactory;
 		_ioService = ioService;
 		_orchestrator = orchestrator;
 		_sessionManager = sessionManager;
+        _blockManager = blockManager;
 
 		// Quando a lista original mudar, atualizamos a lista de exibição
 		SelectedItemsList.CollectionChanged += (s, e) =>
@@ -89,6 +92,7 @@ public partial class ContextSelectionViewModel : ObservableObject
 		}
 
 		SelectedItemsList.Clear();
+        _blockManager.ClearAllSelections(); // NEW
 	}
 
 	public IEnumerable<FileSystemItem> GetCheckedFiles()
@@ -102,6 +106,20 @@ public partial class ContextSelectionViewModel : ObservableObject
 		if (!SelectedItemsList.Any()) return;
 
 		var paths = SelectedItemsList.Select(x => x.FullPath).ToList();
+        
+        // Append selected blocks
+        var allSelectedBlocks = _blockManager.GetAllSelectedBlocks();
+        foreach (var kvp in allSelectedBlocks)
+        {
+            if (paths.Contains(kvp.Key)) // Only if file is still selected
+            {
+                foreach (var blockId in kvp.Value)
+                {
+                    paths.Add($"{kvp.Key}::{blockId}");
+                }
+            }
+        }
+
 		await _ioService.SaveSelectionAsync(paths);
 	}
 
@@ -149,10 +167,35 @@ public partial class ContextSelectionViewModel : ObservableObject
 	{
 		if (paths == null) return;
 
+        // Separate blocks from files
+        var filePaths = new HashSet<string>();
+        var blockSelections = new List<(string FilePath, string BlockId)>();
+
+        foreach (var p in paths)
+        {
+            if (p.Contains("::"))
+            {
+                var parts = p.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    string filePath = parts[0];
+                    string blockId = parts[1];
+                    blockSelections.Add((filePath, blockId));
+                    // Also ensure file is added
+                    if (!filePaths.Contains(filePath)) filePaths.Add(filePath);
+                }
+            }
+            else
+            {
+                if (!filePaths.Contains(p)) filePaths.Add(p);
+            }
+        }
+
 		// Obter o caminho raiz do projeto atual
 		string? projectRoot = _sessionManager.CurrentProjectPath;
 
-		foreach (var path in paths)
+        // Process files first
+		foreach (var path in filePaths)
 		{
 			string? resolvedPath = null;
 
@@ -229,6 +272,26 @@ public partial class ContextSelectionViewModel : ObservableObject
 				System.Diagnostics.Debug.WriteLine($"Arquivo não encontrado: {path}");
 			}
 		}
+
+        // Now populate blocks
+        foreach (var (filePath, blockId) in blockSelections)
+        {
+             // We need to resolveFilePath again if it was relative? 
+             // Ideally we reused the resolved map, but simply trusting exact match or filename match if simplified
+             // For robustness let's rely on Manager having the path matching what the file system has.
+             // If we resolved 'foo.cs' to 'c:\...\foo.cs', we need to register 'c:\...\foo.cs'
+             
+             // Simplification: We only adding to manager if file exists on disk as checked above.
+             // We can assume user uses absolute paths usually or we resolved them.
+             // To be safe, re-resolve or use the logic above.
+             
+             // Let's just try to find the item in SelectedItemsList to get the resolved full path
+             var existingItem = SelectedItemsList.FirstOrDefault(i => i.FullPath.EndsWith(Path.GetFileName(filePath)));
+             if (existingItem != null)
+             {
+                 _blockManager.SelectBlock(existingItem.FullPath, blockId);
+             }
+        }
 	}
 
 	[RelayCommand]
