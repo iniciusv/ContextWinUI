@@ -1,5 +1,6 @@
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Features.GraphParser.Views.Components;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -71,14 +72,6 @@ namespace ContextWinUI.Features.GraphParser
 
 		#region Editor Interaction
 
-		private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
-		{
-			// Define o bloco selecionado ao clicar na linha
-			if ((sender as FrameworkElement)?.DataContext is SegmentRowViewModel row && ViewModel != null)
-			{
-				ViewModel.SelectedBlock = row.Current;
-			}
-		}
 
 		private void OnSegmentSaveRequested(object sender, EventArgs e)
 		{
@@ -142,6 +135,30 @@ namespace ContextWinUI.Features.GraphParser
 		}
 
 		#endregion
+		private void OnMetadataPointerEntered(object sender, PointerRoutedEventArgs e)
+		{
+			// TRUQUE: Ao invés de tentar mudar o cursor do 'sender' (que é protegido),
+			// mudamos o cursor da própria classe 'FileSegmentsView' (this).
+			// Como FileSegmentsView herda de UIElement, ela tem acesso à SUA PRÓPRIA propriedade protegida.
+			this.ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
+		}
 
+		private void OnMetadataPointerExited(object sender, PointerRoutedEventArgs e)
+		{
+			// Quando o mouse sai da área azul, voltamos o cursor da View para o padrão (null = seta).
+			this.ProtectedCursor = null;
+		}
+
+		// Seu método de clique existente continua igual
+		private void OnBlockPointerPressed(object sender, PointerRoutedEventArgs e)
+		{
+			if ((sender as FrameworkElement)?.DataContext is SegmentRowViewModel row && ViewModel != null)
+			{
+				ViewModel.SelectedBlock = row.Current;
+
+				// Alterna a seleção (Toggle)
+				row.Current.IsSelected = !row.Current.IsSelected;
+			}
+		}
 	}
 }

@@ -17,6 +17,9 @@ public partial class CodeBlockItem : ObservableObject
 	[ObservableProperty]
 	private string typeDescription = string.Empty;
 
+	[ObservableProperty]
+	private bool isSelected;
+
 	public SymbolType SymbolType { get; set; }
 	public SegmentType SegmentType { get; set; }
 

@@ -1,12 +1,11 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
 using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Models;
-using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Services;
+using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -14,6 +13,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -21,9 +21,6 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class GraphParserViewModel : ObservableObject, IGraphParserContract
 {
-	// =================================================================================
-	// 1. DEPENDÊNCIAS (Injetadas via Construtor)
-	// =================================================================================
 	private readonly ISemanticIndexService _indexService;
 	private readonly IFileSystemService _fileSystemService;
 	private readonly ICodeBlockParserService _parserService;
@@ -32,9 +29,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	private readonly IAiCodeMerger _aiMergerService;
 	private readonly IBlockLoaderService _blockLoaderService;
 	private readonly IBlockEditorService _blockEditorService;
-
 	private readonly IFileSegmentsViewModelFactory _vmFactory;
-
 	private readonly IPreviewManager _previewManager;
 
 	private string _rootPath;
@@ -57,16 +52,11 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	public event EventHandler<int>? CurrentGlobalIndexChanged;
 
 	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.HasAnyUnsavedChanges);
-
-
 	public bool HasTabs => Tabs.Any();
 
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
 	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
 
-	// =================================================================================
-	// 3. CONSTRUTOR
-	// =================================================================================
 	public GraphParserViewModel(
 		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
@@ -80,7 +70,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IPreviewManager previewManager,
 		IFileSegmentsViewModelFactory vmFactory)
 	{
-		// Injeção
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
@@ -93,17 +82,45 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_vmFactory = vmFactory;
 
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
-
-		// Configuração de Eventos
 		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
 
-		// Monitora adições/remoções para atualizar UI e conectar eventos
 		Tabs.CollectionChanged += OnTabsCollectionChanged;
-
 		InitializeGlobalHistory();
-
 		_previewManager.Start(this);
 	}
+
+	// --- NOVO MÉTODO: Copiar Contexto Inteligente ---
+	[RelayCommand]
+	public void CopyContextToClipboard()
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine("Here is the relevant code context:\n");
+		int fileCount = 0;
+
+		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
+		{
+			// O GetExportContent já cuida da lógica: 
+			// Se tiver blocos selecionados -> retorna parcial
+			// Se não tiver -> retorna tudo
+			string content = tab.GetExportContent();
+
+			if (!string.IsNullOrWhiteSpace(content))
+			{
+				sb.AppendLine("--------------------------------------------------");
+				sb.AppendLine(content);
+				fileCount++;
+			}
+		}
+
+		if (fileCount > 0)
+		{
+			var dataPackage = new DataPackage();
+			dataPackage.SetText(sb.ToString());
+			Clipboard.SetContent(dataPackage);
+			Debug.WriteLine($"Contexto copiado! {fileCount} arquivos processados.");
+		}
+	}
+	// ------------------------------------------------
 
 	[RelayCommand]
 	public void OpenAsPermanent(object parameter)
@@ -113,17 +130,12 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		path = NormalizePath(path);
 
-		// 1. Verifica se a aba já existe na coleção
 		var existingTab = Tabs.OfType<FileSegmentsViewModel>()
 							  .FirstOrDefault(t => t.FilePath == path);
 
 		if (existingTab != null)
 		{
 			SelectedTab = existingTab;
-
-			// A MÁGICA DA PROMOÇÃO:
-			// Se a aba encontrada era um Preview, o usuário acabou de confirmar
-			// que quer mantê-la (clique duplo). Removemos a flag de preview.
 			if (existingTab.IsPreview)
 			{
 				existingTab.IsPreview = false;
@@ -131,19 +143,15 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			return;
 		}
 
-		// 2. Se não existe, cria uma nova aba FIXA.
 		var newTab = _vmFactory.Create(path);
-		newTab.IsPreview = false; // Garante explicitamente que é permanente
-
+		newTab.IsPreview = false;
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
 
-
 	public void OpenAsPreview(string path)
 	{
 		if (string.IsNullOrEmpty(path)) return;
-
 		path = NormalizePath(path);
 
 		var existingTab = Tabs.OfType<FileSegmentsViewModel>()
@@ -157,32 +165,19 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		var oldPreview = Tabs.OfType<FileSegmentsViewModel>()
 							 .FirstOrDefault(t => t.IsPreview);
-
 		if (oldPreview != null)
 		{
 			Tabs.Remove(oldPreview);
 		}
 
-		// 3. Criação: Gera a nova aba e marca como Preview.
 		var newTab = _vmFactory.Create(path);
 		newTab.IsPreview = true;
-
-		// 4. Auto-Promoção: Se o usuário editar o código nesta aba de preview,
-		// ela deve se tornar permanente automaticamente para não perder dados.
-
-
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
 
-
-	// =================================================================================
-	// HELPERS PRIVADOS (Necessários para os métodos acima funcionarem)
-	// =================================================================================
-
 	private string NormalizePath(string path)
 	{
-		// Garante que o caminho seja absoluto para comparação correta
 		if (!Path.IsPathRooted(path) && !string.IsNullOrEmpty(_rootPath))
 			return Path.Combine(_rootPath, path);
 		return path;
@@ -190,7 +185,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 	private string? ExtractPath(object parameter)
 	{
-		// Extrai string do CommandParameter (que pode vir da Busca ou String direta)
 		if (parameter is SearchSuggestion s) return s.FilePath;
 		if (parameter is string p) return p;
 		return null;
@@ -198,36 +192,24 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 	private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
 	{
-		// Atualiza a propriedade HasTabs para a UI
 		OnPropertyChanged(nameof(HasTabs));
-
-		// Aqui conectaríamos os eventos globais (Save/Restore) para as novas abas
-		// Omitido para brevidade, mas essencial na implementação real.
 	}
-
 
 	private void InitializeGlobalHistory()
 	{
 		GlobalHistory.Clear();
-
-		// Estado 0: Original do Git (Passado)
 		GlobalHistory.Add(new GlobalVersion
 		{
 			Description = "Base (Git HEAD)",
 			IsOriginal = true,
-			Timestamp = DateTime.MinValue // Garante que pega apenas versões marcadas como originais
+			Timestamp = DateTime.MinValue
 		});
-
-		// Estado 1: Trabalho em Andamento (Presente)
 		GlobalHistory.Add(new GlobalVersion
 		{
 			Description = "Atual (Working Copy)",
 			IsOriginal = false,
-			// Usamos MaxValue para garantir que este estado "capture" qualquer edição feita agora ou no futuro
 			Timestamp = DateTime.MaxValue
 		});
-
-		// Define o índice padrão para 1 (O estado Atual)
 		CurrentGlobalIndex = 1;
 	}
 
@@ -242,7 +224,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		var batchTime = DateTime.Now;
 		string batchTimestamp = batchTime.ToString("HH:mm:ss");
 		string description = $"Lote {batchTimestamp}";
-
 		bool anyChange = false;
 
 		var newGlobalVersion = new GlobalVersion
@@ -251,9 +232,9 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			Timestamp = batchTime,
 			IsOriginal = false
 		};
+
 		GlobalHistory.Add(newGlobalVersion);
 
-		// Filtramos apenas as abas de arquivo, ignorando previews de IA
 		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
 			if (tab.HasAnyUnsavedChanges)
@@ -269,8 +250,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		}
 
 		CurrentGlobalIndex = GlobalHistory.Count - 1;
-
-		// Sincroniza apenas abas de arquivo
 		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
 			tab.SyncGlobalIndex(CurrentGlobalIndex);
@@ -282,19 +261,16 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		if (versionIndex < 0 || versionIndex >= GlobalHistory.Count) return;
 
 		Debug.WriteLine($"Restaurando todas as abas para versão global: {versionIndex}");
-
 		if (CurrentGlobalIndex != versionIndex)
 		{
 			CurrentGlobalIndex = versionIndex;
 		}
 
-		// Restaura apenas abas de arquivo
 		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
 		{
 			tab.RestoreToGlobalIndex(versionIndex);
 		}
 	}
-
 
 	private void OnProjectLoaded(object? sender, ProjectLoadedEventArgs e)
 	{
@@ -332,15 +308,9 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			}
 
 			string snippetText = await dataPackageView.GetTextAsync();
-
-			// 1. Executa a análise no serviço (in-memory merge)
 			var result = await _aiMergerService.MergeAiSnippetAsync(snippetText);
 
-			// 2. Cria a ViewModel de Preview usando o namespace IAParser
-			// Note: AiPreviewViewModel precisa existir e aceitar (AiMergeResult, GraphParserViewModel)
 			var previewVm = new AiPreviewViewModel(result, this);
-
-			// 3. Abre a aba de preview
 			Tabs.Add(previewVm);
 			SelectedTab = previewVm;
 		}
@@ -380,7 +350,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 				try
 				{
 					if (string.IsNullOrEmpty(fileGroup.Key)) continue;
-
 					var fileName = Path.GetFileName(fileGroup.Key);
 					string filePath = fileGroup.Key;
 
@@ -461,7 +430,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		string fullPath = Path.IsPathRooted(path) ? path : Path.Combine(_rootPath, path);
 
-		// Verifica se a aba já existe (somente entre as FileSegmentsViewModel)
 		var existingTab = Tabs.OfType<FileSegmentsViewModel>().FirstOrDefault(t => t.FilePath == fullPath);
 		if (existingTab != null)
 		{
@@ -484,7 +452,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
 		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
-
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
@@ -497,5 +464,4 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			Tabs.Remove(tab);
 		}
 	}
-
 }

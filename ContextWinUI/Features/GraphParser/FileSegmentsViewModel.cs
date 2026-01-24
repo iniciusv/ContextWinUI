@@ -1,11 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextWinUI.Core.Contracts;
-using ContextWinUI.Core.Models;
 using ContextWinUI.Features.GraphParser.IAParser;
+using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Models;
-using ContextWinUI.Features.GraphParser.Services;
-using Microsoft.UI.Xaml; // Para GridLength
+using Microsoft.UI.Xaml;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,7 +17,6 @@ namespace ContextWinUI.Features.GraphParser.ViewModels;
 
 public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsContract
 {
-	// --- Dependências Injetadas ---
 	private readonly IFileSystemService _fileSystemService;
 	private readonly ICodeBlockParserService _parserService;
 	private readonly ISymbolResolutionService _symbolService;
@@ -27,8 +25,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private readonly IBlockEditorService _editorService;
 	private readonly IBlockLoaderService _loaderService;
 
-
-	// --- Propriedades Básicas ---
 	public string FilePath { get; }
 	public string FileName { get; }
 
@@ -71,15 +67,13 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	[ObservableProperty]
 	private bool isPreview;
 
-	// Propriedades Computadas Simples
 	public bool HasSelectedBlock => SelectedBlock != null;
 	public bool HasAnyUnsavedChanges => Rows.Any(r => r.Current.HasUnsavedChanges);
+	public bool HasAnyBlockSelected => Rows.Any(r => r.Current.IsSelected);
 
-	// Eventos
 	public event EventHandler? GlobalSaveRequested;
 	public event EventHandler<int>? GlobalRestoreRequested;
 
-	// --- Construtor ---
 	public FileSegmentsViewModel(
 		string filePath,
 		IFileSystemService fileSystemService,
@@ -110,7 +104,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	partial void OnIsComparisonModeChanged(bool value)
 	{
 		LeftColumnWidth = value ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-
 		if (value)
 		{
 			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
@@ -127,7 +120,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		if (IsComparisonMode)
 		{
 			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, value);
-
 			if (HideUnchangedBlocks)
 				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 		}
@@ -141,26 +133,33 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private async Task LoadBlocksAsync()
 	{
 		IsLoading = true;
-
 		SelectedBlock = null;
-
 		try
 		{
 			var items = await _loaderService.LoadAndProcessFileAsync(FilePath);
-
 			var bufferList = new List<SegmentRowViewModel>(items.Count);
 
 			foreach (var item in items)
 			{
-
 				if (item.HasUnsavedChanges)
 				{
 					item.InitializeVersions(item.Content);
 				}
 
+				// --- ADIÇÃO: Listener para saber quando um checkbox muda ---
+				item.PropertyChanged += (s, e) =>
+				{
+					if (e.PropertyName == nameof(CodeBlockItem.IsSelected))
+					{
+						OnPropertyChanged(nameof(HasAnyBlockSelected));
+						// Aqui você poderia chamar um serviço para marcar o arquivo pai como selecionado
+						// ex: _selectionService.MarkFile(FilePath);
+					}
+				};
+				// -----------------------------------------------------------
+
 				bufferList.Add(new SegmentRowViewModel(item));
 			}
-
 
 			Rows = new ObservableCollection<SegmentRowViewModel>(bufferList);
 
@@ -170,7 +169,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			}
 
 			RestoreToGlobalIndex(CurrentGlobalIndex);
-
 			NotifyUnsavedChanges();
 
 			if (IsComparisonMode)
@@ -182,14 +180,14 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		catch (Exception ex)
 		{
 			Rows = new ObservableCollection<SegmentRowViewModel>
-		{
-			new SegmentRowViewModel(new CodeBlockItem
 			{
-				Name = "Erro",
-				Content = ex.Message,
-				SegmentType = SegmentType.Trivia
-			})
-		};
+				new SegmentRowViewModel(new CodeBlockItem
+				{
+					Name = "Erro",
+					Content = ex.Message,
+					SegmentType = SegmentType.Trivia
+				})
+			};
 		}
 		finally
 		{
@@ -198,13 +196,39 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		}
 	}
 
+	// --- NOVO MÉTODO: Lógica de Exportação ---
+	public string GetExportContent()
+	{
+		// Regra 1: Se houver blocos específicos selecionados, exporta SÓ ELES.
+		var selectedRows = Rows.Where(r => r.Current.IsSelected).ToList();
+
+		if (selectedRows.Any())
+		{
+			var sb = new StringBuilder();
+			sb.AppendLine($"// File: {FileName} (Partial Selection)");
+			foreach (var row in selectedRows)
+			{
+				sb.AppendLine(row.Current.Content);
+			}
+			return sb.ToString();
+		}
+
+		// Regra 2: Se NENHUM bloco estiver selecionado, exporta o ARQUIVO TODO.
+		var fullSb = new StringBuilder();
+		fullSb.AppendLine($"// File: {FileName} (Full Content)");
+		foreach (var row in Rows)
+		{
+			fullSb.Append(row.Current.Content);
+		}
+		return fullSb.ToString();
+	}
+	// -----------------------------------------
+
 	[RelayCommand]
 	public void AddSiblingBlock(CodeBlockItem? referenceBlock)
 	{
 		if (referenceBlock == null) return;
-
 		var newBlock = _editorService.AddSiblingBlock(Rows, referenceBlock);
-
 		if (newBlock != null)
 		{
 			SelectedBlock = newBlock;
@@ -217,11 +241,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	public void DeleteBlock(CodeBlockItem? block)
 	{
 		if (block == null) return;
-
 		UpdateSelectionBeforeDelete(block);
-
 		_editorService.DeleteBlock(Rows, block);
-
 		NotifyUnsavedChanges();
 		RefreshDiffVisibility();
 	}
@@ -230,7 +251,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	public void LinkBlocks(Tuple<CodeBlockItem, CodeBlockItem> items)
 	{
 		_editorService.LinkBlocks(Rows, items.Item1, items.Item2);
-
 		NotifyUnsavedChanges();
 		RefreshDiffVisibility();
 	}
@@ -239,10 +259,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	public void RevertBlockToOriginal(CodeBlockItem? currentBlock)
 	{
 		if (currentBlock == null) return;
-
-		// Delega para o serviço (que retorna true se algo mudou)
 		bool changed = _editorService.RevertBlockToOriginal(currentBlock);
-
 		if (changed)
 		{
 			NotifyUnsavedChanges();
@@ -270,10 +287,9 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		{
 			var row = Rows.FirstOrDefault(r => r.Current == blockToDelete);
 			if (row == null) return;
-
 			int idx = Rows.IndexOf(row);
 			if (idx > 0) SelectedBlock = Rows[idx - 1].Current;
-			else if (Rows.Count > 1) SelectedBlock = Rows[idx + 1].Current; // Pega o próximo já que o atual vai mudar/sumir
+			else if (Rows.Count > 1) SelectedBlock = Rows[idx + 1].Current;
 			else SelectedBlock = null;
 		}
 	}
@@ -283,7 +299,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		if (mode == "NewVersion")
 		{
-			TriggerGlobalSave(); // Delega para o Pai criar versão global
+			TriggerGlobalSave();
 		}
 		else if (mode == "Overwrite")
 		{
@@ -292,12 +308,9 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 				var block = row.Current;
 				if (block.HasUnsavedChanges && block.Versions.Any())
 				{
-					// Sobrescreve a versão atual na memória (timestamp update)
 					var currentVer = block.Versions[block.CurrentVersionIndex];
 					currentVer.Content = block.Content;
 					currentVer.Timestamp = DateTime.Now;
-
-					// Reseta o estado de "não salvo"
 					block.RestoreVersion(block.CurrentVersionIndex);
 				}
 			}
@@ -312,10 +325,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		if (GlobalHistory == null || globalIndex < 0 || globalIndex >= GlobalHistory.Count) return;
 		CurrentGlobalIndex = globalIndex;
-
-		// Delega o cálculo complexo de timestamps e versões
 		_diffManager.RestoreBlocksToGlobalVersion(Rows, GlobalHistory[globalIndex]);
-
 		OnPropertyChanged(nameof(HasAnyUnsavedChanges));
 		if (IsComparisonMode) _diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
 	}
@@ -338,11 +348,12 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 
 	public void SyncGlobalIndex(int index) => SetProperty(ref currentGlobalIndex, index, nameof(CurrentGlobalIndex));
 	partial void OnCurrentGlobalIndexChanged(int value) => GlobalRestoreRequested?.Invoke(this, value);
+
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
+
 	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
 	{
 		if (SelectedBlock == null) return;
-
 		string text = SelectedBlock.Content;
 
 		if (cursorIndexInBlock > text.Length)
@@ -354,26 +365,27 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			SelectedBlock.AbsoluteStartPosition,
 			FilePath
 		);
-
 		CurrentSymbolInfo = result ?? string.Empty;
 	}
 
 	public async Task ApplyAiSuggestion(string aiCode)
 	{
 		var result = await _mergerService.MergeAiSnippetAsync(aiCode);
-
 		if (result.Success && this.FilePath == result.FilePath)
 		{
-			// Atualiza a UI na Thread Principal
 			_ = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
 			{
 				this.Rows.Clear();
 				foreach (var block in result.MergedBlocks)
 				{
+					// Re-attach listener
+					block.PropertyChanged += (s, e) =>
+					{
+						if (e.PropertyName == nameof(CodeBlockItem.IsSelected)) OnPropertyChanged(nameof(HasAnyBlockSelected));
+					};
 					this.Rows.Add(new SegmentRowViewModel(block));
 				}
 				NotifyUnsavedChanges();
-
 				if (IsComparisonMode)
 					_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 			});
@@ -382,41 +394,37 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 
 	public void ApplyExternalMerge(List<CodeBlockItem> mergedBlocks)
 	{
-		// Executa na thread de UI para garantir segurança
 		_ = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
 		{
 			Rows.Clear();
 			foreach (var block in mergedBlocks)
 			{
+				block.PropertyChanged += (s, e) =>
+				{
+					if (e.PropertyName == nameof(CodeBlockItem.IsSelected)) OnPropertyChanged(nameof(HasAnyBlockSelected));
+				};
 				Rows.Add(new SegmentRowViewModel(block));
 			}
-
-			// Marca que houve alteração para a UI reagir (ícones de disquete, diff, etc)
 			NotifyUnsavedChanges();
-
-			// Se estiver no modo de comparação, atualiza a visualização
 			if (IsComparisonMode)
 			{
 				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 			}
 		});
 	}
+
 	public async Task SaveToDiskAsync()
 	{
 		try
 		{
 			IsLoading = true;
-
 			var sb = new StringBuilder();
 			foreach (var row in Rows)
 			{
-				// Apenas pega o conteúdo do bloco atual
 				sb.Append(row.Current.Content);
 			}
 
-			// Usa o serviço injetado, não "ViewModel._fileSystemService"
 			await _fileSystemService.SaveFileContentAsync(FilePath, sb.ToString());
-
 			TriggerGlobalSave();
 		}
 		catch (Exception ex)

@@ -16,6 +16,8 @@
 		<converters:BoolToVisibilityConverter x:Key="BoolToVis" />
 		<converters:BoolToVisibilityConverter x:Key="ReverseBoolToVis" TrueValue="Collapsed" FalseValue="Visible"/>
 		<localConverters:LineCountToVisibilityConverter x:Key="LineCountToVis" />
+
+		<localConverters:BoolToSelectionBrushConverter x:Key="SelectionBrushConverter"/>
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
@@ -90,12 +92,14 @@
 						</Grid>
 
 						<Grid Grid.Column="1" 
-                              Background="{ThemeResource LayerFillColorAltBrush}" 
                               Padding="8,0" 
                               BorderThickness="0,0,1,0" 
                               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                              ToolTipService.ToolTip="{x:Bind Current.Name}"
-                              PointerPressed="OnBlockPointerPressed">
+                              ToolTipService.ToolTip="Clique para selecionar/deselecionar este bloco"
+                              PointerPressed="OnBlockPointerPressed"
+                              PointerEntered="OnMetadataPointerEntered"
+                              PointerExited="OnMetadataPointerExited"
+                              Background="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource SelectionBrushConverter}}">
 
 							<Grid.ContextFlyout>
 								<MenuFlyout>
@@ -119,17 +123,18 @@
 								</MenuFlyout>
 							</Grid.ContextFlyout>
 
-							<Rectangle x:Name="SelectionIndicator"
-                                       Fill="{ThemeResource SystemAccentColor}"
-                                       Width="3" HorizontalAlignment="Left" Visibility="Collapsed"
-                                       Canvas.ZIndex="10"
+							<Rectangle HorizontalAlignment="Left" Width="4" VerticalAlignment="Stretch" 
+                                       Fill="{ThemeResource SystemAccentColor}" 
+                                       Visibility="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                                        Margin="-8,0,0,0"/>
 
 							<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
                                        Fill="{x:Bind ext:CodeBlockUiExtensions.GetHeaderBrush(Current)}" 
-                                       Margin="-8,0,0,0"/>
+                                       Margin="-4,0,0,0"
+                                       Visibility="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource ReverseBoolToVis}}"/>
 
-							<StackPanel Orientation="Vertical" Spacing="4" VerticalAlignment="Center" Opacity="0.9">
+							<StackPanel Orientation="Vertical" Spacing="4" VerticalAlignment="Center" Opacity="1.0">
+
 								<FontIcon Glyph="&#xE81C;" FontSize="10" Foreground="Orange"
                                           HorizontalAlignment="Left"
                                           Visibility="{x:Bind Current.HasUnsavedChanges, Converter={StaticResource BoolToVis}}"/>
@@ -164,7 +169,6 @@
                               BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                               BorderThickness="0,0,1,0"
                               PointerPressed="OnBlockPointerPressed">
-
 							<components:SegmentCodeViewer 
                                     x:Name="CodeEditor"
                                     Text="{x:Bind Current.Content, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
