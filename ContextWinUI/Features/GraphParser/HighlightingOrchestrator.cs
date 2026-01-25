@@ -6,7 +6,7 @@ using ContextWinUI.Features.CodeEditor.Highlight;
 using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Helpers;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Classification;
+// using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.UI;
@@ -43,21 +43,24 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 	{
 		if (string.IsNullOrEmpty(text)) return;
 
-		var (syntaxSpans, diffSpans) = await Task.Run(() =>
+		// Inicia as tarefas de calculo em paralelo
+		var syntaxTask = _fastEditorService.CalculateHighlightsAsync(text, isDarkTheme);
+		
+		var diffTask = Task.Run(() =>
 		{
-
-			var syntax = GetSyntaxHighlights(text, isDarkTheme);
-
-			var diffs = new List<TextSpan>();
 			if (!string.IsNullOrEmpty(originalContent) && originalContent != text)
 			{
-				diffs = GetSemanticDiffSpans(originalContent, text);
+				return GetSemanticDiffSpans(originalContent, text);
 			}
-
-			return (syntax, diffs);
+			return new List<TextSpan>();
 		}, token);
 
+		await Task.WhenAll(syntaxTask, diffTask);
+
 		if (token.IsCancellationRequested) return;
+
+		var syntaxSpans = syntaxTask.Result;
+		var diffSpans = diffTask.Result;
 
 		var document = editor.Document;
 		document.BatchDisplayUpdates();
@@ -70,7 +73,7 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 			fullRange.CharacterFormat.BackgroundColor = Colors.Transparent; // Limpa highlights antigos
 			fullRange.CharacterFormat.Bold = FormatEffect.Off;
 
-			// Passo 1: Aplicar Cores de Sintaxe
+			// Passo 1: Aplicar Cores de Sintaxe (Fast Editor)
 			foreach (var span in syntaxSpans)
 			{
 				if (span.Start + span.Length > text.Length) continue;
@@ -93,9 +96,6 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 
 				// Aplica cor de fundo para destacar a mudança
 				range.CharacterFormat.BackgroundColor = diffColor;
-
-				// Opcional: Negrito para chamar mais atenção
-				// range.CharacterFormat.Bold = FormatEffect.On; 
 			}
 		}
 		catch (Exception ex)
@@ -105,60 +105,6 @@ public class HighlightingOrchestrator : IHighlightingOrchestrator
 		finally
 		{
 			document.ApplyDisplayUpdates();
-		}
-	}
-
-	private List<HighlightSpan> GetSyntaxHighlights(string text, bool isDark)
-	{
-		var spans = new List<HighlightSpan>();
-		var tree = CSharpSyntaxTree.ParseText(text);
-		var root = tree.GetRoot();
-
-		// Usamos o Classifier do Workspace para pegar tipos de token
-		// Nota: Em um app real, seria ideal reutilizar o Workspace/Solution, 
-		// mas aqui criamos um ad-hoc para o bloco.
-		var workspace = new AdhocWorkspace();
-		var project = workspace.AddProject("TempProject", LanguageNames.CSharp);
-		var document = project.AddDocument("TempFile.cs", text);
-
-		// Pega as classificações (Keyword, String, ClassName, etc)
-		var classifiedSpans = Classifier.GetClassifiedSpansAsync(document, TextSpan.FromBounds(0, text.Length)).Result;
-
-		foreach (var classifiedSpan in classifiedSpans)
-		{
-			Color color = GetColorForClassification(classifiedSpan.ClassificationType, isDark);
-			spans.Add(new HighlightSpan(classifiedSpan.TextSpan.Start, classifiedSpan.TextSpan.Length, color));
-		}
-
-		return spans;
-	}
-
-	private Color GetColorForClassification(string classificationType, bool isDark)
-	{
-		// Mapeamento simples de cores (Hardcoded para exemplo, idealmente viria do ThemeService)
-		if (isDark)
-		{
-			return classificationType switch
-			{
-				"keyword" => Color.FromArgb(255, 86, 156, 214),      // Azul VS
-				"string" => Color.FromArgb(255, 206, 145, 120),      // Laranja Suave
-				"comment" => Color.FromArgb(255, 106, 153, 85),      // Verde
-				"class name" => Color.FromArgb(255, 78, 201, 176),   // Turquesa
-				"method name" => Color.FromArgb(255, 220, 220, 170), // Amarelo Pálido
-				"number" => Color.FromArgb(255, 181, 206, 168),      // Verde Claro
-				_ => Colors.White
-			};
-		}
-		else
-		{
-			return classificationType switch
-			{
-				"keyword" => Colors.Blue,
-				"string" => Colors.Brown,
-				"comment" => Colors.Green,
-				"class name" => Color.FromArgb(255, 43, 145, 175),
-				_ => Colors.Black
-			};
 		}
 	}
 

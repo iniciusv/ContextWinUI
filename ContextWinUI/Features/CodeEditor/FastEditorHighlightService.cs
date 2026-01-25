@@ -83,6 +83,16 @@ namespace ContextWinUI.Services
 						{
 							highlights.Add(new HighlightSpan(token.SpanStart, token.Span.Length, colors.Method));
 						}
+						// [NEW] Propriedades
+						else if (parent is PropertyDeclarationSyntax)
+						{
+							highlights.Add(new HighlightSpan(token.SpanStart, token.Span.Length, colors.Property));
+						}
+						// [NEW] Enum Members
+						else if (parent is EnumMemberDeclarationSyntax)
+						{
+							highlights.Add(new HighlightSpan(token.SpanStart, token.Span.Length, colors.EnumMember));
+						}
 
 						// C. TIPOS E CLASSES (Ex: 'Task', 'List', 'var')
 						// Detecta retorno de métodos: Task Metodo()
@@ -172,7 +182,9 @@ namespace ContextWinUI.Services
 				Class = Color.FromArgb(255, 78, 201, 176),         // #4EC9B0 (Verde Água - Task, RelayCommand)
 				Method = Color.FromArgb(255, 220, 220, 170),       // #DCDCAA (Amarelo - Métodos)
 				Parameter = Color.FromArgb(255, 156, 220, 254),    // #9CDCFE (Azul Claro - Parâmetros)
-				Variable = Color.FromArgb(255, 156, 220, 254)      // #9CDCFE (Azul Claro - Variáveis)
+				Variable = Color.FromArgb(255, 156, 220, 254),     // #9CDCFE (Azul Claro - Variáveis)
+				Property = Color.FromArgb(255, 220, 220, 170),     // #DCDCAA (Amarelo - Propriedades - similar a métodos ou branco) -> VS Code usa branco p/ prop, mas para destacar pode ser útil
+				EnumMember = Color.FromArgb(255, 181, 206, 168)    // #B5CEA8 (Verde Claro - Enum Members)
 			};
 		}
 
@@ -188,7 +200,9 @@ namespace ContextWinUI.Services
 				Class = Color.FromArgb(255, 43, 145, 175),
 				Method = Color.FromArgb(255, 116, 83, 31),
 				Parameter = Color.FromArgb(255, 31, 55, 127),
-				Variable = Color.FromArgb(255, 31, 55, 127)
+				Variable = Color.FromArgb(255, 31, 55, 127),
+				Property = Color.FromArgb(255, 116, 83, 31),
+				EnumMember = Color.FromArgb(255, 9, 136, 90)
 			};
 		}
 
@@ -203,6 +217,8 @@ namespace ContextWinUI.Services
 			public Color Method;
 			public Color Parameter;
 			public Color Variable;
+			public Color Property;
+			public Color EnumMember;
 		}
 
 		// Construtor auxiliar para o HighlightSpan se não existir
