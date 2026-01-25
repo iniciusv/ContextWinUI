@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="ContextWinUI.Views.PrePromptView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,21 +17,21 @@
 		<Grid Grid.Row="0" Margin="16,12">
 			<StackPanel Orientation="Horizontal" Spacing="8">
 				<FontIcon Glyph="&#xE8C4;" FontSize="16"/>
-				<TextBlock Text="Pré-Prompt &amp; Configurações" Style="{StaticResource SubtitleTextBlockStyle}"/>
+				<TextBlock Text="PrÃ©-Prompt &amp; ConfiguraÃ§Ãµes" Style="{StaticResource SubtitleTextBlockStyle}"/>
 			</StackPanel>
 		</Grid>
 
 		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="16,0,16,8">
 			<TextBlock Text="Limpeza:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" Width="70"/>
 			<CheckBox Content="Omitir 'using'" IsChecked="{x:Bind ViewModel.OmitUsings, Mode=TwoWay}" ToolTipService.ToolTip="Remove diretivas using/import"/>
-			<CheckBox Content="Omitir Namespaces" IsChecked="{x:Bind ViewModel.OmitNamespaces, Mode=TwoWay}" ToolTipService.ToolTip="Remove a declaração de namespace"/>
-			<CheckBox Content="Omitir Comentários" IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
+			<CheckBox Content="Omitir Namespaces" IsChecked="{x:Bind ViewModel.OmitNamespaces, Mode=TwoWay}" ToolTipService.ToolTip="Remove a declaraÃ§Ã£o de namespace"/>
+			<CheckBox Content="Omitir ComentÃ¡rios" IsChecked="{x:Bind ViewModel.OmitComments, Mode=TwoWay}"/>
 			<CheckBox Content="Compactar Linhas" IsChecked="{x:Bind ViewModel.OmitEmptyLines, Mode=TwoWay}" ToolTipService.ToolTip="Remove linhas em branco excessivas"/>
 		</StackPanel>
 
 		<StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="24" Margin="16,0,16,16">
 			<TextBlock Text="Estrutura:" VerticalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" Width="70"/>
-			<CheckBox Content="Incluir Árvore de Pastas" IsChecked="{x:Bind ViewModel.IncludeStructure, Mode=TwoWay}"/>
+			<CheckBox Content="Incluir Ãrvore de Pastas" IsChecked="{x:Bind ViewModel.IncludeStructure, Mode=TwoWay}"/>
 			<CheckBox Content="Apenas Pastas (Sem Arquivos)" 
                       IsChecked="{x:Bind ViewModel.StructureOnlyFolders, Mode=TwoWay}"
                       IsEnabled="{x:Bind ViewModel.IncludeStructure, Mode=OneWay}"/>
@@ -43,7 +43,7 @@
 			 AcceptsReturn="True"
 			 TextWrapping="Wrap"
 			 ScrollViewer.VerticalScrollBarVisibility="Auto"
-			 PlaceholderText="Instruções globais..."
+			 PlaceholderText="InstruÃ§Ãµes globais..."
 			 FontFamily="Consolas, Courier New"
 			 CornerRadius="4" BorderThickness="0"/>
 	</Grid>

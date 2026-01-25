@@ -1,4 +1,4 @@
-<UserControl
+ï»¿<UserControl
     x:Class="ContextWinUI.Features.ContextBuilder.ContextSelectionView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -20,13 +20,13 @@
 		</Grid.RowDefinitions>
 
 		<CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent" IsOpen="True">
-			<AppBarButton Icon="Save" Label="Salvar" Command="{x:Bind ViewModel.SaveSelectionListCommand}"/>
-			<AppBarButton Icon="OpenFile" Label="Carregar" Command="{x:Bind ViewModel.LoadSelectionListCommand}"/>
-			<AppBarButton Icon="Paste" Label="Importar" Command="{x:Bind ViewModel.ImportFromTextCommand}" CommandParameter="{x:Bind XamlRoot}"/>
-			<AppBarButton Icon="Clear" Label="Limpar" Command="{x:Bind ViewModel.ClearCommand}"/>
+			<AppBarButton Icon="Save" Label="Save" Command="{x:Bind ViewModel.SaveSelectionListCommand}"/>
+			<AppBarButton Icon="OpenFile" Label="Load" Command="{x:Bind ViewModel.LoadSelectionListCommand}"/>
+			<AppBarButton Icon="Paste" Label="Import" Command="{x:Bind ViewModel.ImportFromTextCommand}" CommandParameter="{x:Bind XamlRoot}"/>
+			<AppBarButton Icon="Clear" Label="Clear" Command="{x:Bind ViewModel.ClearCommand}"/>
 		</CommandBar>
 
-		<TextBlock Grid.Row="1" Text="Itens marcados:" 
+		<TextBlock Grid.Row="1" Text="Selected items:" 
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
                    FontSize="12" Margin="16,4,16,8"/>
 
@@ -84,13 +84,13 @@
 		<StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
                     Visibility="{x:Bind ViewModel.SelectedItemsList.Count, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Invert', Mode=OneWay}">
 			<FontIcon Glyph="&#xE916;" FontSize="32" Foreground="{ThemeResource TextFillColorDisabledBrush}"/>
-			<TextBlock Text="Nenhum item no contexto" Foreground="{ThemeResource TextFillColorDisabledBrush}"/>
+			<TextBlock Text="No items in context" Foreground="{ThemeResource TextFillColorDisabledBrush}"/>
 		</StackPanel>
 
 		<Grid Grid.Row="3" Padding="16,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-			<CheckBox Content="Ocultar subitens (métodos, classes)" 
+			<CheckBox Content="Ocultar subitens (mÃ©todos, classes)" 
                       IsChecked="{x:Bind ViewModel.HideSubItems, Mode=TwoWay}"
-                      ToolTipService.ToolTip="Exibe apenas os arquivos na lista, mas mantém os subitens selecionados para a cópia."/>
+                      ToolTipService.ToolTip="Exibe apenas os arquivos na lista, mas mantÃ©m os subitens selecionados para a cÃ³pia."/>
 		</Grid>
 	</Grid>
 </UserControl>

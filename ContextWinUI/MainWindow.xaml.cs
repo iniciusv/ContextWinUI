@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
 
 		ViewModel = ((App)Application.Current).Services.GetRequiredService<MainViewModel>();
 
-		this.Title = "Context WinUI - Explorador de Código";
+		this.Title = "Context WinUI - Code Explorer";
 
 		if (this.Content is FrameworkElement fe)
 		{

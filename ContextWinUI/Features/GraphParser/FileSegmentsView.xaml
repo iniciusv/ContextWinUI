@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="ContextWinUI.Features.GraphParser.FileSegmentsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -95,7 +95,7 @@
                               Padding="8,0" 
                               BorderThickness="0,0,1,0" 
                               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                              ToolTipService.ToolTip="Clique para selecionar/deselecionar este bloco"
+                              ToolTipService.ToolTip="Click to select/deselect this block"
                               PointerPressed="OnBlockPointerPressed"
                               PointerEntered="OnMetadataPointerEntered"
                               PointerExited="OnMetadataPointerExited"

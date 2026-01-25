@@ -1,4 +1,4 @@
-<UserControl
+ï»¿<UserControl
     x:Class="ContextWinUI.Views.FileContentView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -18,16 +18,16 @@
 			<AppBarButton x:Name="BtnSave" Icon="Save" Label="Salvar" Command="{x:Bind ContentViewModel.SaveContentCommand, Mode=OneWay}" Visibility="Collapsed" />
 			<AppBarButton x:Name="BtnCancel" Icon="Cancel" Label="Cancelar" Click="BtnCancel_Click" Visibility="Collapsed"/>
 			<AppBarSeparator/>
-			<AppBarButton Icon="Setting" Label="Opções de Visualização">
+			<AppBarButton Icon="Setting" Label="OpÃ§Ãµes de VisualizaÃ§Ã£o">
 				<AppBarButton.Flyout>
 					<Flyout>
 						<StackPanel Spacing="10" Width="250">
-							<TextBlock Text="Filtros de Visualização" Style="{StaticResource SubtitleTextBlockStyle}"/>
+							<TextBlock Text="Filtros de VisualizaÃ§Ã£o" Style="{StaticResource SubtitleTextBlockStyle}"/>
 							<ToggleSwitch x:Name="ToggleComments" 
-                                          Header="Ocultar Comentários" 
+                                          Header="Ocultar ComentÃ¡rios" 
                                           Toggled="OnViewOptionChanged" />
 							<ToggleSwitch x:Name="ToggleCollapse" 
-                                          Header="Simplificar Métodos Longos" 
+                                          Header="Simplificar MÃ©todos Longos" 
                                           Toggled="OnViewOptionChanged" />
 							<StackPanel Visibility="{x:Bind ToggleCollapse.IsOn, Mode=OneWay}">
 								<TextBlock Text="Ocultar se maior que (linhas):" Style="{StaticResource CaptionTextBlockStyle}"/>

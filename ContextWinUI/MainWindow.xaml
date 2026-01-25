@@ -33,38 +33,38 @@
 
 			<Button Grid.Column="0" 
                     Command="{x:Bind ViewModel.FileExplorer.BrowseFolderCommand}"
-                    ToolTipService.ToolTip="Abrir pasta do projeto">
+                    ToolTipService.ToolTip="Open project folder">
 				<StackPanel Orientation="Horizontal" Spacing="8">
 					<FontIcon Glyph="&#xE8B7;" FontSize="16"/>
-					<TextBlock Text="Abrir"/>
+					<TextBlock Text="Open"/>
 				</StackPanel>
 			</Button>
 
 			<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0">
 				<Button Command="{x:Bind ViewModel.ImportContextFileCommand}"
-                        ToolTipService.ToolTip="Importar arquivo de contexto (.json)">
+                        ToolTipService.ToolTip="Import context file (.json)">
 					<FontIcon Glyph="&#xE896;" FontSize="16"/>
 				</Button>
 
 				<Button Command="{x:Bind ViewModel.ExportContextFileCommand}"
-                        ToolTipService.ToolTip="Exportar contexto atual para arquivo (.json)">
+                        ToolTipService.ToolTip="Export current context to file (.json)">
 					<FontIcon Glyph="&#xE898;" FontSize="16"/>
 				</Button>
 
 				<Button Command="{x:Bind ViewModel.RefreshGraphCommand}"
-                        ToolTipService.ToolTip="Verificar alterações no Git e atualizar grafo">
+                        ToolTipService.ToolTip="Check for Git changes and refresh graph">
 					<StackPanel Orientation="Horizontal" Spacing="6">
 						<FontIcon Glyph="&#xE72C;" FontSize="16"/>
-						<TextBlock Text="Atualizar"/>
+						<TextBlock Text="Refresh"/>
 					</StackPanel>
 				</Button>
 
 				<Button Command="{x:Bind ViewModel.SaveWorkCommand}"
                         Style="{StaticResource AccentButtonStyle}"
-                        ToolTipService.ToolTip="Salvar tags, contexto e cache na pasta padrão">
+                        ToolTipService.ToolTip="Save tags, context and cache to default folder">
 					<StackPanel Orientation="Horizontal" Spacing="8">
 						<FontIcon Glyph="&#xE74E;" FontSize="16"/>
-						<TextBlock Text="Salvar"/>
+						<TextBlock Text="Save"/>
 					</StackPanel>
 				</Button>
 			</StackPanel>
@@ -100,15 +100,15 @@
 			<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
 			<Pivot Grid.Column="2">
-				<PivotItem Header="Arquivo Atual" Margin="0">
+				<PivotItem Header="Current File" Margin="0">
 					<views:FileContentView 
                            ContentViewModel="{x:Bind ViewModel.FileContent}"
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 				</PivotItem>
-				<PivotItem Header="Parser de Blocos" Margin="0">
+				<PivotItem Header="Block Parser" Margin="0">
 					<parser:GraphParserView ViewModel="{x:Bind ViewModel.GraphParser, Mode=OneWay}" />
 				</PivotItem>
-				<PivotItem Header="Pré-Prompt Global" Margin="0">
+				<PivotItem Header="Global Pre-Prompt" Margin="0">
 					<views:PrePromptView 
                            ViewModel="{x:Bind ViewModel.PrePrompt}"/>
 				</PivotItem>
@@ -119,11 +119,11 @@
 
 			<Grid Grid.Column="4" Background="{ThemeResource LayerFillColorDefaultBrush}">
 				<Pivot>
-					<PivotItem Header="Contexto">
+					<PivotItem Header="Context">
 						<views:ContextAnalysisView 
                              ContextViewModel="{x:Bind ViewModel.ContextAnalysis, Mode=OneWay}"/>
 					</PivotItem>
-					<PivotItem Header="Grafo Semântico">
+					<PivotItem Header="Semantic Graph">
 						<analysis:SemanticGraphView 
                              ViewModel="{x:Bind ViewModel.SemanticGraph, Mode=OneWay}"/>
 					</PivotItem>

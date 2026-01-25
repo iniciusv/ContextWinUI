@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="ContextWinUI.Features.GraphParser.Views.Components.VersionFooter"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -26,7 +26,7 @@
 
 			<Button Click="OnSaveToFileClick"
                     IsEnabled="{x:Bind CanSave, Mode=OneWay}"
-                    ToolTipService.ToolTip="Salvar Arquivo no Disco (Ctrl+S)"
+                    ToolTipService.ToolTip="Save File to Disk (Ctrl+S)"
                     Background="Transparent"
                     BorderThickness="0"
                     Padding="6">

@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="ContextWinUI.Views.FileExplorerView"
     x:Name="RootExplorerView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -31,7 +31,7 @@
 			</Grid.ColumnDefinitions>
 			<StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 				<FontIcon Glyph="&#xE838;" FontSize="16"/>
-				<TextBlock Text="Explorador" Style="{StaticResource SubtitleTextBlockStyle}"/>
+				<TextBlock Text="Explorer" Style="{StaticResource SubtitleTextBlockStyle}"/>
 			</StackPanel>
 
 			<components:ExpandCollapseActions Grid.Column="1" 
@@ -52,17 +52,17 @@
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="*"/>
 			</Grid.ColumnDefinitions>
-			<Button Content="Todos" 
+			<Button Content="All" 
                     Command="{x:Bind ExplorerViewModel.SelectAllCommand}" 
                     Style="{StaticResource AccentButtonStyle}" 
                     Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 			<Button Grid.Column="1" 
-                    Content="Nenhum" 
+                    Content="None" 
                     Command="{x:Bind ExplorerViewModel.UnselectAllCommand}" 
                     Margin="0,0,8,0" FontSize="11" Padding="8,4" Height="28"/>
 			<StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
 				<TextBlock Text="{x:Bind SelectionViewModel.SelectedFilesCount, Mode=OneWay}" FontWeight="SemiBold"/>
-				<TextBlock Text="selecionados" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+				<TextBlock Text="selected" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 			</StackPanel>
 		</Grid>
 
@@ -96,12 +96,12 @@
 
 						<TreeViewItem.ContextFlyout>
 							<MenuFlyout>
-								<MenuFlyoutItem Text="Novo Arquivo" Icon="Add" Click="OnCreateFileClick"/>
-								<MenuFlyoutItem Text="Nova Pasta" Icon="Folder" Click="OnCreateFolderClick"/>
+								<MenuFlyoutItem Text="New File" Icon="Add" Click="OnCreateFileClick"/>
+								<MenuFlyoutItem Text="New Folder" Icon="Folder" Click="OnCreateFolderClick"/>
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem Text="Excluir" Icon="Delete" Click="OnDeleteClick"/>
+								<MenuFlyoutItem Text="Delete" Icon="Delete" Click="OnDeleteClick"/>
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem Text="Gerenciar Tags..." Icon="Tag" Click="OnManageTagsClick" />
+								<MenuFlyoutItem Text="Manage Tags..." Icon="Tag" Click="OnManageTagsClick" />
 							</MenuFlyout>
 						</TreeViewItem.ContextFlyout>
 
