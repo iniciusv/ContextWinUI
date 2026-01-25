@@ -99,7 +99,7 @@
                               PointerPressed="OnBlockPointerPressed"
                               PointerEntered="OnMetadataPointerEntered"
                               PointerExited="OnMetadataPointerExited"
-                              Background="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource SelectionBrushConverter}}">
+                              Background="{x:Bind ext:CodeBlockUiExtensions.GetBackgroundBrush(Current.IsSelected, Current.IsReferenced), Mode=OneWay}">
 
 							<Grid.ContextFlyout>
 								<MenuFlyout>
@@ -124,14 +124,14 @@
 							</Grid.ContextFlyout>
 
 							<Rectangle HorizontalAlignment="Left" Width="4" VerticalAlignment="Stretch" 
-                                       Fill="{ThemeResource SystemAccentColor}" 
-                                       Visibility="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                       Fill="{x:Bind ext:CodeBlockUiExtensions.GetIndicatorBrush(Current.IsSelected, Current.IsReferenced), Mode=OneWay}" 
+                                       Visibility="{x:Bind Current.IsActive, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                                        Margin="-8,0,0,0"/>
 
 							<Rectangle HorizontalAlignment="Left" Width="3" VerticalAlignment="Stretch" 
                                        Fill="{x:Bind ext:CodeBlockUiExtensions.GetHeaderBrush(Current)}" 
                                        Margin="-4,0,0,0"
-                                       Visibility="{x:Bind Current.IsSelected, Mode=OneWay, Converter={StaticResource ReverseBoolToVis}}"/>
+                                       Visibility="{x:Bind Current.IsActive, Mode=OneWay, Converter={StaticResource ReverseBoolToVis}}"/>
 
 							<StackPanel Orientation="Vertical" Spacing="4" VerticalAlignment="Center" Opacity="1.0">
 

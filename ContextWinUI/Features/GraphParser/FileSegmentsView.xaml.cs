@@ -19,7 +19,31 @@ namespace ContextWinUI.Features.GraphParser
 		}
 
 		public static readonly DependencyProperty ViewModelProperty =
-			DependencyProperty.Register(nameof(ViewModel), typeof(FileSegmentsViewModel), typeof(FileSegmentsView), new PropertyMetadata(null));
+			DependencyProperty.Register(nameof(ViewModel), typeof(FileSegmentsViewModel), typeof(FileSegmentsView), new PropertyMetadata(null, OnViewModelChanged));
+
+		private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+		{
+			if (d is FileSegmentsView view)
+			{
+				if (e.OldValue is FileSegmentsViewModel oldVm)
+				{
+					oldVm.ScrollRequested -= view.OnScrollRequested;
+				}
+				if (e.NewValue is FileSegmentsViewModel newVm)
+				{
+					newVm.ScrollRequested += view.OnScrollRequested;
+				}
+			}
+		}
+
+		private void OnScrollRequested(object sender, Models.CodeBlockItem block)
+		{
+			var row = ViewModel?.Rows.FirstOrDefault(r => r.Current == block);
+			if (row != null)
+			{
+				MainListView.ScrollIntoView(row, ScrollIntoViewAlignment.Leading);
+			}
+		}
 
 		public FileSegmentsView()
 		{
@@ -155,10 +179,10 @@ namespace ContextWinUI.Features.GraphParser
 		{
 			if ((sender as FrameworkElement)?.DataContext is SegmentRowViewModel row && ViewModel != null)
 			{
-				ViewModel.SelectedBlock = row.Current;
+                var ctrlState = InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+                bool isCtrlPressed = (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
 
-				// Alterna a seleção (Toggle)
-				row.Current.IsSelected = !row.Current.IsSelected;
+				ViewModel.HandleBlockClick(row.Current, isCtrlPressed);
 			}
 		}
 

@@ -278,6 +278,28 @@ public class CodeBlockParserService : ICodeBlockParserService
 		};
 	}
 
+	public List<string> FindReferences(string codeContent, IEnumerable<string> knownSymbols)
+	{
+		if (string.IsNullOrWhiteSpace(codeContent) || knownSymbols == null || !knownSymbols.Any())
+			return new List<string>();
+
+        // Wrap content in a class/method if it's a fragment, to ensure valid syntax tree
+        // However, for simple identifier search, ParseText usually catches tokens fine.
+		var tree = CSharpSyntaxTree.ParseText(codeContent);
+		var root = tree.GetRoot();
+
+		// Find distinct identifiers in the code
+		var identifiers = root.DescendantNodes()
+			.OfType<IdentifierNameSyntax>()
+			.Select(id => id.Identifier.Text)
+			.Distinct()
+			.ToHashSet();
+
+		// Intersect with known symbols (names of other blocks in the file)
+        // This acts as a poor-man's "Find References" within the file scope.
+		return knownSymbols.Where(symbol => identifiers.Contains(symbol)).ToList();
+	}
+
 	private string GenerateSignature(SyntaxNode node)
 	{
 		if (node is MethodDeclarationSyntax method)

@@ -18,7 +18,17 @@ public partial class CodeBlockItem : ObservableObject
 	private string typeDescription = string.Empty;
 
 	[ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsActive))]
 	private bool isSelected;
+    
+    [ObservableProperty]
+    private bool showReferences; // Persists if this block should show its references
+
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(IsActive))] // Notify IsActive when IsReferenced changes
+	private bool isReferenced; // NEW for GraphParser selection logic
+
+    public bool IsActive => IsSelected || IsReferenced;
 
 	public SymbolType SymbolType { get; set; }
 	public SegmentType SegmentType { get; set; }

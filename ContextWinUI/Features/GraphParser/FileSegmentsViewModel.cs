@@ -203,8 +203,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	}
 	public string GetExportContent()
 	{
-		// Regra 1: Se houver blocos específicos selecionados, exporta SÓ ELES.
-		var selectedRows = Rows.Where(r => r.Current.IsSelected).ToList();
+		// Regra 1: Se houver blocos específicos selecionados (ou REFERENCIADOS), exporta SÓ ELES.
+		var selectedRows = Rows.Where(r => r.Current.IsSelected || r.Current.IsReferenced).ToList();
 
 		if (selectedRows.Any())
 		{
@@ -508,10 +508,14 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		block.PropertyChanged += (s, e) =>
 		{
-			if (e.PropertyName == nameof(CodeBlockItem.IsSelected))
+			if (e.PropertyName == nameof(CodeBlockItem.IsSelected) || 
+                e.PropertyName == nameof(CodeBlockItem.IsReferenced))
 			{
                 // SYNC WITH MANAGER
-                if (block.IsSelected)
+                // Logic: A block is "Selected" in the manager if it is EITHER appearing as Selected (Blue) OR Referenced (Green)
+                bool shouldBeSelected = block.IsSelected || block.IsReferenced;
+
+                if (shouldBeSelected)
                     _selectionManager.SelectBlock(FilePath, block.StableId);
                 else
                     _selectionManager.DeselectBlock(FilePath, block.StableId);
@@ -524,6 +528,74 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			}
 		};
 	}
+
+    public void HandleBlockClick(CodeBlockItem block, bool isCtrlPressed)
+    {
+        SelectedBlock = block;
+        
+        // Logic:
+        // 1. If Ctrl+Click:
+        //    - If not selected: Select it and Enable References.
+        //    - If selected: Deselect it (and disable references).
+        //      - Optional refinement: If selected but refs OFF, Ctrl+Click could turn REFS ON without deselecting? 
+        //        Let's stick to simple Toggle for now to avoid confusion. Ctrl+Click on Selected -> Deselect.
+        // 2. If Click (No Ctrl):
+        //    - Toggle Selection.
+        //    - Disable References for THIS block (user didn't ask for them).
+        
+        bool willBeSelected = !block.IsSelected;
+        block.IsSelected = willBeSelected;
+        
+        if (willBeSelected)
+        {
+            // Only show references if Ctrl was pressed
+            block.ShowReferences = isCtrlPressed;
+        }
+        else
+        {
+            block.ShowReferences = false;
+        }
+
+        RefreshReferences();
+    }
+
+    private void RefreshReferences()
+    {
+        // 1. Clear all references
+        foreach(var row in Rows) row.Current.IsReferenced = false;
+
+        // 2. Identify all source blocks (Selected + ShowReferences)
+        var sourceBlocks = Rows.Where(r => r.Current.IsSelected && r.Current.ShowReferences).ToList();
+        
+        if (!sourceBlocks.Any()) return;
+
+        var allSymbols = Rows.Select(r => r.Current.Name).ToList();
+
+        // 3. Accumulate references from all sources
+        foreach(var source in sourceBlocks)
+        {
+             var referencedNames = _parserService.FindReferences(source.Current.Content, allSymbols);
+             
+             if (referencedNames.Any())
+             {
+                 var referencedRows = Rows.Where(r => referencedNames.Contains(r.Current.Name));
+                 foreach(var row in referencedRows)
+                 {
+                     // Avoid highlighting the source itself as a reference (optional preference)
+                     // If Block A refs Block B, and Block B is also a Source... it stays Blue (Selected).
+                     // IsReferenced=true usually makes it Green. 
+                     // Our Converter prioritizes IsSelected (Blue) > IsReferenced (Green).
+                     // So we can safely set IsReferenced=true even on selected blocks, 
+                     // but to keep it clean, let's avoid it if it's the SAME block.
+                     
+                     if (row.Current != source.Current) 
+                         row.Current.IsReferenced = true;
+                 }
+             }
+        }
+    }
+    public event EventHandler<CodeBlockItem>? ScrollRequested;
+
     public void ScrollToPosition(int absolutePosition)
     {
         var targetRow = Rows.FirstOrDefault(r => 
@@ -532,11 +604,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 
         if (targetRow != null)
         {
-            SelectedBlock = targetRow.Current;
-            // A View deve observar o SelectedBlock e fazer ScrollIntoView se necessário, 
-            // ou podemos adicionar um evento RequestScrollIntoView se o SelectedObject não for suficiente.
-            // Para garantir, vamos setar o IsSelected que já dispara updates visuais
-            targetRow.Current.IsSelected = true;
+            // Fix: Do NOT select the block, just request scroll
+            ScrollRequested?.Invoke(this, targetRow.Current);
         }
     }
 }

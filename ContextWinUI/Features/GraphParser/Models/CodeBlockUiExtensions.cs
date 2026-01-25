@@ -1,6 +1,8 @@
 using ContextWinUI.Core.Models;
 using Microsoft.UI;
+using Microsoft.UI.Xaml; // Required for Application
 using Microsoft.UI.Xaml.Media;
+using Windows.UI; // Required for Color
 
 namespace ContextWinUI.Features.GraphParser.Models;
 
@@ -40,4 +42,37 @@ public static class CodeBlockUiExtensions
 
 		return new SolidColorBrush(color);
 	}
+
+    // NEW: Function Bindings for dynamic updates
+    public static SolidColorBrush GetBackgroundBrush(bool isSelected, bool isReferenced)
+    {
+        if (isSelected) 
+            return new SolidColorBrush(Color.FromArgb(50, 0, 120, 215));
+        
+        if (isReferenced)
+            return new SolidColorBrush(Color.FromArgb(50, 0, 100, 0));
+
+        // Default default (using Resource directly or fallback)
+        // We can't access App resources easily from static context without Dispatcher or safe check, 
+        // but typically Application.Current.Resources works if on UI thread.
+        // For safety, let's use Transparent or try to get the resource if possible, or just standard transparent.
+        // The user liked the "Standard" look which might be "LayerFillColorAltBrush".
+        // Let's try to grab it safely.
+        
+         try
+         {
+             if (Application.Current?.Resources["LayerFillColorAltBrush"] is SolidColorBrush brush)
+                 return brush;
+         }
+         catch {} 
+
+         return new SolidColorBrush(Colors.Transparent);
+    }
+    
+    public static SolidColorBrush GetIndicatorBrush(bool isSelected, bool isReferenced)
+    {
+        if (isSelected) return new SolidColorBrush(Colors.DodgerBlue); // Blue
+        if (isReferenced) return new SolidColorBrush(Colors.DarkGreen); // Green
+        return new SolidColorBrush(Colors.Transparent);
+    }
 }
