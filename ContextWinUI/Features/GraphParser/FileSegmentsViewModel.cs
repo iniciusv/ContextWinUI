@@ -24,7 +24,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	private readonly IAiCodeMerger _mergerService;
 	private readonly IBlockEditorService _editorService;
 	private readonly IBlockLoaderService _loaderService;
-    private readonly IBlockSelectionManager _selectionManager; // NEW
+    private readonly IBlockSelectionManager _selectionManager;
+    private readonly IGitComparisonService _gitComparisonService; // NEW
 
 	public event EventHandler? FileSelectionRequested;
 
@@ -89,7 +90,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		IAiCodeMerger mergerService,
 		IBlockLoaderService loaderService,
 		IBlockEditorService editorService,
-        IBlockSelectionManager selectionManager) // NEW
+        IBlockSelectionManager selectionManager,
+        IGitComparisonService gitComparisonService) // NEW
 	{
 		FilePath = filePath;
 		FileName = Path.GetFileName(filePath);
@@ -103,6 +105,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		_editorService = editorService;
 		_loaderService = loaderService;
         _selectionManager = selectionManager;
+        _gitComparisonService = gitComparisonService;
 
 		_ = LoadBlocksAsync();
 	}
@@ -594,6 +597,45 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
              }
         }
     }
+
+    public async Task InitializeFromGitContent(string contentCurrent, string contentOld, string oldVersionLabel)
+    {
+        IsLoading = true;
+        try
+        {
+            var result = await _gitComparisonService.InitializeComparisonAsync(FilePath, contentCurrent, contentOld, oldVersionLabel);
+            
+            // Apply Results
+            
+            // 1. Attach events to new rows
+            foreach (var row in result.Rows)
+            {
+                AttachBlockEvents(row.Current);
+            }
+            Rows = result.Rows;
+
+            // 2. Set History
+            GlobalHistory = result.History;
+
+            // 3. Activate Comparison
+            CurrentGlobalIndex = 1; // Show Current
+            CompareLeftIndex = 0;   // Compare against Old
+            IsComparisonMode = true; 
+            HideUnchangedBlocks = false; // Start showing everything
+            
+            // Force refresh
+            _diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
+        }
+        catch (Exception ex)
+        {
+             System.Diagnostics.Debug.WriteLine($"Error initializing from Git: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
     public event EventHandler<CodeBlockItem>? ScrollRequested;
 
     public void ScrollToPosition(int absolutePosition)
@@ -604,7 +646,6 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 
         if (targetRow != null)
         {
-            // Fix: Do NOT select the block, just request scroll
             ScrollRequested?.Invoke(this, targetRow.Current);
         }
     }

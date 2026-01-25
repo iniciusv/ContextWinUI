@@ -126,4 +126,9 @@ public interface IGraphParserContract
 	/// Indexa todos os arquivos .cs do projeto para busca semântica.
 	/// </remarks>
 	Task InitializeGraphAsync();
+
+    /// <summary>
+    /// Opens a file in comparison mode with injected Git content.
+    /// </summary>
+    Task OpenGitComparison(string filePath, string contentNew, string contentOld, string oldLabel);
 }

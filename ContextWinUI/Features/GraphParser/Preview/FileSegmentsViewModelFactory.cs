@@ -23,7 +23,8 @@ public class FileSegmentsViewModelFactory : IFileSegmentsViewModelFactory
 	private readonly IAiCodeMerger _mergerService;
 	private readonly IBlockLoaderService _loaderService;
 	private readonly IBlockEditorService _editorService;
-    private readonly IBlockSelectionManager _selectionManager; // NEW
+    private readonly IBlockSelectionManager _selectionManager;
+    private readonly IGitComparisonService _gitComparisonService; // NEW
 
 	public FileSegmentsViewModelFactory(
 		IFileSystemService fileSystemService,
@@ -33,7 +34,8 @@ public class FileSegmentsViewModelFactory : IFileSegmentsViewModelFactory
 		IAiCodeMerger mergerService,
 		IBlockLoaderService loaderService,
 		IBlockEditorService editorService,
-        IBlockSelectionManager selectionManager) // NEW
+        IBlockSelectionManager selectionManager,
+        IGitComparisonService gitComparisonService) // NEW
 	{
 		_fileSystemService = fileSystemService;
 		_parserService = parserService;
@@ -43,6 +45,7 @@ public class FileSegmentsViewModelFactory : IFileSegmentsViewModelFactory
 		_loaderService = loaderService;
 		_editorService = editorService;
         _selectionManager = selectionManager;
+        _gitComparisonService = gitComparisonService;
 	}
 
 	public FileSegmentsViewModel Create(string filePath)
@@ -71,7 +74,8 @@ public class FileSegmentsViewModelFactory : IFileSegmentsViewModelFactory
 			_mergerService,
 			_loaderService,
 			_editorService,
-            _selectionManager // NEW
+            _selectionManager,
+            _gitComparisonService // NEW
 		);
 	}
 }

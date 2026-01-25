@@ -75,6 +75,8 @@ public partial class App : Application
 		services.AddTransient<IFileExplorerSearchService, FileExplorerSearchService>();
 		services.AddTransient<IFileExplorerTreeService, FileExplorerTreeService>();
 		services.AddTransient<IFileExplorerOperationsService, FileExplorerOperations>();
+        
+        services.AddTransient<IGitComparisonService, GitComparisonService>(); // NEW
 
 		// 5. VIEWMODELS
 		services.AddSingleton<ContextSelectionViewModel>();
@@ -84,7 +86,10 @@ public partial class App : Application
 		services.AddTransient<ContextAnalysisViewModel>(); // Verifique se existe
 		services.AddTransient<FileContentViewModel>(); // Verifique se existe
 		services.AddTransient<PrePromptViewModel>(); // Verifique se existe
-		services.AddTransient<GraphParserViewModel>(); // Verifique se existe
+		
+        // GraphParser MUST be singleton to maintain state across ViewModels
+		services.AddSingleton<GraphParserViewModel>(); 
+        services.AddSingleton<IGraphParserContract>(sp => sp.GetRequiredService<GraphParserViewModel>());
 
 		services.AddTransient<MainViewModel>();
 

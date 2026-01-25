@@ -34,6 +34,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	private readonly IFileSegmentsViewModelFactory _vmFactory;
 	private readonly IPreviewManager _previewManager;
 	private readonly ContextSelectionViewModel _contextSelection;
+    private readonly IGitComparisonService _gitComparisonService; // NEW
 
 	private string _rootPath;
 
@@ -60,7 +61,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
 	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
 
-    private readonly IProjectSearchService _searchService; // Added
+    private readonly IProjectSearchService _searchService;
 
 	public GraphParserViewModel(
 		ISemanticIndexService indexService,
@@ -76,7 +77,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IPreviewManager previewManager,
 		IFileSegmentsViewModelFactory vmFactory,
 		ContextSelectionViewModel contextSelection,
-        IProjectSearchService searchService) // Injected
+        IProjectSearchService searchService,
+        IGitComparisonService gitComparisonService) // NEW
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -90,7 +92,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_previewManager = previewManager;
 		_vmFactory = vmFactory;
 		_contextSelection = contextSelection;
-        _searchService = searchService; // Assigned
+        _searchService = searchService;
+        _gitComparisonService = gitComparisonService; // NEW
 
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
@@ -417,7 +420,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 					_aiMergerService,
 					_blockLoaderService,
 					_blockEditorService,
-					_selectionManager
+					_selectionManager,
+                    _gitComparisonService // NEW
 				);
 
 		SetupTabEvents(newTab);
@@ -463,4 +467,29 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			Tabs.Remove(tab);
 		}
 	}
+
+    public async Task OpenGitComparison(string filePath, string contentNew, string contentOld, string oldLabel)
+    {
+         string? path = NormalizePath(filePath);
+         if (string.IsNullOrEmpty(path)) return;
+
+         var existingTab = Tabs.OfType<FileSegmentsViewModel>().FirstOrDefault(t => t.FilePath == path);
+         FileSegmentsViewModel targetTab;
+
+         if (existingTab != null)
+         {
+             SelectedTab = existingTab;
+             targetTab = existingTab;
+         }
+         else
+         {
+             targetTab = _vmFactory.Create(path);
+             SetupTabEvents(targetTab);
+             Tabs.Add(targetTab);
+             SelectedTab = targetTab;
+         }
+         
+         // Force initialization with git content
+         await targetTab.InitializeFromGitContent(contentNew, contentOld, oldLabel);
+    }
 }

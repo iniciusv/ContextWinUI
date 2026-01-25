@@ -38,7 +38,8 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		IGitService gitService,
 		ITagManagementUiService tagService,
 		ContextSelectionViewModel selectionVM,
-		IFileSelectionService fileSelectionService)
+		IFileSelectionService fileSelectionService,
+        ContextWinUI.Features.GraphParser.ViewModels.IGraphParserContract graphParser)
 	{
 		_itemFactory = itemFactory;
 		_analysisOrchestrator = analysisOrchestrator;
@@ -47,11 +48,19 @@ public partial class ContextAnalysisViewModel : ObservableObject
 		TagService = tagService;
 		SelectionVM = selectionVM;
 
-		GitVM = new ContextGitViewModel(gitService, itemFactory, sessionManager);
+		GitVM = new ContextGitViewModel(gitService, itemFactory, sessionManager, graphParser);
+        GitVM.AddFilesToContextRequested += GitVM_AddFilesToContextRequested;
 
 		SelectionVM.SelectedItemsList.CollectionChanged += (s, e) =>
 			OnPropertyChanged(nameof(SelectedCount));
 	}
+
+    private void GitVM_AddFilesToContextRequested(object? sender, System.Collections.Generic.List<string> paths)
+    {
+        // Add files to selection
+        SelectionVM.ProcessPaths(paths);
+        OnStatusChanged($"{paths.Count} arquivos adicionados à seleção.");
+    }
 
 	[RelayCommand]
 	public async Task AnalyzeContextAsync()

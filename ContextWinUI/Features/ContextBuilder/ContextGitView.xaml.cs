@@ -66,5 +66,13 @@ namespace ContextWinUI.Views.Components
 			if (parent is T typedParent) return typedParent;
 			return FindParent<T>(parent);
 		}
+
+        private void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ViewModel != null)
+            {
+                ViewModel.OnSelectionChanged(e.AddedItems, e.RemovedItems);
+            }
+        }
 	}
 }
