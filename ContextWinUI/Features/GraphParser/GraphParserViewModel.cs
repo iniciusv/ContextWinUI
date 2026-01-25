@@ -73,12 +73,12 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IVersionDiffManager diffManager,
 		IBlockLoaderService blockLoaderService,
 		IBlockEditorService blockEditorService,
-        IBlockSelectionManager selectionManager, 
+		IBlockSelectionManager selectionManager,
 		IPreviewManager previewManager,
 		IFileSegmentsViewModelFactory vmFactory,
 		ContextSelectionViewModel contextSelection,
-        IProjectSearchService searchService,
-        IGitComparisonService gitComparisonService) // NEW
+		IProjectSearchService searchService,
+		IGitComparisonService gitComparisonService) // NEW
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -88,12 +88,12 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_aiMergerService = aiMergerService;
 		_blockLoaderService = blockLoaderService;
 		_blockEditorService = blockEditorService;
-        _selectionManager = selectionManager;
+		_selectionManager = selectionManager;
 		_previewManager = previewManager;
 		_vmFactory = vmFactory;
 		_contextSelection = contextSelection;
-        _searchService = searchService;
-        _gitComparisonService = gitComparisonService; // NEW
+		_searchService = searchService;
+        _gitComparisonService = gitComparisonService;
 
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
@@ -102,6 +102,26 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		InitializeGlobalHistory();
 		_previewManager.Start(this);
 	}
+
+
+	[ObservableProperty]
+	private bool showUsings = true;
+
+	[ObservableProperty]
+	private bool showTrivia = true;
+
+	partial void OnShowUsingsChanged(bool value) => UpdateTabsVisibility();
+	partial void OnShowTriviaChanged(bool value) => UpdateTabsVisibility();
+
+	private void UpdateTabsVisibility()
+	{
+		foreach (var tab in Tabs.OfType<FileSegmentsViewModel>())
+		{
+			tab.SetDisplayOptions(ShowUsings, ShowTrivia);
+		}
+	}
+
+
 
     // ... (omitted methods)
 
@@ -173,6 +193,9 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 			// Open new file and scroll to target
 			OpenFileWithPosition(args.TargetFilePath, args.TargetPosition);
 		};
+
+		// Initialize with current settings
+		newTab.SetDisplayOptions(ShowUsings, ShowTrivia);
 	}
 
 	[RelayCommand]

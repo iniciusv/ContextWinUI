@@ -181,7 +181,11 @@ public class CodeBlockParserService : ICodeBlockParserService
 			if (trimmed == "{") return "Abertura";
 
 			if (node is ClassDeclarationSyntax cls) return $"Corpo de {cls.Identifier.Text}";
+			if (node is InterfaceDeclarationSyntax iface) return $"Interface {iface.Identifier.Text}";
+			if (node is StructDeclarationSyntax str) return $"Struct {str.Identifier.Text}";
+			if (node is RecordDeclarationSyntax rec) return $"Record {rec.Identifier.Text}";
 			if (node is NamespaceDeclarationSyntax ns) return $"Namespace {ns.Name}";
+			if (node is FileScopedNamespaceDeclarationSyntax fns) return $"Namespace {fns.Name}";
 
 			return "Estrutura";
 		}
@@ -200,9 +204,17 @@ public class CodeBlockParserService : ICodeBlockParserService
 			if (string.IsNullOrWhiteSpace(trimmed)) return SegmentType.Trivia;
 			if (trimmed == "}") return SegmentType.Trivia; // Ou criar SegmentType.ClosingBrace
 
-			// Gaps dentro de classes geralmente são cabeçalhos ou campos não processados
-			if (node is ClassDeclarationSyntax) return SegmentType.Class;
-			if (node is NamespaceDeclarationSyntax) return SegmentType.Namespace;
+			// Gaps within containers are typically headers (signatures) containing the opening brace '{'
+			// If it doesn't contain '{', it's likely just comments or whitespace between members.
+            bool hasOpenBrace = content.Contains("{");
+
+			if (node is ClassDeclarationSyntax) return hasOpenBrace ? SegmentType.Class : SegmentType.Trivia;
+			if (node is InterfaceDeclarationSyntax) return hasOpenBrace ? SegmentType.Interface : SegmentType.Trivia;
+			if (node is StructDeclarationSyntax) return hasOpenBrace ? SegmentType.Struct : SegmentType.Trivia;
+			if (node is RecordDeclarationSyntax) return hasOpenBrace ? SegmentType.Class : SegmentType.Trivia;
+			
+			if (node is NamespaceDeclarationSyntax) return hasOpenBrace ? SegmentType.Namespace : SegmentType.Trivia;
+			if (node is FileScopedNamespaceDeclarationSyntax) return SegmentType.Namespace; // File Scoped usually has no brace or implies strict structure, but gap is header.
 
 			return SegmentType.Trivia;
 		}

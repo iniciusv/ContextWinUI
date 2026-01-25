@@ -116,11 +116,11 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		if (value)
 		{
 			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
-			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+			RefreshVisibility();
 		}
 		else
 		{
-			foreach (var row in Rows) row.IsVisible = true;
+			RefreshVisibility();
 		}
 	}
 
@@ -129,15 +129,87 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		if (IsComparisonMode)
 		{
 			_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, value);
-			if (HideUnchangedBlocks)
-				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+            RefreshVisibility();
 		}
 	}
 
 	partial void OnHideUnchangedBlocksChanged(bool value)
 	{
-		_diffManager.UpdateRowsVisibility(Rows, value);
+        RefreshVisibility();
 	}
+
+    public bool ShowUsings { get; private set; } = true;
+    public bool ShowTrivia { get; private set; } = true;
+
+    public void SetDisplayOptions(bool showUsings, bool showTrivia)
+    {
+        if (ShowUsings == showUsings && ShowTrivia == showTrivia) return;
+
+        ShowUsings = showUsings;
+        ShowTrivia = showTrivia;
+        RefreshVisibility();
+    }
+
+    private void RefreshVisibility()
+    {
+        foreach (var row in Rows)
+        {
+            bool visible = true;
+
+            // 1. Filter by Type (Usings/Trivia)
+            if (!ShowUsings && (row.Current.SegmentType == SegmentType.Using || row.Current.SegmentType == SegmentType.FileHeader))
+            {
+                visible = false;
+            }
+            if (!ShowTrivia && row.Current.SegmentType == SegmentType.Trivia)
+            {
+                visible = false;
+            }
+
+            // 2. Filter by Diff (if active and passed type filter)
+            if (visible && IsComparisonMode && HideUnchangedBlocks)
+            {
+                // Delegate to diff manager logic or replicate check
+                // Usually _diffManager.UpdateRowsVisibility sets IsVisible directly.
+                // We should combine logic.
+                // Let's assume _diffManager helper might overwrite, so we need to be careful.
+                // ideally IsVisible = TypeVisible && DiffVisible.
+                
+                // Let's ask DiffManager if it *should* be visible, or check the Diff status manually if accessible.
+                // Since _diffManager.UpdateRowsVisibility iterates all, maybe we should just set properties here.
+            }
+            
+            // Simplified approach: Re-run Diff visibility first (sets IsVisible based on diff), then apply Type mask.
+            // BUT DiffManager might be expensive to call repeatedly.
+            // Better: Set IsVisible = (TypeCondition) AND (DiffCondition).
+        }
+        
+        // Let's do this: First apply Diff Manager (if comparison mode), then masks.
+        if (IsComparisonMode)
+        {
+             _diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
+        }
+        else
+        {
+            // Reset to visible if not comparing
+             foreach(var r in Rows) r.IsVisible = true;
+        }
+
+        // Apply Type Filter on top
+        foreach (var row in Rows)
+        {
+            if (!row.IsVisible) continue; // Already hidden by diff
+
+            if (!ShowUsings && (row.Current.SegmentType == SegmentType.Using || row.Current.SegmentType == SegmentType.FileHeader))
+            {
+                row.IsVisible = false;
+            }
+            else if (!ShowTrivia && row.Current.SegmentType == SegmentType.Trivia)
+            {
+                row.IsVisible = false;
+            }
+        }
+    }
 
 
 	// Método LoadBlocksAsync completo modificado
@@ -183,8 +255,8 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			if (IsComparisonMode)
 			{
 				_diffManager.RefreshReferenceColumns(Rows, GlobalHistory, CompareLeftIndex);
-				_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
 			}
+            RefreshVisibility();
 		}
 		catch (Exception ex)
 		{
@@ -240,7 +312,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		{
 			SelectedBlock = newBlock;
 			NotifyUnsavedChanges();
-			RefreshDiffVisibility();
+			RefreshVisibility();
 		}
 	}
 
@@ -251,7 +323,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		UpdateSelectionBeforeDelete(block);
 		_editorService.DeleteBlock(Rows, block);
 		NotifyUnsavedChanges();
-		RefreshDiffVisibility();
+		RefreshVisibility();
 	}
 
 	[RelayCommand]
@@ -259,7 +331,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		_editorService.LinkBlocks(Rows, items.Item1, items.Item2);
 		NotifyUnsavedChanges();
-		RefreshDiffVisibility();
+		RefreshVisibility();
 	}
 
 	[RelayCommand]
@@ -270,7 +342,7 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 		if (changed)
 		{
 			NotifyUnsavedChanges();
-			RefreshDiffVisibility();
+			RefreshVisibility();
 		}
 	}
 
@@ -279,14 +351,10 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 	{
 		_editorService.PromoteEditToNewBlock(Rows, currentBlock);
 		NotifyUnsavedChanges();
-		RefreshDiffVisibility();
+		RefreshVisibility();
 	}
 
-	private void RefreshDiffVisibility()
-	{
-		if (IsComparisonMode)
-			_diffManager.UpdateRowsVisibility(Rows, HideUnchangedBlocks);
-	}
+
 
 	private void UpdateSelectionBeforeDelete(CodeBlockItem blockToDelete)
 	{

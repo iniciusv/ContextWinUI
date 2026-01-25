@@ -77,11 +77,20 @@
 
 			<StackPanel Grid.Column="0" 
                         Orientation="Horizontal" 
-                        Spacing="12" 
+                        Spacing="8" 
                         VerticalAlignment="Center" 
                         Margin="0,0,12,0">
-				<FontIcon Glyph="&#xE8F4;" FontSize="16" Foreground="{ThemeResource SystemAccentColor}"/>
-				<TextBlock Text="Granular Editor" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                <Button ToolTipService.ToolTip="Visualização">
+                    <Button.Content>
+                        <FontIcon Glyph="&#xE713;" FontSize="16"/>
+                    </Button.Content>
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <ToggleMenuFlyoutItem Text="Mostrar Usings" IsChecked="{x:Bind ViewModel.ShowUsings, Mode=TwoWay}" />
+                            <ToggleMenuFlyoutItem Text="Mostrar Trivia (Espaços/Comentários)" IsChecked="{x:Bind ViewModel.ShowTrivia, Mode=TwoWay}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
 			</StackPanel>
 
 			<AutoSuggestBox Grid.Column="1"
