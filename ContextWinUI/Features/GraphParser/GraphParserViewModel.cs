@@ -121,10 +121,6 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		}
 	}
 
-
-
-    // ... (omitted methods)
-
 	[RelayCommand]
 	public async Task UpdateSearch(string query)
 	{

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using ContextWinUI.Core.Contracts;
 
 namespace ContextWinUI.Features.GraphParser.ViewModels;
 
@@ -26,7 +27,7 @@ public interface IFileSegmentsContract
 	bool HasSelectedBlock { get; }
 	bool IsComparisonMode { get; set; }
 	bool HideUnchangedBlocks { get; set; }
-	ObservableCollection<GlobalVersion> GlobalHistory { get; }
+	ObservableCollection<GlobalVersion> GlobalHistory { get; set; }
 	int CurrentGlobalIndex { get; set; }
 	int CompareLeftIndex { get; set; }
 
@@ -118,4 +119,11 @@ public interface IFileSegmentsContract
 	/// <param name="mergedBlocks">Lista de blocos resultante do merge</param>
 	void ApplyExternalMerge(List<CodeBlockItem> mergedBlocks);
 	Task SaveToDiskAsync();
+
+    // ==================== HANDLER SUPPORT (INTERNAL/PUBLIC) ====================
+    // Exposed so Handlers can trigger VM actions
+    void TriggerScrollTo(CodeBlockItem item);
+    void TriggerNavigationRequest(string filePath, int position);
+    void RefreshRowsVisibility();
+    IBlockSelectionManager SelectionManager { get; } // Expose manager if needed by other handlers? No, injected.
 }
