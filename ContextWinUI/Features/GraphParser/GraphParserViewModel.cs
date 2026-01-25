@@ -60,6 +60,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
 	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
 
+    private readonly IProjectSearchService _searchService; // Added
+
 	public GraphParserViewModel(
 		ISemanticIndexService indexService,
 		IFileSystemService fileSystemService,
@@ -70,10 +72,11 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		IVersionDiffManager diffManager,
 		IBlockLoaderService blockLoaderService,
 		IBlockEditorService blockEditorService,
-        IBlockSelectionManager selectionManager, // NEW
+        IBlockSelectionManager selectionManager, 
 		IPreviewManager previewManager,
 		IFileSegmentsViewModelFactory vmFactory,
-		ContextSelectionViewModel contextSelection)
+		ContextSelectionViewModel contextSelection,
+        IProjectSearchService searchService) // Injected
 	{
 		_indexService = indexService;
 		_fileSystemService = fileSystemService;
@@ -87,6 +90,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		_previewManager = previewManager;
 		_vmFactory = vmFactory;
 		_contextSelection = contextSelection;
+        _searchService = searchService; // Assigned
 
 		_rootPath = sessionManager.CurrentProjectPath ?? string.Empty;
 		sessionManager.ProjectLoaded += (s, e) => { _rootPath = e.RootPath; _ = InitializeGraphAsync(); };
@@ -94,6 +98,31 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		Tabs.CollectionChanged += OnTabsCollectionChanged;
 		InitializeGlobalHistory();
 		_previewManager.Start(this);
+	}
+
+    // ... (omitted methods)
+
+	[RelayCommand]
+	public async Task UpdateSearch(string query)
+	{
+		if (string.IsNullOrWhiteSpace(query) || string.IsNullOrEmpty(_rootPath))
+		{
+			SearchSuggestions.Clear();
+			return;
+		}
+
+        try
+        {
+            var results = await _searchService.SearchAsync(query, _rootPath, _indexService);
+            
+            SearchSuggestions.Clear();
+            foreach(var s in results) SearchSuggestions.Add(s);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error updating search: {ex.Message}");
+            SearchSuggestions.Clear();
+        }
 	}
 
 	// --- NOVO MÉTODO: Copiar Contexto Inteligente ---
@@ -129,6 +158,20 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	}
 	// ------------------------------------------------
 
+	private void SetupTabEvents(FileSegmentsViewModel newTab)
+	{
+		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
+		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
+		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(newTab.FilePath);
+
+		// Handle Navigation from this tab
+		newTab.ReferenceNavigationRequested += (s, args) =>
+		{
+			// Open new file and scroll to target
+			OpenFileWithPosition(args.TargetFilePath, args.TargetPosition);
+		};
+	}
+
 	[RelayCommand]
 	public void OpenAsPermanent(object parameter)
 	{
@@ -152,10 +195,7 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		var newTab = _vmFactory.Create(path);
 		newTab.IsPreview = false;
-
-		// --- ALTERAÇÃO: Assinando o evento de seleção ---
-		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(path);
-		// -----------------------------------------------
+		SetupTabEvents(newTab);
 
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
@@ -184,7 +224,8 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 
 		var newTab = _vmFactory.Create(path);
 		newTab.IsPreview = true;
-		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(path);
+		SetupTabEvents(newTab);
+
 		Tabs.Add(newTab);
 		SelectedTab = newTab;
 	}
@@ -333,106 +374,17 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		}
 	}
 
-	[RelayCommand]
-	public void UpdateSearch(string query)
-	{
-		if (string.IsNullOrWhiteSpace(query) || string.IsNullOrEmpty(_rootPath))
-		{
-			SearchSuggestions.Clear();
-			return;
-		}
-
-		try
-		{
-			var graph = _indexService.GetCurrentGraph();
-			if (graph == null || !graph.Nodes.Any())
-			{
-				SearchInDirectoryAsSuggestions(query);
-				return;
-			}
-
-			var queryLower = query.ToLowerInvariant();
-			var suggestions = new List<SearchSuggestion>();
-
-			var nodesByFile = graph.Nodes.Values
-				.GroupBy(node => graph.GetFilePath(node.FileId))
-				.Where(group => !string.IsNullOrEmpty(group.Key) && File.Exists(group.Key));
-
-			foreach (var fileGroup in nodesByFile)
-			{
-				try
-				{
-					if (string.IsNullOrEmpty(fileGroup.Key)) continue;
-					var fileName = Path.GetFileName(fileGroup.Key);
-					string filePath = fileGroup.Key;
-
-					var matchingNodes = fileGroup
-						.Where(node =>
-							node.Name.ToLowerInvariant().Contains(queryLower) ||
-							node.Type.ToString().ToLowerInvariant().Contains(queryLower) ||
-							fileName.ToLowerInvariant().Contains(queryLower))
-						.ToList();
-
-					if (matchingNodes.Any())
-					{
-						string relativePath = Path.GetRelativePath(_rootPath, filePath);
-						var symbolsFound = string.Join(", ", matchingNodes.Select(n => $"{n.Type}: {n.Name}").Take(3));
-
-						suggestions.Add(new SearchSuggestion
-						{
-							Title = fileName,
-							Subtitle = $"Encontrado: {symbolsFound}",
-							FilePath = relativePath,
-							Icon = "\uE943",
-							MatchCount = matchingNodes.Count
-						});
-					}
-				}
-				catch { }
-			}
-
-			suggestions = suggestions.OrderByDescending(s => s.MatchCount).ThenBy(s => s.Title).Take(15).ToList();
-
-			SearchSuggestions.Clear();
-			foreach (var s in suggestions) SearchSuggestions.Add(s);
-
-			if (!SearchSuggestions.Any()) SearchInDirectoryAsSuggestions(query);
-		}
-		catch (Exception ex)
-		{
-			Debug.WriteLine($"Erro na busca: {ex.Message}");
-			SearchInDirectoryAsSuggestions(query);
-		}
-	}
-
 	public void SearchInDirectoryAsSuggestions(string query)
-	{
-		try
-		{
-			if (string.IsNullOrEmpty(_rootPath) || !Directory.Exists(_rootPath)) return;
-
-			var files = Directory.EnumerateFiles(_rootPath, "*.cs", SearchOption.AllDirectories)
-				.Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\"))
-				.Where(f => Path.GetFileName(f).Contains(query, StringComparison.OrdinalIgnoreCase))
-				.Take(15)
-				.Select(f => new SearchSuggestion
-				{
-					Title = Path.GetFileName(f),
-					Subtitle = "Arquivo no diretório",
-					FilePath = Path.GetRelativePath(_rootPath, f),
-					Icon = "\uE943",
-					MatchCount = 1
-				})
-				.ToList();
-
-			SearchSuggestions.Clear();
-			foreach (var s in files) SearchSuggestions.Add(s);
-		}
-		catch { SearchSuggestions.Clear(); }
-	}
+    {
+        // Now handled inside ProjectSearchService, but kept for interface compatibility if needed.
+        // We can redirect to UpdateSearch or just do nothing if the View calls UpdateSearch directly.
+        _ = UpdateSearch(query);
+    }
 
 	[RelayCommand]
-	public void OpenFile(object parameter)
+	public void OpenFile(object parameter) => OpenFileWithPosition(parameter, null);
+
+	public void OpenFileWithPosition(object parameter, int? targetPosition = null)
 	{
 		string? path = null;
 		if (parameter is SearchSuggestion suggestion) path = suggestion.FilePath;
@@ -447,6 +399,10 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 		if (existingTab != null)
 		{
 			SelectedTab = existingTab;
+			if (targetPosition.HasValue)
+			{
+				existingTab.ScrollToPosition(targetPosition.Value);
+			}
 			return;
 		}
 
@@ -461,15 +417,22 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 					_aiMergerService,
 					_blockLoaderService,
 					_blockEditorService,
-                    _selectionManager
+					_selectionManager
 				);
 
-		newTab.GlobalSaveRequested += (s, e) => CommitAllPendingChanges();
-		newTab.GlobalRestoreRequested += (s, index) => CurrentGlobalIndex = index;
+		SetupTabEvents(newTab);
 
-		// --- ALTERAÇÃO: Assinando o evento de seleção ---
-		newTab.FileSelectionRequested += (s, e) => RequestFileCheckInTree(fullPath);
-		// -----------------------------------------------
+		// If we opened with a target position, we need to wait for load to scroll
+		if (targetPosition.HasValue)
+		{
+			newTab.PropertyChanged += (s, e) =>
+			{
+				if (e.PropertyName == nameof(FileSegmentsViewModel.IsLoading) && !newTab.IsLoading)
+				{
+					newTab.ScrollToPosition(targetPosition.Value);
+				}
+			};
+		}
 
 		Tabs.Add(newTab);
 		SelectedTab = newTab;

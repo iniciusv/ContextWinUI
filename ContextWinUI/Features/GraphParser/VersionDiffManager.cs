@@ -19,7 +19,7 @@ public class VersionDiffManager: IVersionDiffManager
 
 		DateTime cutoffTime = targetGlobalVersion.IsOriginal ? DateTime.MinValue : targetGlobalVersion.Timestamp;
 		// Pequena tolerância para batches
-		if (cutoffTime > DateTime.MinValue) cutoffTime = cutoffTime.AddMilliseconds(100);
+		if (cutoffTime > DateTime.MinValue && cutoffTime != DateTime.MaxValue) cutoffTime = cutoffTime.AddMilliseconds(100);
 
 		foreach (var row in rows)
 		{
@@ -73,7 +73,9 @@ public class VersionDiffManager: IVersionDiffManager
 	public void RestoreBlocksToGlobalVersion(IEnumerable<SegmentRowViewModel> rows, GlobalVersion targetVersion)
 	{
 		var cutoffTime = targetVersion.IsOriginal ? DateTime.MinValue : targetVersion.Timestamp;
-		var safeCutoff = cutoffTime == DateTime.MinValue ? DateTime.MinValue : cutoffTime.AddMilliseconds(100);
+		var safeCutoff = (cutoffTime == DateTime.MinValue || cutoffTime == DateTime.MaxValue) 
+            ? cutoffTime 
+            : cutoffTime.AddMilliseconds(100);
 
 		foreach (var row in rows)
 		{

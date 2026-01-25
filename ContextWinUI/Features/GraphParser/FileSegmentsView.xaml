@@ -176,7 +176,8 @@
                                     FileExtension="{x:Bind Current.FileExtension, Mode=OneWay}"
                                     SaveRequested="OnSegmentSaveRequested"
                                     ContentModified="OnSegmentContentModified"
-                                    CaretPositionChanged="OnEditorCaretPositionChanged"/>
+                                    CaretPositionChanged="OnEditorCaretPositionChanged"
+                                    SymbolNavigationRequested="OnSegmentSymbolNavigationRequested"/>
 						</Grid>
 					</Grid>
 				</DataTemplate>
@@ -198,6 +199,8 @@
                                   HideUnchanged="{x:Bind ViewModel.HideUnchangedBlocks, Mode=TwoWay}"
                                   LeftIndex="{x:Bind ViewModel.CompareLeftIndex, Mode=TwoWay}"
                                   RightIndex="{x:Bind ViewModel.CurrentGlobalIndex, Mode=OneWay}"
+                                  ImplementationCandidates="{x:Bind ViewModel.ImplementationCandidates, Mode=OneWay}"
+                                  SelectedImplementation="{x:Bind ViewModel.SelectedImplementation, Mode=TwoWay}"
                                   SaveNewVersionRequested="OnFooterSaveNewVersion"
                                   SaveOverwriteRequested="OnFooterSaveOverwrite"
                                   RestoreOriginalRequested="OnFooterRestoreOriginal"

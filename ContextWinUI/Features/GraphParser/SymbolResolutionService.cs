@@ -1,5 +1,7 @@
 using ContextWinUI.Core.Contracts;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace ContextWinUI.Features.GraphParser.Services;
 
@@ -12,24 +14,65 @@ public class SymbolResolutionService: ISymbolResolutionService
 		_indexService = indexService;
 	}
 
-	public string? ResolveSymbolAtPosition(string text, int cursorIndex, int blockStartPos, string filePath)
+	public async Task<Models.SymbolResolutionResult?> ResolveSymbolAtPositionAsync(string text, int cursorIndex, int blockStartPos, string filePath)
 	{
 		string word = GetWordAtCursor(text, cursorIndex);
 		if (string.IsNullOrEmpty(word)) return null;
 
 		int absPos = blockStartPos + cursorIndex;
-		var node = _indexService.InferSymbolFromGraph(word, filePath, absPos);
+		
+        // Agora usamos await corretamente, sem bloquear a thread de UI
+        var roslynNode = await _indexService.ResolveSymbolWithRoslynAsync(filePath, absPos);
+        var node = roslynNode ?? _indexService.InferSymbolFromGraph(word, filePath, absPos);
 
 		if (node != null)
 		{
 			var graph = _indexService.GetCurrentGraph();
 			string resolvedPath = graph.GetFilePath(node.FileId);
-			string fileName = string.IsNullOrEmpty(resolvedPath) ? "Desconhecido" : Path.GetFileName(resolvedPath);
-			return $"[{node.Type}] {node.Name}\nDefinido em: {fileName}";
+            
+            if (!string.IsNullOrEmpty(resolvedPath) && File.Exists(resolvedPath))
+            {
+                return new Models.SymbolResolutionResult(
+                    node.Name,
+                    node.Type.ToString(),
+                    resolvedPath,
+                    node.StartPosition,
+                    false 
+                );
+            }
 		}
 
-		return $"'{word}' (Sem informações no grafo)";
+		return null;
 	}
+
+	public async Task<List<Models.SymbolResolutionResult>> FindImplementationsAtPositionAsync(string text, int cursorIndex, int blockStartPos, string filePath)
+    {
+        var results = new List<Models.SymbolResolutionResult>();
+        
+        int absPos = blockStartPos + cursorIndex;
+        var nodes = await _indexService.FindImplementationsWithRoslynAsync(filePath, absPos);
+
+        if (nodes != null)
+        {
+            var graph = _indexService.GetCurrentGraph();
+            foreach (var node in nodes)
+            {
+                string resolvedPath = graph.GetFilePath(node.FileId);
+                if (!string.IsNullOrEmpty(resolvedPath) && File.Exists(resolvedPath))
+                {
+                    results.Add(new Models.SymbolResolutionResult(
+                        node.Name,
+                        node.Type.ToString(),
+                        resolvedPath,
+                        node.StartPosition,
+                        true
+                    ));
+                }
+            }
+        }
+
+        return results;
+    }
 
 	private string GetWordAtCursor(string text, int position)
 	{

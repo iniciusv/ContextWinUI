@@ -20,6 +20,8 @@ public interface IFileSegmentsContract
 	CodeBlockItem? SelectedBlock { get; set; }
 	ObservableCollection<SegmentRowViewModel> Rows { get; }
 	string CurrentSymbolInfo { get; set; }
+    ObservableCollection<SymbolResolutionResult> ImplementationCandidates { get; }
+    SymbolResolutionResult? SelectedImplementation { get; set; }
 	bool HasAnyUnsavedChanges { get; }
 	bool HasSelectedBlock { get; }
 	bool IsComparisonMode { get; set; }
@@ -104,7 +106,7 @@ public interface IFileSegmentsContract
 
 	/// <summary>Resolve símbolo na posição do cursor</summary>
 	/// <param name="cursorIndexInBlock">Posição relativa no bloco atual</param>
-	void ResolveSymbolHeuristic(int cursorIndexInBlock);
+	Task ResolveSymbolHeuristic(int cursorIndexInBlock);
 
 	/// <summary>Aplica uma sugestão de IA ao código atual</summary>
 	/// <param name="aiCode">Código gerado pela IA para mesclar</param>

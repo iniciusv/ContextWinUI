@@ -355,22 +355,92 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 
 	public void TriggerGlobalSave() => GlobalSaveRequested?.Invoke(this, EventArgs.Empty);
 
-	public void ResolveSymbolHeuristic(int cursorIndexInBlock)
+	public async Task ResolveSymbolHeuristic(int cursorIndexInBlock)
 	{
 		if (SelectedBlock == null) return;
-		string text = SelectedBlock.Content;
+        
+        // Use Helper
+        var helper = new Helpers.SegmentNavigationHelper(_symbolService); 
+        // Optimization: Could store helper as field, but it's lightweight.
 
-		if (cursorIndexInBlock > text.Length)
-			cursorIndexInBlock = text.Length;
-
-		var result = _symbolService.ResolveSymbolAtPosition(
-			text,
+		var result = await helper.ResolveSymbolAtPositionAsync(
+			SelectedBlock.Content,
 			cursorIndexInBlock,
 			SelectedBlock.AbsoluteStartPosition,
 			FilePath
 		);
-		CurrentSymbolInfo = result ?? string.Empty;
+		
+        if (result != null)
+        {
+            CurrentSymbolInfo = $"[{result.SymbolType}] {result.SymbolName}\nDefinido em: {Path.GetFileName(result.FilePath)}";
+        }
+        else
+        {
+            CurrentSymbolInfo = string.Empty;
+        }
 	}
+
+    public event EventHandler<NavigationRequestArgs>? ReferenceNavigationRequested;
+
+    public class NavigationRequestArgs : EventArgs
+    {
+        public string TargetFilePath { get; set; } = string.Empty;
+        public int TargetPosition { get; set; }
+    }
+
+    [ObservableProperty]
+    private ObservableCollection<SymbolResolutionResult> implementationCandidates = new();
+
+    [ObservableProperty]
+    private SymbolResolutionResult? selectedImplementation;
+
+    partial void OnSelectedImplementationChanged(SymbolResolutionResult? value)
+    {
+        if (value != null)
+        {
+            // Navigate immediately
+            ReferenceNavigationRequested?.Invoke(this, new NavigationRequestArgs
+            {
+                TargetFilePath = value.FilePath,
+                TargetPosition = value.AbsolutePosition
+            });
+        }
+    }
+
+    public async void OnSymbolNavigationRequested(int cursorIndexInBlock, bool isImplementation)
+    {
+        if (SelectedBlock == null) return;
+        
+        var helper = new Helpers.SegmentNavigationHelper(_symbolService);
+        
+        var result = await helper.HandleNavigationRequestAsync(
+            SelectedBlock.Content,
+            cursorIndexInBlock,
+            SelectedBlock.AbsoluteStartPosition,
+            FilePath,
+            isImplementation
+        );
+
+        if (result.SingleTarget != null)
+        {
+            ReferenceNavigationRequested?.Invoke(this, new NavigationRequestArgs
+            {
+                TargetFilePath = result.SingleTarget.FilePath,
+                TargetPosition = result.SingleTarget.AbsolutePosition
+            });
+        }
+        
+        if (result.Candidates.Any())
+        {
+            ImplementationCandidates.Clear();
+            foreach (var c in result.Candidates) ImplementationCandidates.Add(c);
+        }
+
+        if (!string.IsNullOrEmpty(result.Message))
+        {
+            CurrentSymbolInfo = result.Message;
+        }
+    }
 
 	public async Task ApplyAiSuggestion(string aiCode)
 	{
@@ -454,4 +524,19 @@ public partial class FileSegmentsViewModel : ObservableObject, IFileSegmentsCont
 			}
 		};
 	}
+    public void ScrollToPosition(int absolutePosition)
+    {
+        var targetRow = Rows.FirstOrDefault(r => 
+            absolutePosition >= r.Current.AbsoluteStartPosition && 
+            absolutePosition <= (r.Current.AbsoluteStartPosition + r.Current.Content.Length + 10)); // +10 de buffer
+
+        if (targetRow != null)
+        {
+            SelectedBlock = targetRow.Current;
+            // A View deve observar o SelectedBlock e fazer ScrollIntoView se necessário, 
+            // ou podemos adicionar um evento RequestScrollIntoView se o SelectedObject não for suficiente.
+            // Para garantir, vamos setar o IsSelected que já dispara updates visuais
+            targetRow.Current.IsSelected = true;
+        }
+    }
 }

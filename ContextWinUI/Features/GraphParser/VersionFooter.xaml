@@ -5,10 +5,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
+    xmlns:helpers="using:ContextWinUI.Helpers"
     mc:Ignorable="d">
 
 	<UserControl.Resources>
 		<converters:BoolToVisibilityConverter x:Key="VisibleIfTrue" TrueValue="Visible" FalseValue="Collapsed"/>
+        <helpers:IntToVisibilityConverter x:Key="IntToVisible" />
 	</UserControl.Resources>
 
 	<Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
@@ -57,14 +59,33 @@
 			</Button>
 		</StackPanel>
 
-		<TextBlock Grid.Column="1"
-                   Text="{x:Bind SymbolInfo, Mode=OneWay}" 
-                   Style="{StaticResource CaptionTextBlockStyle}" 
-                   Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Left"
-                   Margin="24,0,12,0"
-                   TextTrimming="CharacterEllipsis"/>
+
+		<StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+			<TextBlock 
+					   Text="{x:Bind SymbolInfo, Mode=OneWay}" 
+                       Style="{StaticResource CaptionTextBlockStyle}" 
+                       Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Left"
+                       Margin="24,0,12,0"
+                       TextTrimming="CharacterEllipsis"/>
+
+			<ComboBox ItemsSource="{x:Bind ImplementationCandidates, Mode=OneWay}"
+                      SelectedItem="{x:Bind SelectedImplementation, Mode=TwoWay}"
+					  Visibility="{x:Bind ImplementationCandidates.Count, Mode=OneWay, Converter={StaticResource IntToVisible}}" 
+                      PlaceholderText="Select Implementation"
+					  DisplayMemberPath="SymbolName"
+                      Width="200" FontSize="12" Height="30"
+					  Margin="10,0,0,0"/> 
+					  <!-- Note: We are banking on CollectionAnyToVisible converter logic or similar, 
+                           but user code has BoolToVis. Int to Bool conversion in x:Bind is not automatic unless BoolToVis supports int!=0.
+                           Actually, standard BoolToVis often supports boolean.
+                           Let's check if we have a converter for Count. 
+                           If not, I might need to rely on ViewModel or just use x:Bind with a function if using x:Phase.
+                           WinUI x:Bind to function: Visibility="{x:Bind HasCandidates(ImplementationCandidates), Mode=OneWay}"
+                           Let's add a helper property in code behind or user control.
+                      -->
+		</StackPanel>
 
 		<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
 

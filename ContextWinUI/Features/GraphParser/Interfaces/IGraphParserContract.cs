@@ -82,7 +82,7 @@ public interface IGraphParserContract
 	/// 1. Grafo semântico (símbolos: classes, métodos, propriedades)
 	/// 2. Sistema de arquivos (fallback quando grafo não disponível)
 	/// </remarks>
-	void UpdateSearch(string query);
+	Task UpdateSearch(string query);
 
 	/// <summary>
 	/// Abre o arquivo de forma PERMANENTE (Fixa).

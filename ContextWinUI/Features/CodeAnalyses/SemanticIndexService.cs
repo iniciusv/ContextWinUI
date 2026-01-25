@@ -6,6 +6,7 @@ using ContextWinUI.Features.CodeEditor.Highlight;
 using ContextWinUI.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.UI;
 using System;
 using System.Collections.Concurrent;
@@ -242,4 +243,24 @@ public class SemanticIndexService : ISemanticIndexService
 		return null;
 	}
 
+	private RoslynSymbolAnalyzer? _analyzer;
+
+	public async Task<SymbolNode?> ResolveSymbolWithRoslynAsync(string filePath, int absolutePosition)
+	{
+		if (_cachedCompilation == null) return null;
+        
+        // Lazy initialization or update with current graph
+        if (_analyzer == null) _analyzer = new RoslynSymbolAnalyzer(_cachedGraph);
+
+		return await _analyzer.ResolveSymbolWithRoslynAsync(_cachedCompilation, filePath, absolutePosition);
+	}
+
+    public async Task<List<SymbolNode>> FindImplementationsWithRoslynAsync(string filePath, int absolutePosition)
+    {
+        if (_cachedCompilation == null) return new List<SymbolNode>();
+        if (_analyzer == null) _analyzer = new RoslynSymbolAnalyzer(_cachedGraph);
+
+        return await _analyzer.FindImplementationsWithRoslynAsync(_cachedCompilation, filePath, absolutePosition);
+    }
 }
+

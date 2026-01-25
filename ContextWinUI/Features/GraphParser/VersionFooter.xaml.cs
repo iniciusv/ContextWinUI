@@ -105,6 +105,24 @@ namespace ContextWinUI.Features.GraphParser.Views.Components
 			}
 		}
 
+		public static readonly DependencyProperty ImplementationCandidatesProperty =
+			DependencyProperty.Register(nameof(ImplementationCandidates), typeof(ObservableCollection<SymbolResolutionResult>), typeof(VersionFooter), new PropertyMetadata(null));
+
+		public ObservableCollection<SymbolResolutionResult> ImplementationCandidates
+		{
+			get => (ObservableCollection<SymbolResolutionResult>)GetValue(ImplementationCandidatesProperty);
+			set => SetValue(ImplementationCandidatesProperty, value);
+		}
+
+		public static readonly DependencyProperty SelectedImplementationProperty =
+			DependencyProperty.Register(nameof(SelectedImplementation), typeof(SymbolResolutionResult), typeof(VersionFooter), new PropertyMetadata(null));
+
+		public SymbolResolutionResult SelectedImplementation
+		{
+			get => (SymbolResolutionResult)GetValue(SelectedImplementationProperty);
+			set => SetValue(SelectedImplementationProperty, value);
+		}
+
 		#endregion
 
 		#region UI Logic & Helpers

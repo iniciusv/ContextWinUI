@@ -12,6 +12,9 @@ public interface ISemanticIndexService
 {
 	Task<DependencyGraph> GetOrIndexProjectAsync(string rootPath);
 
+    Task<SymbolNode?> ResolveSymbolWithRoslynAsync(string filePath, int absolutePosition);
+    Task<List<SymbolNode>> FindImplementationsWithRoslynAsync(string filePath, int absolutePosition);
+
 	DependencyGraph GetCurrentGraph();
 
 	SymbolNode? InferSymbolFromGraph(string word, string filePath, int absolutePosition);

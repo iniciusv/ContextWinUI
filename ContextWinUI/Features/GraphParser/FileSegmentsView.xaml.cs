@@ -103,7 +103,8 @@ namespace ContextWinUI.Features.GraphParser
 				}
 
 				// 3. Agora chama a heurística, que usará o SelectedBlock.Content correto
-				ViewModel.ResolveSymbolHeuristic(cursorPosition);
+				// Chama sem await (fire and forget) pois é evento de UI e não queremos bloquear
+                _ = ViewModel.ResolveSymbolHeuristic(cursorPosition);
 			}
 		}
 
@@ -160,5 +161,14 @@ namespace ContextWinUI.Features.GraphParser
 				row.Current.IsSelected = !row.Current.IsSelected;
 			}
 		}
+
+        private void OnSegmentSymbolNavigationRequested(object sender, SegmentCodeViewer.SymbolNavigationArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.DataContext is SegmentRowViewModel row)
+            {
+                ViewModel.SelectedBlock = row.Current;
+                ViewModel.OnSymbolNavigationRequested(e.CursorIndex, e.IsImplementationRequest);
+            }
+        }
 	}
 }

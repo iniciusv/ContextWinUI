@@ -39,6 +39,13 @@ public sealed partial class SegmentCodeViewer : UserControl
 	public event EventHandler? SaveRequested;
 	public event EventHandler<int>? CaretPositionChanged;
 	public event EventHandler? ContentModified;
+	public event EventHandler<SymbolNavigationArgs>? SymbolNavigationRequested; 
+
+    public class SymbolNavigationArgs : EventArgs
+    {
+        public int CursorIndex { get; set; }
+        public bool IsImplementationRequest { get; set; }
+    }
 
 	public static readonly DependencyProperty TextProperty = DependencyProperty.Register(nameof(Text), typeof(string), typeof(SegmentCodeViewer),new PropertyMetadata(string.Empty, OnTextChanged));
 
@@ -116,6 +123,9 @@ public sealed partial class SegmentCodeViewer : UserControl
 		ApplyBaseTheme();
 		CodeEditor.SelectionChanged += (s, e) =>
 			CaretPositionChanged?.Invoke(this, CodeEditor.Document.Selection.StartPosition);
+
+        // Intercept clicks for navigation
+        CodeEditor.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnCodeEditorPointerPressed), true);
 
 		this.ActualThemeChanged += (s, e) => ApplyBaseTheme();
 		this.Loaded += OnLoaded;
@@ -281,10 +291,53 @@ public sealed partial class SegmentCodeViewer : UserControl
 			SaveRequested?.Invoke(this, EventArgs.Empty);
 			e.Handled = true;
 		}
+        else if (e.Key == VirtualKey.F12)
+        {
+            // F12 = Go to Definition
+            // Ctrl + F12 = Go to Implementation
+            
+            int cursorIndex = CodeEditor.Document.Selection.StartPosition;
+            
+            SymbolNavigationRequested?.Invoke(this, new SymbolNavigationArgs
+            {
+                CursorIndex = cursorIndex,
+                IsImplementationRequest = isCtrlPressed
+            });
+            
+            e.Handled = true;
+        }
 	}
 
 	private void CodeEditor_BringIntoViewRequested(UIElement sender, BringIntoViewRequestedEventArgs args)
 	{
 		args.Handled = true;
 	}
+
+    private void OnCodeEditorPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var properties = e.GetCurrentPoint(CodeEditor).Properties;
+        if (properties.IsLeftButtonPressed)
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+            bool isCtrlPressed = (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+            if (isCtrlPressed)
+            {
+                var f12State = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.F12);
+                bool isF12Pressed = (f12State & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+                e.Handled = true;
+                
+                // Get tap position
+                var point = e.GetCurrentPoint(CodeEditor).Position;
+                var range = CodeEditor.Document.GetRangeFromPoint(point, PointOptions.ClientCoordinates);
+                
+                SymbolNavigationRequested?.Invoke(this, new SymbolNavigationArgs 
+                { 
+                    CursorIndex = range.StartPosition,
+                    IsImplementationRequest = isF12Pressed 
+                });
+            }
+        }
+    }
 }

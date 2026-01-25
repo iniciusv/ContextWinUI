@@ -59,6 +59,7 @@ public partial class App : Application
 
 		// 3. LÓGICA
 		services.AddSingleton<IBlockSelectionManager, BlockSelectionService>();
+        services.AddTransient<IProjectSearchService, ProjectSearchService>(); // NEW
 		services.AddTransient<ITextSimilarityEngine, LevenshteinEngine>(); // Verifique se existe
 		services.AddTransient<DependencyTrackerService>(); // Verifique se existe
 		services.AddTransient<IDependencyAnalysisOrchestrator, DependencyAnalysisOrchestrator>(); // Verifique se existe
