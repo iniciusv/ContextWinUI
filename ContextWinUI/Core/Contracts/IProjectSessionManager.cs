@@ -17,6 +17,7 @@ public interface IProjectSessionManager
 	bool IsProjectLoaded { get; }
 	System.Collections.Concurrent.ConcurrentDictionary<string, string> TagColors { get; }
 	string? ActiveContextFilePath { get; }
+    ContextWinUI.Models.ProjectCacheDto? CurrentState { get; }
 	event EventHandler? ContextRestored;
 	event EventHandler<ProjectLoadedEventArgs>? ProjectLoaded;
 	event EventHandler<string>? StatusChanged;

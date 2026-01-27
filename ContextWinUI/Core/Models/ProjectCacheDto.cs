@@ -17,4 +17,7 @@ public class ProjectCacheDto
 	public Dictionary<string, string> TagColors { get; set; } = new();
 
 	public List<FileMetadataDto> Files { get; set; } = new();
+    
+    // [NOVO] Persistência de conexões de banco de dados
+    public List<DatabaseConnectionDto> DatabaseConnections { get; set; } = new();
 }

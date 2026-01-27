@@ -10,7 +10,12 @@ public class IntToVisibilityConverter : IValueConverter
     {
         if (value is int count)
         {
-            return count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            bool isVisible = count > 0;
+            if (parameter is string paramString && paramString.Equals("Invert", StringComparison.OrdinalIgnoreCase))
+            {
+                isVisible = !isVisible;
+            }
+            return isVisible ? Visibility.Visible : Visibility.Collapsed;
         }
         return Visibility.Collapsed;
     }

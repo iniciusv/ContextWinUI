@@ -17,7 +17,8 @@ public interface IPersistenceService
 		bool omitEmptyLines,
 		bool includeStructure,
 		bool structureOnlyFolders,
-		Dictionary<string, string> tagColors);
+		Dictionary<string, string> tagColors,
+        List<DatabaseConnectionDto> databaseConnections);
 
 	// Salva em um arquivo específico escolhido pelo usuário
 	Task SaveProjectCacheToSpecificFileAsync(
@@ -31,7 +32,8 @@ public interface IPersistenceService
 		bool omitEmptyLines,
 		bool includeStructure,
 		bool structureOnlyFolders,
-		Dictionary<string, string> tagColors);
+		Dictionary<string, string> tagColors,
+        List<DatabaseConnectionDto> databaseConnections);
 
 	// Carrega do caminho padrão
 	Task<ProjectCacheDto?> LoadProjectCacheDefaultAsync(string projectRootPath);

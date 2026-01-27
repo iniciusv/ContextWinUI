@@ -12,6 +12,8 @@ using ContextWinUI.Features.GraphParser.Interfaces;
 using ContextWinUI.Features.GraphParser.Services;
 using ContextWinUI.Features.GraphParser.ViewModels;
 using ContextWinUI.Features.Session; // NEW
+using ContextWinUI.Features.DatabaseContext.Services;
+using ContextWinUI.Features.DatabaseContext.ViewModels;
 using ContextWinUI.Services;
 using ContextWinUI.ViewModels;
 using ContextWinUI.ViewModels.Helpers; // Para FileExplorerOperations
@@ -90,6 +92,13 @@ public partial class App : Application
         // GraphParser MUST be singleton to maintain state across ViewModels
 		services.AddSingleton<GraphParserViewModel>(); 
         services.AddSingleton<IGraphParserContract>(sp => sp.GetRequiredService<GraphParserViewModel>());
+
+        // 6. DATABASE FEATURE
+        services.AddSingleton<IDatabaseService, DatabaseService>();
+        services.AddTransient<DatabaseSelectionViewModel>();
+        services.AddTransient<DatabaseSchemaDataViewModel>();
+        services.AddTransient<DatabaseExplorerViewModel>();
+        services.AddTransient<DatabaseViewModel>();
 
 		services.AddTransient<MainViewModel>();
 

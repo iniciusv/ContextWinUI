@@ -12,6 +12,9 @@ public sealed partial class MainWindow : Window
 {
 	public MainViewModel ViewModel { get; }
 
+    public Visibility BooleanToVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility InverseBooleanToVisibility(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
+
 	public MainWindow()
 	{
 		this.InitializeComponent();

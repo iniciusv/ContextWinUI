@@ -9,6 +9,8 @@
     xmlns:views="using:ContextWinUI.Views"
     xmlns:parser="using:ContextWinUI.Features.GraphParser"
     xmlns:analysis="using:ContextWinUI.Features.GraphAnalysis"
+    xmlns:database="using:ContextWinUI.Features.DatabaseContext.Views"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     mc:Ignorable="d"
     Title="Context WinUI - Explorador de Código">
 
@@ -17,6 +19,8 @@
 	</Window.SystemBackdrop>
 
 	<Grid>
+
+
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
@@ -91,20 +95,30 @@
 				<ColumnDefinition Width="350" MinWidth="300"/>
 			</Grid.ColumnDefinitions>
 
-			<views:FileExplorerView Grid.Column="0"
-                    ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
-                    SelectionViewModel="{x:Bind ViewModel.FileSelection}"
-                    FileSelected="OnFileExplorer_FileSelected"/>
+			<Grid Grid.Column="0">
+                <views:FileExplorerView 
+                        ExplorerViewModel="{x:Bind ViewModel.FileExplorer}"
+                        SelectionViewModel="{x:Bind ViewModel.FileSelection}"
+                        FileSelected="OnFileExplorer_FileSelected"
+                        Visibility="{x:Bind InverseBooleanToVisibility(ViewModel.IsDatabaseTabActive), Mode=OneWay}"/>
+
+                <database:DatabaseExplorerView
+                        ViewModel="{x:Bind ViewModel.Database.Explorer}"
+                        Visibility="{x:Bind BooleanToVisibility(ViewModel.IsDatabaseTabActive), Mode=OneWay}"/>
+            </Grid>
 
 			<TextBlock Grid.Column="1" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource SystemControlForegroundAltMediumHighBrush}" FontSize="8" IsHitTestVisible="False"/>
 			<controls:GridSplitter Grid.Column="1" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
-			<Pivot Grid.Column="2">
+			<Pivot Grid.Column="2" SelectedIndex="{x:Bind ViewModel.SelectedMainTabIndex, Mode=TwoWay}">
 				<PivotItem Header="Current File" Margin="0">
 					<views:FileContentView 
                            ContentViewModel="{x:Bind ViewModel.FileContent}"
                            CopySelectedCommand="{x:Bind ViewModel.FileSelection.CopySelectedFilesCommand}"/>
 				</PivotItem>
+                <PivotItem Header="Database" Margin="0">
+                    <database:DatabaseSchemaDataView ViewModel="{x:Bind ViewModel.Database.SchemaViewer}" />
+                </PivotItem>
 				<PivotItem Header="Block Parser" Margin="0">
 					<parser:GraphParserView ViewModel="{x:Bind ViewModel.GraphParser, Mode=OneWay}" />
 				</PivotItem>
@@ -118,7 +132,8 @@
 			<controls:GridSplitter Grid.Column="3" ResizeBehavior="BasedOnAlignment" ResizeDirection="Columns" Background="Transparent" HorizontalAlignment="Stretch"/>
 
 			<Grid Grid.Column="4" Background="{ThemeResource LayerFillColorDefaultBrush}">
-				<Pivot>
+                <!-- File Context (Visible when NOT Database) -->
+				<Pivot Visibility="{x:Bind InverseBooleanToVisibility(ViewModel.IsDatabaseTabActive), Mode=OneWay}">
 					<PivotItem Header="Context">
 						<views:ContextAnalysisView 
                              ContextViewModel="{x:Bind ViewModel.ContextAnalysis, Mode=OneWay}"/>
@@ -128,6 +143,11 @@
                              ViewModel="{x:Bind ViewModel.SemanticGraph, Mode=OneWay}"/>
 					</PivotItem>
 				</Pivot>
+                
+                <!-- Database Context (Visible when Database) -->
+                <database:DatabaseSelectionView 
+                    ViewModel="{x:Bind ViewModel.Database.Selection}"
+                    Visibility="{x:Bind BooleanToVisibility(ViewModel.IsDatabaseTabActive), Mode=OneWay}"/>
 			</Grid>
 		</Grid>
 

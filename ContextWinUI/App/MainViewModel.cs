@@ -9,6 +9,7 @@ using ContextWinUI.Features.GraphAnalysis;
 using ContextWinUI.Features.GraphParser;
 using ContextWinUI.Features.GraphParser.IAParser;
 using ContextWinUI.Features.GraphParser.ViewModels;
+using ContextWinUI.Features.DatabaseContext.ViewModels;
 using ContextWinUI.Models;
 using ContextWinUI.Services; // Necessário para SemanticIndexService concreto, se não tiver interface
 using Microsoft.UI.Dispatching;
@@ -47,6 +48,10 @@ public partial class MainViewModel : ObservableObject
 	public IProjectSessionManager SessionManager { get; }
 	public SemanticGraphViewModel SemanticGraph { get; }
 	public ContextSelectionViewModel FileSelection => FileExplorer.SelectionViewModel;
+    
+    // [NOVO] Database Feature
+    public DatabaseViewModel Database { get; }
+
 	private readonly IBlockEditorService _blockEditorService;
 
 	// =========================================================
@@ -57,6 +62,12 @@ public partial class MainViewModel : ObservableObject
 
 	[ObservableProperty]
 	private bool isLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDatabaseTabActive))]
+    private int _selectedMainTabIndex;
+
+    public bool IsDatabaseTabActive => SelectedMainTabIndex == 1; // Assuming Database is index 1 (Middle) or adapting based on UI
 
 	// =========================================================
 	// CONSTRUTOR (Agora limpo e rápido)
@@ -73,7 +84,8 @@ public partial class MainViewModel : ObservableObject
 				IFileSelectionService fileSelectionService,
 				SemanticGraphViewModel semanticGraph,
 				IBlockEditorService blockEditorService,
-				IGitService gitService)
+				IGitService gitService,
+                DatabaseViewModel database)
 	{
 		FileExplorer = fileExplorer;
 		ContextAnalysis = contextAnalysis;
@@ -85,6 +97,7 @@ public partial class MainViewModel : ObservableObject
 		_fileSelectionService = fileSelectionService;
 		_aiMergerService = aiMergerService;
 		_blockEditorService = blockEditorService;
+        Database = database;
 
 		SemanticGraph = semanticGraph;
 		_gitService = gitService;

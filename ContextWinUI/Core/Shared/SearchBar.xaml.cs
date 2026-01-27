@@ -51,6 +51,13 @@ public sealed partial class SearchBar : UserControl
 		set => SetValue(SubmitCommandProperty, value);
 	}
 
+    public static readonly DependencyProperty PlaceholderTextProperty = DependencyProperty.Register(nameof(PlaceholderText), typeof(string), typeof(SearchBar), new PropertyMetadata("Search..."));
+    public string PlaceholderText
+    {
+        get => (string)GetValue(PlaceholderTextProperty);
+        set => SetValue(PlaceholderTextProperty, value);
+    }
+
 	public SearchBar()
 	{
 		this.InitializeComponent();

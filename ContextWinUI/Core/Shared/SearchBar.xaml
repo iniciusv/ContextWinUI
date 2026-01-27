@@ -8,7 +8,7 @@
 
 	<Grid>
 		<AutoSuggestBox x:Name="SearchBox"
-                        PlaceholderText="Search... (+#tag, -#tag or []#tag)"
+                        PlaceholderText="{x:Bind PlaceholderText, Mode=OneWay}"
                         TextChanged="OnTextChanged"
                         QuerySubmitted="OnQuerySubmitted"
                         SuggestionChosen="OnSuggestionChosen"

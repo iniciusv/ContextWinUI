@@ -24,7 +24,8 @@ public class PersistenceService : IPersistenceService
 		bool omitEmptyLines,
 		bool includeStructure,
 		bool structureOnlyFolders,
-		Dictionary<string, string> tagColors)
+		Dictionary<string, string> tagColors,
+        List<DatabaseConnectionDto> databaseConnections)
 	{
 		var cacheFilePath = GetCacheFilePath(projectRootPath);
 		var cacheDir = Path.GetDirectoryName(cacheFilePath);
@@ -35,7 +36,7 @@ public class PersistenceService : IPersistenceService
 
 		// Reutiliza a lógica genérica
 		await SaveProjectCacheToSpecificFileAsync(cacheFilePath, projectRootPath, states, prePrompt,
-			omitUsings, omitNamespaces, omitComments, omitEmptyLines, includeStructure, structureOnlyFolders, tagColors);
+			omitUsings, omitNamespaces, omitComments, omitEmptyLines, includeStructure, structureOnlyFolders, tagColors, databaseConnections);
 	}
 
 	// Implementação Genérica: Salva onde mandarem
@@ -50,7 +51,8 @@ public class PersistenceService : IPersistenceService
 		bool omitEmptyLines,
 		bool includeStructure,
 		bool structureOnlyFolders,
-		Dictionary<string, string> tagColors)
+		Dictionary<string, string> tagColors,
+        List<DatabaseConnectionDto> databaseConnections)
 	{
 		try
 		{
@@ -65,6 +67,7 @@ public class PersistenceService : IPersistenceService
 				IncludeStructure = includeStructure,
 				StructureOnlyFolders = structureOnlyFolders,
 				TagColors = tagColors ?? new Dictionary<string, string>(),
+                DatabaseConnections = databaseConnections ?? new List<DatabaseConnectionDto>(),
 				Files = states.Select(s => new FileMetadataDto
 				{
 					RelativePath = Path.GetRelativePath(projectRootPath, s.FullPath),

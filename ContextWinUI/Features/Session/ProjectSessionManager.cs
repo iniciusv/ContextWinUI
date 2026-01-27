@@ -20,6 +20,9 @@ public class ProjectSessionManager : IProjectSessionManager
 	// ESTADO: Caminho do arquivo de contexto atualmente em uso (se o usuário abriu um manualmente)
 	public string? ActiveContextFilePath { get; private set; }
 
+    // Armazena o DTO completo para persistir dados extras como DatabaseConnections
+    public ProjectCacheDto? CurrentState { get; private set; } = new ProjectCacheDto();
+
 	public string PrePrompt { get; set; } = string.Empty;
 	public bool OmitUsings { get; set; }
 	public bool OmitNamespaces { get; set; }
@@ -127,6 +130,7 @@ public class ProjectSessionManager : IProjectSessionManager
 		OmitEmptyLines = false;
 		IncludeStructure = false;
 		StructureOnlyFolders = false;
+        CurrentState = new ProjectCacheDto();
 	}
 
 	private void ApplyColorsFromCache(ProjectCacheDto cache)
@@ -145,6 +149,8 @@ public class ProjectSessionManager : IProjectSessionManager
 
 	private void ApplyCacheToMemory(string rootPath, ProjectCacheDto cache)
 	{
+        CurrentState = cache;
+
 		// 1. APLICA AS CONFIGURAÇÕES DO PRÉ-PROMPT (FALTANDO NA VERSÃO ATUAL)
 		PrePrompt = cache.PrePrompt ?? string.Empty;
 		OmitUsings = cache.OmitUsings;
@@ -324,6 +330,9 @@ public class ProjectSessionManager : IProjectSessionManager
 			// Atualiza dicionário local
 			TagColors.Clear();
 			foreach (var c in colorsToSave) TagColors.TryAdd(c.Key, c.Value);
+            
+            // Garante que o CurrentState tenha as conexões atuais (se nulo, cria nova lista)
+            var dbConnections = CurrentState?.DatabaseConnections ?? new List<DatabaseConnectionDto>();
 
 			if (!string.IsNullOrEmpty(ActiveContextFilePath))
 			{
@@ -332,7 +341,7 @@ public class ProjectSessionManager : IProjectSessionManager
 				await _persistenceService.SaveProjectCacheToSpecificFileAsync(
 					ActiveContextFilePath,
 					CurrentProjectPath,
-					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave, dbConnections);
 			}
 			else
 			{
@@ -340,7 +349,7 @@ public class ProjectSessionManager : IProjectSessionManager
 				NotifyStatus("Salvando sessão no cache padrão...");
 				await _persistenceService.SaveProjectCacheDefaultAsync(
 					CurrentProjectPath,
-					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+					allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave, dbConnections);
 			}
 
 			NotifyStatus("Trabalho salvo com sucesso.");
@@ -360,15 +369,17 @@ public class ProjectSessionManager : IProjectSessionManager
 		var currentColors = TagColorService.Instance.GetAllColors();
 		var colorsToSave = new Dictionary<string, string>();
 		foreach (var kvp in currentColors) colorsToSave[kvp.Key] = ToHex(kvp.Value);
+        
+        var dbConnections = CurrentState?.DatabaseConnections ?? new List<DatabaseConnectionDto>();
 
 		await _persistenceService.SaveProjectCacheToSpecificFileAsync(
 			filePath,
 			CurrentProjectPath,
-			allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave);
+			allStates, PrePrompt, OmitUsings, OmitNamespaces, OmitComments, OmitEmptyLines, IncludeStructure, StructureOnlyFolders, colorsToSave, dbConnections);
 
 		// Opcional: Se "Exportar" deve virar o arquivo ativo, descomente a linha abaixo:
 		// ActiveContextFilePath = filePath; 
-
+		
 		NotifyStatus($"Cópia exportada para: {Path.GetFileName(filePath)}");
 	}
 }
