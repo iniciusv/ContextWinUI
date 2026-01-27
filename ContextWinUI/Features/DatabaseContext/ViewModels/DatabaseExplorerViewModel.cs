@@ -119,10 +119,8 @@ public partial class DatabaseExplorerViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private void AddConnection()
+    public void AddConnection(DatabaseConnectionDto newConn)
     {
-        var newConn = new DatabaseConnectionDto { Name = "New Connection", ConnectionString = "Server=...;Database=...;" };
         Connections.Add(newConn);
         _sessionManager.CurrentState.DatabaseConnections.Add(newConn);
         SelectedConnection = newConn;
