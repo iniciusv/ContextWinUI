@@ -54,12 +54,31 @@ public partial class GraphParserViewModel : ObservableObject, IGraphParserContra
 	private int currentGlobalIndex = 0;
 
 	public event EventHandler<int>? CurrentGlobalIndexChanged;
+    public event EventHandler<string>? SyncFileRequested; // NEW
 
 	public bool HasAnyUnsavedChanges => Tabs.OfType<FileSegmentsViewModel>().Any(t => t.HasAnyUnsavedChanges);
 	public bool HasTabs => Tabs.Any();
 
 	partial void OnTabsChanged(ObservableCollection<object> value) => OnPropertyChanged(nameof(HasTabs));
 	partial void OnSelectedTabChanged(object? value) => OnPropertyChanged(nameof(HasTabs));
+
+    [RelayCommand]
+    public void SyncToExplorer()
+    {
+        if (SelectedTab is FileSegmentsViewModel fsVm && !string.IsNullOrEmpty(fsVm.FilePath))
+        {
+            SyncFileRequested?.Invoke(this, fsVm.FilePath);
+        }
+    }
+
+    [RelayCommand]
+    public void CheckCurrentFile()
+    {
+        if (SelectedTab is FileSegmentsViewModel fsVm && !string.IsNullOrEmpty(fsVm.FilePath))
+        {
+            _contextSelection.ProcessPaths(new[] { fsVm.FilePath });
+        }
+    }
 
     private readonly IProjectSearchService _searchService;
 

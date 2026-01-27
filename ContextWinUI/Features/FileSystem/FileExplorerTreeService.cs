@@ -16,4 +16,5 @@ public class FileExplorerTreeService : IFileExplorerTreeService
 	public void ExpandAll(IEnumerable<FileSystemItem> items) => _manager.ExpandAll(items);
 	public void CollapseAll(IEnumerable<FileSystemItem> items) => _manager.CollapseAll(items);
 	public void SyncFocus(IEnumerable<FileSystemItem> rootItems, FileSystemItem? selectedItem) => _manager.SyncFocus(rootItems, selectedItem);
+    public FileSystemItem? FindItemByPath(IEnumerable<FileSystemItem> rootItems, string path) => _manager.FindItemByPath(rootItems, path);
 }

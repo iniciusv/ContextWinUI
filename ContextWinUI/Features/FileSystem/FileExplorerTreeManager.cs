@@ -55,6 +55,35 @@ public class FileExplorerTreeManager
 		}
 	}
 
+    public FileSystemItem? FindItemByPath(IEnumerable<FileSystemItem> rootItems, string targetPath)
+    {
+        if (rootItems == null) return null;
+        if (string.IsNullOrEmpty(targetPath)) return null;
+
+        var normalizedTarget = System.IO.Path.GetFullPath(targetPath).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+
+        foreach (var item in rootItems)
+        {
+             var itemPath = System.IO.Path.GetFullPath(item.FullPath).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+             
+             if (string.Equals(itemPath, normalizedTarget, System.StringComparison.OrdinalIgnoreCase))
+             {
+                 return item;
+             }
+
+             if (item.Children != null && item.Children.Count > 0)
+             {
+                 // Optimization: Only search into directories that could possibly contain the file
+                 if (normalizedTarget.StartsWith(itemPath, System.StringComparison.OrdinalIgnoreCase))
+                 {
+                     var found = FindItemByPath(item.Children, targetPath);
+                     if (found != null) return found;
+                 }
+             }
+        }
+        return null;
+    }
+
 	private bool DetermineExpansionState(FileSystemItem current, FileSystemItem target)
 	{
 		if (current == target) return true;

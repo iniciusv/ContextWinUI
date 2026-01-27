@@ -80,6 +80,16 @@
                         Spacing="8" 
                         VerticalAlignment="Center" 
                         Margin="0,0,12,0">
+                <Button Command="{x:Bind ViewModel.SyncToExplorerCommand}"
+                        ToolTipService.ToolTip="Sincronizar com Explorador de Arquivos">
+                    <FontIcon Glyph="&#xE751;" FontSize="16"/> <!-- GoTo/Arrow icon -->
+                </Button>
+
+                <Button Command="{x:Bind ViewModel.CheckCurrentFileCommand}"
+                        ToolTipService.ToolTip="Selecionar/Marcar Arquivo">
+                    <FontIcon Glyph="&#xE73E;" FontSize="16"/> <!-- CheckMark icon -->
+                </Button>
+
                 <Button ToolTipService.ToolTip="Visualização">
                     <Button.Content>
                         <FontIcon Glyph="&#xE713;" FontSize="16"/>

@@ -176,6 +176,26 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		FileSelected?.Invoke(this, item);
 	}
 
+    public void SelectFileByPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+
+        IsLoading = true;
+        try
+        {
+            var item = _treeService.FindItemByPath(RootItems, path);
+            if (item != null)
+            {
+                SelectFile(item);
+                _treeService.SyncFocus(RootItems, item);
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
 	private void OnStatusChanged(string message) => StatusChanged?.Invoke(this, message);
 
 	public async Task RefreshTreeAsync()

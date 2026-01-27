@@ -270,6 +270,7 @@ public partial class MainViewModel : ObservableObject
 		// Eventos dos ViewModels filhos
 		FileExplorer.StatusChanged += (s, msg) => StatusMessage = msg;
 		ContextAnalysis.StatusChanged += (s, msg) => StatusMessage = msg;
+        GraphParser.SyncFileRequested += (s, path) => FileExplorer.SelectFileByPath(path);
 
 		// Sincronizar estado de Loading do Explorer com o Main
 		FileExplorer.PropertyChanged += (s, e) =>
