@@ -12,12 +12,12 @@ namespace ContextWinUI.Features.DatabaseContext.Services;
 
 public class DatabaseService : IDatabaseService
 {
-    public async Task<bool> TestConnectionAsync(string connectionString)
+    public async Task<bool> TestConnectionAsync(string connectionString, System.Threading.CancellationToken cancellationToken = default)
     {
         try
         {
             using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(cancellationToken);
             return true;
         }
         catch (Exception)

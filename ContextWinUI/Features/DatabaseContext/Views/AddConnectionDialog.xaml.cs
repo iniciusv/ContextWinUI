@@ -78,7 +78,8 @@ public sealed partial class AddConnectionDialog : ContentDialog, INotifyProperty
 
         try
         {
-            bool success = await _dbService.TestConnectionAsync(ConnectionString);
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+            bool success = await _dbService.TestConnectionAsync(ConnectionString, cts.Token);
             if (success)
             {
                 StatusMessage = "Connection Successful!";
@@ -89,6 +90,11 @@ public sealed partial class AddConnectionDialog : ContentDialog, INotifyProperty
                 StatusMessage = "Connection Failed.";
                 StatusBrush = new SolidColorBrush(Colors.Red);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Connection timed out.";
+            StatusBrush = new SolidColorBrush(Colors.Orange);
         }
         catch (Exception ex)
         {
