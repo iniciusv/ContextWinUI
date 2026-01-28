@@ -98,8 +98,11 @@
 
         <!-- List -->
         <ListView Grid.Row="4"
+                  x:Name="TableList"
                   ItemsSource="{x:Bind ViewModel.Tables, Mode=OneWay}"
-                  SelectionMode="Single">
+                  SelectionMode="None"
+                  IsItemClickEnabled="True"
+                  ItemClick="TableList_ItemClick">
              <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="MinHeight" Value="24"/>
@@ -130,12 +133,6 @@
                                    Text="{x:Bind Name}" 
                                    VerticalAlignment="Center" 
                                    FontSize="13"/>
-                                   
-                         <Button Grid.Column="1" Grid.ColumnSpan="3"
-                                 Background="Transparent" BorderThickness="0"
-                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                 Command="{Binding ElementName=Root, Path=ViewModel.SelectTableCommand}"
-                                 CommandParameter="{x:Bind}"/>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

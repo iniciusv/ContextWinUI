@@ -19,6 +19,14 @@ public sealed partial class DatabaseExplorerView : UserControl
     {
         this.InitializeComponent();
     }
+    private void TableList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is DatabaseTableItem item)
+        {
+            ViewModel.SelectTableCommand.Execute(item);
+        }
+    }
+
     private async void AddConnection_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var services = ((App)App.Current).Services;

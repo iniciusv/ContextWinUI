@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace ContextWinUI.ViewModels;
 

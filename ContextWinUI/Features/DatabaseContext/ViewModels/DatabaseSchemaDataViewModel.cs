@@ -18,9 +18,9 @@ public partial class DatabaseSchemaDataViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<DatabaseColumnDto> _columns = new();
 
-    // Using List<Dictionary<string, object>> for simple data binding in WinUI DataGrid
+    // Using List<string> for simple text display of rows
     [ObservableProperty]
-    private ObservableCollection<Dictionary<string, object>> _dataSamples = new();
+    private ObservableCollection<string> _dataSamples = new();
 
     [ObservableProperty]
     private bool _isLoadingData;
@@ -57,13 +57,19 @@ public partial class DatabaseSchemaDataViewModel : ObservableObject
             DataSamples.Clear();
 
             // Very simple SELECT TOP 50
-            var query = $"SELECT TOP 50 * FROM [{table.Schema}].[{table.TableName}]";
+            var query = $"SELECT TOP 10 * FROM [{table.Schema}].[{table.TableName}]";
             
             var data = await _dbService.GetRawDataAsync(_currentConnectionString, query);
             
             foreach (var row in data)
             {
-                DataSamples.Add(row);
+                var sb = new System.Text.StringBuilder();
+                foreach (var kvp in row)
+                {
+                    if (sb.Length > 0) sb.Append(", ");
+                    sb.Append($"{kvp.Key}: {kvp.Value}");
+                }
+                DataSamples.Add(sb.ToString());
             }
 
             StatusMessage = $"Loaded {DataSamples.Count} rows.";

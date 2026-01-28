@@ -95,10 +95,10 @@ public partial class App : Application
 
         // 6. DATABASE FEATURE
         services.AddSingleton<IDatabaseService, DatabaseService>();
-        services.AddTransient<DatabaseSelectionViewModel>();
-        services.AddTransient<DatabaseSchemaDataViewModel>();
-        services.AddTransient<DatabaseExplorerViewModel>();
-        services.AddTransient<DatabaseViewModel>();
+        services.AddSingleton<DatabaseSelectionViewModel>();
+        services.AddSingleton<DatabaseSchemaDataViewModel>();
+        services.AddSingleton<DatabaseExplorerViewModel>();
+        services.AddSingleton<DatabaseViewModel>();
 
 		services.AddTransient<MainViewModel>();
 
