@@ -6,6 +6,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.UI.Dispatching;
 
 namespace ContextWinUI.Features.DatabaseContext.ViewModels;
 
@@ -15,6 +16,7 @@ public partial class DatabaseExplorerViewModel : ObservableObject
     public DatabaseSelectionViewModel SelectionViewModel { get; }
     private readonly DatabaseSchemaDataViewModel _schemaDataViewModel;
     private readonly IProjectSessionManager _sessionManager;
+    private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
     [ObservableProperty]
     private ObservableCollection<DatabaseConnectionDto> _connections = new();
@@ -47,6 +49,9 @@ public partial class DatabaseExplorerViewModel : ObservableObject
         
         SelectionViewModel.SelectedForContext.CollectionChanged += OnSelectionChanged;
 
+        _sessionManager.ProjectLoaded += (s, e) => LoadConnections();
+        _sessionManager.ContextRestored += (s, e) => LoadConnections();
+
         // Load connections from current session
         LoadConnections();
     }
@@ -66,10 +71,13 @@ public partial class DatabaseExplorerViewModel : ObservableObject
 
     private void LoadConnections()
     {
-        if (_sessionManager?.CurrentState?.DatabaseConnections != null)
+        _dispatcherQueue.TryEnqueue(() =>
         {
-            Connections = new ObservableCollection<DatabaseConnectionDto>(_sessionManager.CurrentState.DatabaseConnections);
-        }
+            if (_sessionManager?.CurrentState?.DatabaseConnections != null)
+            {
+                Connections = new ObservableCollection<DatabaseConnectionDto>(_sessionManager.CurrentState.DatabaseConnections);
+            }
+        });
     }
 
     partial void OnSelectedConnectionChanged(DatabaseConnectionDto? value)

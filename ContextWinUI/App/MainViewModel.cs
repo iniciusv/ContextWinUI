@@ -129,6 +129,7 @@ public partial class MainViewModel : ObservableObject
 
 		openPicker.ViewMode = PickerViewMode.List;
 		openPicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+		openPicker.FileTypeFilter.Add(".ctx");
 		openPicker.FileTypeFilter.Add(".json");
 
 		var file = await openPicker.PickSingleFileAsync();
@@ -169,8 +170,9 @@ public partial class MainViewModel : ObservableObject
 		}
 
 		savePicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+		savePicker.FileTypeChoices.Add("ContextWinUI Project", new List<string>() { ".ctx" });
 		savePicker.FileTypeChoices.Add("JSON Context", new List<string>() { ".json" });
-		savePicker.SuggestedFileName = "contexto_exportado";
+		savePicker.SuggestedFileName = "context_project";
 
 		var file = await savePicker.PickSaveFileAsync();
 		if (file != null)

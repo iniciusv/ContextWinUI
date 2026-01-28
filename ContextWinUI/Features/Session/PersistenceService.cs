@@ -39,6 +39,8 @@ public class PersistenceService : IPersistenceService
 			omitUsings, omitNamespaces, omitComments, omitEmptyLines, includeStructure, structureOnlyFolders, tagColors, databaseConnections);
 	}
 
+    private readonly IStorageFormatHandler _storageHandler = new ZipStorageHandler();
+
 	// Implementação Genérica: Salva onde mandarem
 	public async Task SaveProjectCacheToSpecificFileAsync(
 		string targetFilePath,
@@ -78,8 +80,7 @@ public class PersistenceService : IPersistenceService
 				}).ToList()
 			};
 
-			var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
-			await File.WriteAllTextAsync(targetFilePath, json);
+            await _storageHandler.SaveAsync(targetFilePath, dto);
 		}
 		catch (Exception)
 		{
@@ -113,16 +114,7 @@ public class PersistenceService : IPersistenceService
 
 	public async Task<ProjectCacheDto?> LoadProjectCacheFromSpecificFileAsync(string sourceFilePath)
 	{
-		try
-		{
-			if (!File.Exists(sourceFilePath)) return null;
-			var json = await File.ReadAllTextAsync(sourceFilePath);
-			return JsonSerializer.Deserialize<ProjectCacheDto>(json);
-		}
-		catch
-		{
-			return null;
-		}
+        return await _storageHandler.LoadAsync(sourceFilePath);
 	}
 
 	private string GetCacheFilePath(string projectPath)
