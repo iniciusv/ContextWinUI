@@ -205,12 +205,35 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 		try
 		{
 			IsLoading = true;
-			OnStatusChanged("Recarregando estrutura de arquivos...");
+			OnStatusChanged("Sincronizando arquivos (mantendo estado)...");
 
-			// Solicita ao SessionManager que reabra o caminho atual.
-			// Isso disparará o evento ProjectLoaded, que por sua vez chama _dataService.Initialize
-			// e reconstrói a árvore com os novos arquivos encontrados no disco.
-			await SessionManager.OpenProjectAsync(CurrentPath);
+            // 1. CAPTURA O ESTADO ATUAL
+            // Captura seleção (incluindo blocos)
+            var selectionSnapshot = SelectionViewModel.GetCurrentSelectionSnapshot();
+
+            // Captura expansão de pastas
+            var expandedPaths = new System.Collections.Generic.HashSet<string>();
+            CollectExpandedPaths(RootItems, expandedPaths);
+
+			// 2. REFRESH SEM LIMPAR O CACHE
+			// Solicita ao SessionManager que recarregue os arquivos do disco, 
+            // mas NÃO limpe as tags/cores da memória.
+			await SessionManager.RefreshProjectAsync(CurrentPath);
+            
+            // 3. RESTAURA O ESTADO
+            // Restaura expansão
+            if (RootItems != null)
+            {
+                RestoreExpandedPaths(RootItems, expandedPaths);
+            }
+
+            // Restaura seleção
+            if (selectionSnapshot != null && selectionSnapshot.Any())
+            {
+                SelectionViewModel.ProcessPaths(selectionSnapshot);
+            }
+
+            OnStatusChanged("Sincronização concluída.");
 		}
 		catch (Exception ex)
 		{
@@ -221,6 +244,32 @@ public partial class FileExplorerViewModel : ObservableObject, IDisposable
 			IsLoading = false;
 		}
 	}
+
+    private void CollectExpandedPaths(System.Collections.Generic.IEnumerable<FileSystemItem> items, System.Collections.Generic.HashSet<string> expanded)
+    {
+        if (items == null) return;
+        foreach (var item in items)
+        {
+            if (item.IsExpanded) expanded.Add(item.FullPath);
+            // Recursão
+            CollectExpandedPaths(item.Children, expanded);
+        }
+    }
+
+    private void RestoreExpandedPaths(System.Collections.Generic.IEnumerable<FileSystemItem> items, System.Collections.Generic.HashSet<string> expanded)
+    {
+        if (items == null) return;
+        foreach (var item in items)
+        {
+            // Se estava expandido antes, re-expande
+            if (expanded.Contains(item.FullPath))
+            {
+                item.IsExpanded = true;
+            }
+            // Recursão
+            RestoreExpandedPaths(item.Children, expanded);
+        }
+    }
 	public void Dispose()
 	{
 		SessionManager.ProjectLoaded -= OnProjectLoaded;

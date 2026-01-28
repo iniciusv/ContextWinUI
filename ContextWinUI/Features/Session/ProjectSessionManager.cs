@@ -83,35 +83,54 @@ public class ProjectSessionManager : IProjectSessionManager
 
 		CurrentProjectPath = path;
 
+		await InternalLoadProjectAsync(path, loadMetadataFromCache: true);
+	}
+
+	public async Task RefreshProjectAsync(string path)
+	{
+		if (string.IsNullOrWhiteSpace(path)) return;
+
+		NotifyStatus("Atualizando estrutura de arquivos...");
+        // NÃO chama CloseProject nem ClearCache
+        // Mantém CurrentProjectPath e ActiveContextFilePath
+
+		await InternalLoadProjectAsync(path, loadMetadataFromCache: false);
+	}
+
+    private async Task InternalLoadProjectAsync(string path, bool loadMetadataFromCache)
+    {
 		try
 		{
 			NotifyStatus("Lendo arquivos do disco...");
 			var rootItems = await _fileSystemService.LoadProjectRecursivelyAsync(path);
 
-			NotifyStatus("Verificando cache padrão...");
-			// Carrega do cache padrão inicialmente
-			var cache = await _persistenceService.LoadProjectCacheDefaultAsync(path);
+            if (loadMetadataFromCache)
+            {
+			    NotifyStatus("Verificando cache padrão...");
+			    // Carrega do cache padrão inicialmente
+			    var cache = await _persistenceService.LoadProjectCacheDefaultAsync(path);
 
-			TagColors.Clear();
-			if (cache != null)
-			{
-				ApplyCacheToMemory(path, cache);
-				ApplyColorsFromCache(cache);
-			}
-			else
-			{
-				ResetSettingsToDefault();
-			}
+			    TagColors.Clear();
+			    if (cache != null)
+			    {
+				    ApplyCacheToMemory(path, cache);
+				    ApplyColorsFromCache(cache);
+			    }
+			    else
+			    {
+				    ResetSettingsToDefault();
+			    }
+            }
 
-			NotifyStatus("Projeto carregado (Modo Padrão).");
+			NotifyStatus("Projeto carregado.");
 			ProjectLoaded?.Invoke(this, new ProjectLoadedEventArgs(path, rootItems));
 		}
 		catch (Exception ex)
 		{
 			NotifyStatus($"Erro crítico: {ex.Message}");
-			CloseProject();
+            if (loadMetadataFromCache) CloseProject(); // Só fecha no Open, no Refresh tenta manter
 		}
-	}
+    }
 
 	public void CloseProject()
 	{

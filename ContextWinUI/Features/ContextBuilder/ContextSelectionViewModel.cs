@@ -100,6 +100,28 @@ public partial class ContextSelectionViewModel : ObservableObject
 		return SelectedItemsList.ToList();
 	}
 
+    public List<string> GetCurrentSelectionSnapshot()
+    {
+        var paths = SelectedItemsList.Select(x => x.FullPath).ToList();
+        
+        // Append selected blocks if manager is available
+        if (_blockManager != null)
+        {
+            var allSelectedBlocks = _blockManager.GetAllSelectedBlocks();
+            foreach (var kvp in allSelectedBlocks)
+            {
+                if (paths.Contains(kvp.Key)) // Only if file is still selected
+                {
+                    foreach (var blockId in kvp.Value)
+                    {
+                        paths.Add($"{kvp.Key}::{blockId}");
+                    }
+                }
+            }
+        }
+        return paths;
+    }
+
 	[RelayCommand]
 	private async Task SaveSelectionListAsync()
 	{

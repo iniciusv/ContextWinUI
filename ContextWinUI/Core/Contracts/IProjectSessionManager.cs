@@ -24,6 +24,7 @@ public interface IProjectSessionManager
 
 	Task LoadProjectAsync();
 	Task OpenProjectAsync(string path);
+	Task RefreshProjectAsync(string path);
 	Task SaveSessionAsync();
 	void CloseProject();
 	Task LoadContextFromFileAsync(string filePath);
